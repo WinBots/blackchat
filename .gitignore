@@ -1,0 +1,80 @@
+# ===========================
+# Python / Backend
+# ===========================
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.env
+backend/*.egg-info/
+backend/dist/
+backend/build/
+backend/.pytest_cache/
+backend/.mypy_cache/
+
+# Arquivos de diagnóstico / scripts temporários
+backend/_diag_*.py
+backend/_fix_*.py
+backend/_tmp_*.py
+
+# ===========================
+# Node / Frontend
+# ===========================
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.production
+frontend/.env.*.local
+frontend/.vite/
+
+# ===========================
+# Uploads (não versionar mídia)
+# ===========================
+uploads/
+backend/uploads/
+frontend/uploads/
+
+# ===========================
+# Banco / dados locais
+# ===========================
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ===========================
+# Editores / IDEs
+# ===========================
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ===========================
+# OS
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===========================
+# Logs
+# ===========================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===========================
+# Temp / misc
+# ===========================
+*.tmp
+*.bak
+*.orig
+payload.json
