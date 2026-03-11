@@ -1,0 +1,108 @@
+
+/* ===================== SYSTEM SELECTOR (Modal de Criação) ===================== */
+.system-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.system-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 2px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  text-align: left;
+}
+
+.system-card:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.system-card.active {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.system-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: white;
+  flex-shrink: 0;
+}
+
+.system-card-content {
+  flex: 1;
+}
+
+.system-card-content h4 {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.system-card-content p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.system-card-check {
+  color: var(--accent);
+  font-size: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.system-card.active .system-card-check {
+  opacity: 1;
+}
+
+/* ===================== SYSTEM BADGE (Tabela de Fluxos) ===================== */
+.system-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.system-badge i {
+  font-size: 0.9rem;
+}
+
+.system-telegram {
+  background: rgba(34, 158, 217, 0.15);
+  color: #229ED9;
+}
+
+.system-instagram {
+  background: linear-gradient(135deg, rgba(225, 48, 108, 0.15) 0%, rgba(245, 96, 64, 0.15) 50%, rgba(252, 175, 69, 0.15) 100%);
+  color: #E1306C;
+}
+
+.system-whatsapp {
+  background: rgba(37, 211, 102, 0.15);
+  color: #25D366;
+}
+
+.system-manual {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+}
+

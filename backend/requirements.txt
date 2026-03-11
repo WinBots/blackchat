@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy
+pydantic[email]
+pydantic-settings
+python-dotenv
+passlib[bcrypt]
+bcrypt<4
+python-jose[cryptography]
+python-multipart
+httpx
+stripe
+aiosmtplib
+# SQL Server (requer ODBC Driver 17/18 for SQL Server instalado no SO)
+pyodbc
