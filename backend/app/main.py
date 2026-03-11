@@ -19,6 +19,7 @@ app = FastAPI(title="Blackchat Pro SaaS API", version="0.2.0")
 _settings = get_settings()
 _ALLOWED_ORIGINS = [
     # Produção
+    "https://app.blackchatpro.com",
     "https://blackchatpro.com",
     "https://www.blackchatpro.com",
     # Dev local
