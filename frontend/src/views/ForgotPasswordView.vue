@@ -58,7 +58,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import axios from 'axios'
+import api from '@/api/http.js'
 
 const email   = ref('')
 const loading = ref(false)
@@ -69,7 +69,7 @@ const handleSubmit = async () => {
   error.value = ''
   loading.value = true
   try {
-    await axios.post('http://localhost:8061/api/v1/auth/forgot-password/', { email: email.value.trim() })
+    await api.post('/api/v1/auth/forgot-password/', { email: email.value.trim() })
     sent.value = true
   } catch (err) {
     error.value = err.response?.data?.detail || 'Erro ao processar solicitação. Tente novamente.'

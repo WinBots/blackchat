@@ -70,7 +70,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/http.js'
 
 const route      = useRoute()
 const form       = ref({ password: '', confirm: '' })
@@ -101,7 +101,7 @@ const handleSubmit = async () => {
 
   loading.value = true
   try {
-    await axios.post('http://localhost:8061/api/v1/auth/reset-password/', {
+    await api.post('/api/v1/auth/reset-password/', {
       token: token.value,
       new_password: form.value.password,
     })

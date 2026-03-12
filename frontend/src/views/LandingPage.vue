@@ -322,7 +322,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import axios from 'axios'
+import api from '@/api/http.js'
 
 const plans = ref([])
 const loading = ref(true)
@@ -489,7 +489,7 @@ const planDescription = (name) => {
 
 const loadPlans = async () => {
   try {
-    const response = await axios.get('http://localhost:8061/api/v1/public/plans/')
+    const response = await api.get('/api/v1/public/plans/')
     plans.value = response.data
   } catch (error) {
     console.error('Erro ao carregar planos:', error)

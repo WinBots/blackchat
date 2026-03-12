@@ -103,7 +103,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/http.js'
 import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
@@ -138,7 +138,7 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    const response = await axios.post('http://localhost:8061/api/v1/auth/register/', {
+    const response = await api.post('/api/v1/auth/register/', {
       email: form.value.email,
       password: form.value.password,
       full_name: form.value.full_name,

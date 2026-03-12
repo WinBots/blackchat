@@ -119,7 +119,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import api from '@/api/http.js'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 
@@ -133,7 +133,7 @@ const auth = useAuth()
 const onSubmit = async () => {
   loading.value = true
   try {
-    const response = await axios.post('http://localhost:8061/api/v1/auth/login/', {
+    const response = await api.post('/api/v1/auth/login/', {
       email: email.value,
       password: password.value
     })

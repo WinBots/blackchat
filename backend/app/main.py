@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app.config import get_settings
 
 from app.api.v1.routers import (
@@ -15,6 +16,10 @@ run_auto_migrations(engine)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Blackchat Pro SaaS API", version="0.2.0")
+
+# Trusted proxy headers — faz o uvicorn respeitar X-Forwarded-Proto (https)
+# enviado pelo Nginx, evitando redirects com http:// em produção
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 _settings = get_settings()
 _ALLOWED_ORIGINS = [
