@@ -2524,29 +2524,43 @@ const loadData = async () => {
     selectedBlock.value = null
     steps.value = []
     connections.value = []
-    
+    botUsername.value = 'seu_bot' // ← reset imediato para evitar vazamento de fluxo anterior
+
     flow.value = await getFlow(flowId.value)
     steps.value = await listFlowSteps(flowId.value)
-    
+
     // Buscar username do bot do canal conectado
     if (flow.value?.channel_id) {
       try {
         channelsCache.value = await listChannels()
-        const channel = channelsCache.value.find(c => c.id === flow.value.channel_id)
-        
-        if (channel && channel.config) {
-          const config = typeof channel.config === 'string' 
-            ? JSON.parse(channel.config) 
-            : channel.config
-          
-          // Remover @ se vier no username
-          const username = config.bot_username || ''
-          if (username) {
-            botUsername.value = username.replace('@', '')
-          } else {
-            // Tentar descobrir via token e persistir
-            await fetchBotUsername(channel)
+        // Coercão explícita de tipo para evitar falha por string vs number
+        const channel = channelsCache.value.find(c => Number(c.id) === Number(flow.value.channel_id))
+
+        if (channel) {
+          // Tentar ler bot_username do config, mesmo que config seja null
+          let savedUsername = ''
+          if (channel.config) {
+            try {
+              const config = typeof channel.config === 'string'
+                ? JSON.parse(channel.config)
+                : channel.config
+              savedUsername = (config.bot_username || '').replace('@', '')
+            } catch (e) {
+              console.warn('Erro ao parsear config do canal:', e)
+            }
           }
+
+          if (savedUsername) {
+            botUsername.value = savedUsername
+          } else {
+            // Não há bot_username salvo: buscar via token na API do Telegram e persistir
+            const resolved = await fetchBotUsername(channel)
+            if (!resolved) {
+              console.warn('Não foi possível resolver bot_username para canal', channel.id)
+            }
+          }
+        } else {
+          console.warn('Canal do fluxo não encontrado na lista. channel_id =', flow.value.channel_id)
         }
       } catch (error) {
         console.error('Erro ao buscar username do bot:', error)
@@ -2555,19 +2569,22 @@ const loadData = async () => {
       // Mesmo sem canal_id no fluxo, carregar TODOS os canais para poder usar
       try {
         channelsCache.value = await listChannels()
-        
-        // Tentar usar o primeiro canal Telegram ativo
+
+        // Sem canal vinculado: usar o primeiro canal Telegram ativo como fallback
         const firstTelegramChannel = channelsCache.value.find(c => c.type === 'telegram' && c.is_active)
         if (firstTelegramChannel) {
-          const config = typeof firstTelegramChannel.config === 'string' 
-            ? JSON.parse(firstTelegramChannel.config) 
-            : firstTelegramChannel.config
-          
-          const username = config.bot_username || ''
-          if (username) {
-            botUsername.value = username.replace('@', '')
+          let savedUsername = ''
+          if (firstTelegramChannel.config) {
+            try {
+              const config = typeof firstTelegramChannel.config === 'string'
+                ? JSON.parse(firstTelegramChannel.config)
+                : firstTelegramChannel.config
+              savedUsername = (config.bot_username || '').replace('@', '')
+            } catch (e) { /* ignore */ }
+          }
+          if (savedUsername) {
+            botUsername.value = savedUsername
           } else {
-            // Tentar buscar via token
             await fetchBotUsername(firstTelegramChannel)
           }
         }
@@ -3874,47 +3891,17 @@ const copyReferralLink = () => {
 // Funções para link de referência do Telegram
 const getTelegramRefUrl = (refKey) => {
   if (!refKey) return 'Configure a chave de referência primeiro'
-  
-  let usernameCandidate = botUsername.value
 
-  // Se o fluxo tem canal vinculado, usar SOMENTE esse canal
-  if (flow.value?.channel_id && channelsCache.value.length > 0) {
-    const linkedChannel = channelsCache.value.find(c => c.id === flow.value.channel_id)
-    if (linkedChannel) {
-      try {
-        const cfg = typeof linkedChannel.config === 'string' ? JSON.parse(linkedChannel.config || '{}') : (linkedChannel.config || {})
-        usernameCandidate = (cfg.bot_username || '').replace('@', '')
-      } catch {
-        // ignore parse errors
-      }
-    }
-  } else if ((!usernameCandidate || usernameCandidate === 'seu_bot') && channelsCache.value.length > 0) {
-    // Sem canal selecionado: fallback para o primeiro canal com username
-    const firstWithUsername = channelsCache.value.find(c => {
-      try {
-        const cfg = typeof c.config === 'string' ? JSON.parse(c.config || '{}') : (c.config || {})
-        return !!cfg.bot_username
-      } catch {
-        return false
-      }
-    })
-    if (firstWithUsername) {
-      try {
-        const cfg = typeof firstWithUsername.config === 'string' ? JSON.parse(firstWithUsername.config || '{}') : (firstWithUsername.config || {})
-        usernameCandidate = (cfg.bot_username || '').replace('@', '')
-      } catch {
-        // ignore parse errors
-      }
-    }
-  }
-  
-  // Verificar se o username do bot está configurado
-  if (!usernameCandidate || usernameCandidate === 'seu_bot') {
+  // botUsername.value é resolvido pelo loadData() a partir do canal vinculado ao fluxo.
+  // Não fazemos lookup extra na channelsCache para evitar usar bot_username
+  // desatualizado (antes de fetchBotUsername persistir o valor).
+  const username = (botUsername.value || '').replace('@', '').trim()
+
+  if (!username || username === 'seu_bot') {
     return 'Configure o username do bot nas configurações primeiro'
   }
-  
-  // Usar o username real do bot
-  return `https://t.me/${usernameCandidate}?start=${refKey}`
+
+  return `https://t.me/${username}?start=${refKey}`
 }
 
 const copyTelegramRefLink = (refKey) => {
