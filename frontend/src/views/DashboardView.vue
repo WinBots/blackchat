@@ -184,7 +184,6 @@ const fmtInt = (n) => {
 
 const channelBadge = (channelType) => {
   const t = (channelType || '').toLowerCase()
-  if (t === 'instagram') return 'badge-warning'
   return 'badge-muted' // telegram/default
 }
 

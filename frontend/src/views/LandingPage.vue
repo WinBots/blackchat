@@ -21,7 +21,7 @@
         <div class="lp-nav-actions">
           <router-link to="/login" class="lp-btn lp-btn-ghost">Entrar</router-link>
           <router-link to="/register" class="lp-btn lp-btn-primary">
-            <i class="fas fa-rocket"></i> Come�ar Gr�tis
+            <i class="fas fa-rocket"></i> Começar Grátis
           </router-link>
         </div>
       </div>
@@ -32,22 +32,22 @@
       <div class="lp-container">
         <div class="lp-badge">
           <span class="lp-badge-dot"></span>
-          14 dias gr�tis � Sem cart�o de cr�dito
+          14 dias grátis • Sem cartão de crédito
         </div>
         <h1 class="lp-hero-title">
           Automatize suas conversas com
           <span class="lp-highlight">Blackchat Pro</span>
         </h1>
         <p class="lp-hero-subtitle">
-          Crie fluxos inteligentes para Telegram, Instagram e WhatsApp.
+          Crie fluxos inteligentes para Telegram.
           Aumente o engajamento e converta mais clientes.
         </p>
         <div class="lp-hero-cta">
           <router-link to="/register" class="lp-btn lp-btn-primary lp-btn-lg">
-            <i class="fas fa-rocket"></i> Comece Gr�tis - 14 Dias
+            <i class="fas fa-rocket"></i> Comece grátis agora mesmo
           </router-link>
           <router-link to="/login" class="lp-btn lp-btn-outline lp-btn-lg">
-            <i class="fas fa-sign-in-alt"></i> J� tenho conta
+            <i class="fas fa-sign-in-alt"></i> Já tenho conta
           </router-link>
         </div>
       </div>
@@ -57,8 +57,8 @@
     <section class="lp-features" id="recursos">
       <div class="lp-container">
         <div class="lp-section-label">Recursos</div>
-        <h2 class="lp-section-title">Tudo que voc� precisa para crescer</h2>
-        <p class="lp-section-subtitle">Uma plataforma completa para automa��o de conversas em m�ltiplos canais.</p>
+        <h2 class="lp-section-title">Tudo que você precisa para crescer</h2>
+        <p class="lp-section-subtitle">Uma plataforma completa para automação de conversas em múltiplos canais.</p>
         <div class="lp-features-grid">
           <div class="lp-feature-card" v-for="feature in features" :key="feature.title">
             <div class="lp-feature-icon" :style="{ background: feature.iconBg }">
@@ -87,8 +87,8 @@
     <section class="lp-pricing" id="planos">
       <div class="lp-container">
         <div class="lp-section-label">Planos</div>
-        <h2 class="lp-section-title">Pre�os transparentes e flex�veis</h2>
-        <p class="lp-section-subtitle">Pague apenas pelos contatos que voc� engaja. Cobran�a mensal, sem fidelidade.</p>
+        <h2 class="lp-section-title">Preços transparentes e flexíveis</h2>
+        <p class="lp-section-subtitle">Pague apenas pelos contatos que você engaja. Cobrança mensal, sem fidelidade.</p>
 
         <div v-if="loading" class="lp-loading">
           <div class="lp-spinner"></div>
@@ -113,17 +113,17 @@
               <h3 class="lp-pricing-name">{{ plan.display_name }}</h3>
               <p class="lp-pricing-desc">{{ planDescription(plan.name) }}</p>
 
-              <!-- Plano Gr�tis -->
+              <!-- Plano Grátis -->
               <div v-if="plan.name === 'free'" class="pricing-price pricing-inline mb-8">
-                <span class="price-value text-green-500">Gr�tis</span>
+                <span class="price-value text-green-500">Grátis</span>
               </div>
 
-              <!-- Plano Pro (pre�o fixo) -->
+              <!-- Plano Pro (preço fixo) -->
               <div v-else-if="plan.name === 'pro'" class="pricing-price pricing-inline mb-8">
                 <span class="price-currency p-xs">R$</span>
                 <span class="price-value">99</span>
-                <span class="price-period p-xs">/m�s</span>
-                <div class="pricing-pro-contacts">at� 2.500 contatos</div>
+                <span class="price-period p-xs">/mês</span>
+                <div class="pricing-pro-contacts">até 2.500 contatos</div>
               </div>
 
               <!-- Plano Enterprise (personalizado) -->
@@ -132,10 +132,10 @@
                 <div class="pricing-ent-main">Enterprise</div>
                 <div class="pricing-vpm-unit">cobrado por volume de contatos</div>
                 <div class="pricing-vpm-min">
-                  <span class="pricing-vpm-min-label">M�n.</span>
+                  <span class="pricing-vpm-min-label">Mín.</span>
                   <span class="pricing-vpm-min-currency">R$</span>
                   <span class="pricing-vpm-min-value">999</span>
-                  <span class="pricing-vpm-min-period">/m�s</span>
+                  <span class="pricing-vpm-min-period">/mês</span>
                 </div>
               </div>
 
@@ -148,10 +148,10 @@
                 </div>
                 <div class="pricing-vpm-unit">por 1.000 contatos ativos</div>
                 <div v-if="plan.min_monthly" class="pricing-vpm-min">
-                  <span class="pricing-vpm-min-label">M�n.</span>
+                  <span class="pricing-vpm-min-label">Mín.</span>
                   <span class="pricing-vpm-min-currency">R$</span>
                   <span class="pricing-vpm-min-value">{{ formatPriceNumber(plan.min_monthly) }}</span>
-                  <span class="pricing-vpm-min-period">/m�s</span>
+                  <span class="pricing-vpm-min-period">/mês</span>
                 </div>
               </div>
             </div>
@@ -161,21 +161,21 @@
             <ul class="lp-pricing-features">
               <template v-if="plan.name === 'free'">
                 <li><i class="fas fa-check lp-check"></i> <span>1 Bot no Telegram</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>At� 100 contatos ativos</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Fluxo de automa��o</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Até 100 contatos ativos</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>1 Fluxo de automação</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>1 Gatilho de entrada</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Sequ�ncia de mensagens</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Tag de segmenta��o</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Usu�rio administrador</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>1 Sequência de mensagens</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>1 Tag de segmentação</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>1 Usuário administrador</span></li>
               </template>
               <template v-else-if="plan.name === 'pro'">
                 <li><i class="fas fa-check lp-check"></i> <span>3 Bots no Telegram</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>At� <b>2.500 contatos ativos</b></span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Fluxos de automa��o ilimitados</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Até <b>2.500 contatos ativos</b></span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Fluxos de automação ilimitados</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>Gatilhos de palavra-chave ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Sequ�ncias de mensagens ilimitadas</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Sequências de mensagens ilimitadas</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>Tags ilimitadas</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Campos do usu�rio ilimitados</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Campos do usuário ilimitados</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>3 Colaboradores</span></li>
               </template>
               <template v-else-if="plan.name === 'unlimited'">
@@ -183,10 +183,10 @@
                 <li><i class="fas fa-check lp-check"></i> <span><b>Contatos ilimitados</b> (cobrado por volume)</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>Fluxos ilimitados</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>Gatilhos ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Sequ�ncias ilimitadas</span></li>
+                <li><i class="fas fa-check lp-check"></i> <span>Sequências ilimitadas</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span>Tags e campos ilimitados</span></li>
                 <li><i class="fas fa-check lp-check"></i> <span><b>Administradores ilimitados</b></span></li>
-                <li><i class="fas fa-check lp-check lp-check--gold"></i> <span>Suporte priorit�rio 24/7</span></li>
+                <li><i class="fas fa-check lp-check lp-check--gold"></i> <span>Suporte prioritário 24/7</span></li>
                 <li><i class="fas fa-check lp-check lp-check--gold"></i> <span>API + Webhooks</span></li>
               </template>
             </ul>
@@ -196,7 +196,7 @@
               :to="`/register?plan=${plan.name}`"
               class="lp-btn-plan"
             >
-              {{ plan.name === 'free' ? 'Come�ar Gr�tis' : 'Assinar Agora' }}
+              {{ plan.name === 'free' ? 'Começar Grátis' : 'Assinar Agora' }}
               <i class="fas fa-arrow-right"></i>
             </router-link>
             <a
@@ -204,7 +204,7 @@
               href="#lp-enterprise-calc"
               class="lp-btn-plan lp-btn-plan--enterprise"
             >
-              Ver Pre�os
+              Ver Preços
               <i class="fas fa-calculator"></i>
             </a>
           </div>
@@ -214,7 +214,7 @@
         <div class="lp-vpm-calc" id="lp-enterprise-calc">
           <div class="lp-vpm-calc-header">
             <h3 class="lp-vpm-calc-title">Calcule o custo do seu plano mensal</h3>
-            <p class="lp-vpm-calc-sub">Os planos Pro e Enterprise s�o faturados mensalmente de acordo com o tamanho da sua lista de contatos</p>
+            <p class="lp-vpm-calc-sub">Os planos Pro e Enterprise são faturados mensalmente de acordo com o tamanho da sua lista de contatos</p>
           </div>
           <div class="lp-vpm-calc-card">
             <div class="lp-vpm-calc-body">
@@ -226,7 +226,7 @@
               </div>
               <div class="lp-vpm-calc-equals">=</div>
               <div class="lp-vpm-calc-right">
-                <span class="lp-vpm-calc-price">R$&nbsp;{{ formatPriceNumber(calcPrice) }}<small>/m�s</small></span>
+                <span class="lp-vpm-calc-price">R$&nbsp;{{ formatPriceNumber(calcPrice) }}<small>/mês</small></span>
                 <span class="lp-vpm-calc-plan-label">{{ calcPlanLabel }}</span>
                 <span class="lp-vpm-calc-rate-badge">{{ calcRateLabel }}</span>
               </div>
@@ -239,7 +239,7 @@
             </div>
             <div class="lp-vpm-calc-footer">
               <button class="lp-vpm-calc-link" @click="showPriceTable = true">
-                <i class="fas fa-table"></i> Ver tabela de pre�os completa
+                <i class="fas fa-table"></i> Ver tabela de preços completa
               </button>
               <router-link
                 :to="`/register?plan=unlimited&contacts=${calcContacts}`"
@@ -251,21 +251,21 @@
           </div>
         </div>
 
-        <!-- Modal Tabela de Pre�os -->
+        <!-- Modal Tabela de Preços -->
         <Teleport to="body">
           <div v-if="showPriceTable" class="lp-modal-overlay" @click.self="showPriceTable = false">
             <div class="lp-modal">
               <div class="lp-modal-header">
-                <h3>Tabela de Pre�os</h3>
+                <h3>Tabela de Preços</h3>
                 <button class="lp-modal-close" @click="showPriceTable = false"><i class="fas fa-times"></i></button>
               </div>
               <div class="lp-modal-body">
                 <table class="lp-price-table">
                   <thead>
                     <tr>
-                      <th>M�x. de contatos</th>
-                      <th>Pre�o por m�s</th>
-                      <th>Pre�o por 1K</th>
+                      <th>Máx. de contatos</th>
+                      <th>Preço por mês</th>
+                      <th>Preço por 1K</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -295,9 +295,9 @@
         <div class="lp-cta-card">
           <div class="lp-cta-glow"></div>
           <h2>Pronto para automatizar suas conversas?</h2>
-          <p>Junte-se a centenas de empresas que j� confiam no Blackchat Pro</p>
+          <p>Junte-se a centenas de empresas que já confiam no Blackchat Pro</p>
           <router-link to="/register" class="lp-btn lp-btn-primary lp-btn-lg">
-            <i class="fas fa-rocket"></i> Come�ar Agora
+            <i class="fas fa-rocket"></i> Começar Agora
           </router-link>
         </div>
       </div>
@@ -313,7 +313,7 @@
             </div>
             <span class="lp-logo-text">Blackchat Pro</span>
           </div>
-          <p class="lp-footer-copy">� 2026 Blackchat Pro. Todos os direitos reservados.</p>
+          <p class="lp-footer-copy">© 2026 Blackchat Pro. Todos os direitos reservados.</p>
         </div>
       </div>
     </footer>
@@ -327,13 +327,13 @@ import api from '@/api/http.js'
 const plans = ref([])
 const loading = ref(true)
 
-// Calculadora VPM � tabela oficial de pre�os com interpola��o linear
-const calcSlider = ref(30) // ~5.000 contatos por padr�o
+// Calculadora VPM – tabela oficial de preços com interpolação linear
+const calcSlider = ref(30) // ~5.000 contatos por padrão
 const showPriceTable = ref(false)
 const PRO_MIN = 99
 const ENT_MIN = 999
 
-// Tabela de pre�os oficial (contatos ? pre�o/m�s)
+// Tabela de preços oficial (contatos ? preço/mês)
 const PRICE_TABLE = [
   { contacts:         500, price:      24.50 },
   { contacts:       2_500, price:     106.31 },
@@ -369,7 +369,7 @@ const PRICE_TABLE = [
   { contacts:   2_000_000, price:  68_600.00 },
 ]
 
-// Interpola o pre�o para qualquer n�mero de contatos
+// Interpola o preço para qualquer número de contatos
 const getPrice = (contacts) => {
   if (contacts <= 0) return 0
   const last = PRICE_TABLE[PRICE_TABLE.length - 1]
@@ -382,7 +382,7 @@ const getPrice = (contacts) => {
     // Abaixo de 500: proporcional
     return first.price * (contacts / first.contacts)
   }
-  // Interpola��o linear entre os pontos da tabela
+  // Interpolação linear entre os pontos da tabela
   for (let i = 1; i < PRICE_TABLE.length; i++) {
     if (contacts <= PRICE_TABLE[i].contacts) {
       const lo = PRICE_TABLE[i - 1]
@@ -399,7 +399,7 @@ const getEffectiveRate = (contacts) => {
   return getPrice(contacts) / (contacts / 1000)
 }
 
-// Slider: 500 ? 2.000.000 em escala logar�tmica (500 * 4000^(t/100))
+// Slider: 500 ? 2.000.000 em escala logarítmica (500 * 4000^(t/100))
 const calcContacts = computed(() =>
   Math.round(500 * Math.pow(4000, calcSlider.value / 100))
 )
@@ -414,7 +414,7 @@ const calcRateLabel = computed(() =>
   `R$\u00a0${formatPriceNumber(getEffectiveRate(calcContacts.value))}/1K contatos`
 )
 
-// Tabela completa de pre�os (exata, sem interpola��o)
+// Tabela completa de preços (exata, sem interpolação)
 const pricingTableRows = computed(() =>
   PRICE_TABLE.map(({ contacts, price }) => ({
     contacts,
@@ -426,25 +426,25 @@ const pricingTableRows = computed(() =>
 const features = [
   {
     title: 'Telegram Nativo',
-    description: 'Automa��o completa no Telegram � o canal com 500M+ de usu�rios ativos no mundo.',
+    description: 'Automação completa no Telegram – o canal com 500M+ de usuários ativos no mundo.',
     icon: 'fab fa-telegram',
     iconBg: 'rgba(14, 165, 233, 0.15)'
   },
   {
     title: 'Fluxos Visuais',
-    description: 'Editor drag-and-drop intuitivo para criar automa��es complexas sem escrever c�digo.',
+    description: 'Editor drag-and-drop intuitivo para criar automações complexas sem escrever código.',
     icon: 'fas fa-project-diagram',
-    iconBg: 'rgba(174, 255, 145, 0.15)'
+    iconBg: 'rgba(0, 255, 102, 0.15)'
   },
   {
-    title: 'Automa��o 24/7',
-    description: 'Respostas instant�neas a qualquer hora do dia, mesmo enquanto voc� dorme.',
+    title: 'Automação 24/7',
+    description: 'Respostas instantâneas a qualquer hora do dia, mesmo enquanto você dorme.',
     icon: 'fas fa-bolt',
     iconBg: 'rgba(251, 191, 36, 0.15)'
   },
   {
     title: 'Analytics em Tempo Real',
-    description: 'M�tricas detalhadas para entender seu p�blico e otimizar cada campanha.',
+    description: 'Métricas detalhadas para entender seu público e otimizar cada campanha.',
     icon: 'fas fa-chart-line',
     iconBg: 'rgba(168, 85, 247, 0.15)'
   },
@@ -456,14 +456,14 @@ const features = [
   },
   {
     title: 'Em Breve: API & Webhooks',
-    description: 'Integra��o com seus sistemas via API REST e webhooks � em desenvolvimento.',
+    description: 'Integração com seus sistemas via API REST e webhooks – em desenvolvimento.',
     icon: 'fas fa-plug',
-    iconBg: 'rgba(174, 255, 145, 0.08)'
+    iconBg: 'rgba(0, 255, 102, 0.08)'
   }
 ]
 
 const stats = [
-  { value: '500M+', label: 'Usu�rios no Telegram' },
+  { value: '500M+', label: 'Usuários no Telegram' },
   { value: '24/7', label: 'Disponibilidade' },
   { value: '< 1s', label: 'Tempo de resposta' },
   { value: '99.9%', label: 'Uptime garantido' }
@@ -481,8 +481,8 @@ const planIcon = (name) => {
 const planDescription = (name) => {
   const descs = {
     free: 'Para testar a ferramenta',
-    pro: 'Plano fixo � at� 2.500 contatos',
-    unlimited: 'Para grandes volumes � cobrado por contatos'
+    pro: 'Plano fixo – até 2.500 contatos',
+    unlimited: 'Para grandes volumes – cobrado por contatos'
   }
   return descs[name] || 'Plano completo'
 }
@@ -524,13 +524,13 @@ onMounted(() => {
 
 <style scoped>
 /* ============================================================
-   LANDING PAGE - DESIGN TECNOL�GICO
+   LANDING PAGE - DESIGN TECNOLÓGICO
    ============================================================ */
 
 /* === Background === */
 .landing-page {
   min-height: 100vh;
-  background: #050816;
+  background: #060606;
   position: relative;
   overflow-x: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -550,7 +550,7 @@ onMounted(() => {
   height: 700px;
   top: -200px;
   left: -200px;
-  background: radial-gradient(circle, rgba(174, 255, 145, 0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 255, 102, 0.08) 0%, transparent 70%);
 }
 
 .bg-glow-2 {
@@ -585,7 +585,7 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(9, 9, 10, 0.85);
+  background: rgba(6, 6, 6, 0.85);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(148, 163, 184, 0.08);
   padding: 14px 0;
@@ -671,14 +671,14 @@ onMounted(() => {
 }
 
 .lp-btn-primary {
-  background: linear-gradient(135deg, #aeff91, #7de86a);
-  color: #0b1120;
-  box-shadow: 0 0 20px rgba(174, 255, 145, 0.35);
+  background: linear-gradient(135deg, #00FF66, #00cc52);
+  color: #060606;
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.35);
 }
 
 .lp-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 35px rgba(174, 255, 145, 0.5);
+  box-shadow: 0 0 35px rgba(0, 255, 102, 0.5);
 }
 
 .lp-btn-ghost {
@@ -720,11 +720,11 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  background: rgba(174, 255, 145, 0.08);
-  border: 1px solid rgba(174, 255, 145, 0.2);
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.2);
   border-radius: 999px;
   font-size: 0.8rem;
-  color: #aeff91;
+  color: #00FF66;
   font-weight: 500;
   margin-bottom: 28px;
   letter-spacing: 0.3px;
@@ -733,9 +733,9 @@ onMounted(() => {
 .lp-badge-dot {
   width: 7px;
   height: 7px;
-  background: #aeff91;
+  background: #00FF66;
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(174, 255, 145, 0.8);
+  box-shadow: 0 0 8px rgba(0, 255, 102, 0.8);
   animation: pulse-dot 2s infinite;
 }
 
@@ -755,11 +755,11 @@ onMounted(() => {
 }
 
 .lp-highlight {
-  background: linear-gradient(135deg, #aeff91 0%, #7de86a 100%);
+  background: linear-gradient(135deg, #00FF66 0%, #00cc52 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 30px rgba(174, 255, 145, 0.3));
+  filter: drop-shadow(0 0 30px rgba(0, 255, 102, 0.3));
 }
 
 .lp-hero-subtitle {
@@ -781,14 +781,14 @@ onMounted(() => {
 .lp-section-label {
   display: inline-block;
   padding: 4px 14px;
-  background: rgba(174, 255, 145, 0.08);
-  border: 1px solid rgba(174, 255, 145, 0.2);
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.2);
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #aeff91;
+  color: #00FF66;
   margin-bottom: 16px;
 }
 
@@ -828,7 +828,7 @@ onMounted(() => {
 }
 
 .lp-feature-card {
-  background: linear-gradient(135deg, rgba(11, 13, 11, 0.9), rgba(11, 13, 11, 0.7));
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.9), rgba(20, 20, 20, 0.7));
   border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 20px;
   padding: 28px;
@@ -843,7 +843,7 @@ onMounted(() => {
   position: absolute;
   inset: 0;
   border-radius: 20px;
-  background: linear-gradient(135deg, rgba(174, 255, 145, 0.03) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(0, 255, 102, 0.03) 0%, transparent 60%);
   opacity: 0;
   transition: opacity 0.25s ease;
 }
@@ -854,7 +854,7 @@ onMounted(() => {
 
 .lp-feature-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(174, 255, 145, 0.2);
+  border-color: rgba(0, 255, 102, 0.2);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
 }
 
@@ -888,7 +888,7 @@ onMounted(() => {
   padding: 60px 0;
   border-top: 1px solid rgba(148, 163, 184, 0.06);
   border-bottom: 1px solid rgba(148, 163, 184, 0.06);
-  background: rgba(11, 13, 11, 0.4);
+  background: rgba(20, 20, 20, 0.4);
   backdrop-filter: blur(10px);
 }
 
@@ -904,7 +904,7 @@ onMounted(() => {
   font-weight: 800;
   color: #f8fafc;
   letter-spacing: -1px;
-  background: linear-gradient(135deg, #aeff91, #7de86a);
+  background: linear-gradient(135deg, #00FF66, #00cc52);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -986,9 +986,9 @@ onMounted(() => {
 }
 
 .lp-discount-badge {
-  background: rgba(174, 255, 145, 0.15);
-  color: #aeff91;
-  border: 1px solid rgba(174, 255, 145, 0.3);
+  background: rgba(0, 255, 102, 0.15);
+  color: #00FF66;
+  border: 1px solid rgba(0, 255, 102, 0.3);
   padding: 2px 8px;
   border-radius: 8px;
   font-size: 0.7rem;
@@ -996,9 +996,9 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-/* Acessibilidade: foco vis�vel */
+/* Acessibilidade: foco visível */
 .lp-toggle-option:focus-visible {
-  outline: 2px solid rgba(174, 255, 145, 0.45);
+  outline: 2px solid rgba(0, 255, 102, 0.45);
   outline-offset: 2px;
 }
 
@@ -1118,8 +1118,8 @@ onMounted(() => {
 .lp-spinner {
   width: 22px;
   height: 22px;
-  border: 2px solid rgba(174, 255, 145, 0.2);
-  border-top-color: #aeff91;
+  border: 2px solid rgba(0, 255, 102, 0.2);
+  border-top-color: #00FF66;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1137,7 +1137,7 @@ onMounted(() => {
 }
 
 .lp-pricing-card {
-  background: linear-gradient(160deg, rgba(11, 13, 11, 0.95), rgba(11, 13, 11, 0.8));
+  background: linear-gradient(160deg, rgba(20, 20, 20, 0.95), rgba(20, 20, 20, 0.8));
   border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 24px;
   padding: 32px;
@@ -1156,14 +1156,14 @@ onMounted(() => {
 }
 
 .lp-pricing-card--popular {
-  border-color: rgba(174, 255, 145, 0.35);
-  background: linear-gradient(160deg, rgba(11, 13, 11, 0.98), rgba(11, 13, 11, 0.92));
-  box-shadow: 0 0 0 1px rgba(174, 255, 145, 0.15), 0 30px 60px rgba(0, 0, 0, 0.3);
+  border-color: rgba(0, 255, 102, 0.35);
+  background: linear-gradient(160deg, rgba(20, 20, 20, 0.98), rgba(20, 20, 20, 0.92));
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.15), 0 30px 60px rgba(0, 0, 0, 0.3);
 }
 
 .lp-pricing-card--popular:hover {
-  border-color: rgba(174, 255, 145, 0.55);
-  box-shadow: 0 0 0 1px rgba(174, 255, 145, 0.3), 0 30px 80px rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 255, 102, 0.55);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.3), 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
 .lp-popular-badge {
@@ -1171,15 +1171,15 @@ onMounted(() => {
   top: -14px;
   left: 50%;
   transform: translateX(-50%);
-  background: linear-gradient(135deg, #aeff91, #7de86a);
-  color: #0b1120;
+  background: linear-gradient(135deg, #00FF66, #00cc52);
+  color: #060606;
   padding: 5px 18px;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
   letter-spacing: 0.3px;
-  box-shadow: 0 0 20px rgba(174, 255, 145, 0.4);
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.4);
 }
 
 .lp-pricing-header {
@@ -1190,14 +1190,14 @@ onMounted(() => {
 .lp-pricing-plan-icon {
   width: 52px;
   height: 52px;
-  background: rgba(174, 255, 145, 0.1);
-  border: 1px solid rgba(174, 255, 145, 0.2);
+  background: rgba(0, 255, 102, 0.1);
+  border: 1px solid rgba(0, 255, 102, 0.2);
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.3rem;
-  color: #aeff91;
+  color: #00FF66;
   margin: 0 auto 16px;
 }
 
@@ -1225,7 +1225,7 @@ onMounted(() => {
 .lp-price-free {
   font-size: 2.5rem;
   font-weight: 800;
-  color: #aeff91;
+  color: #00FF66;
   letter-spacing: -1px;
 }
 
@@ -1276,11 +1276,11 @@ onMounted(() => {
 }
 
 .lp-check {
-  color: #aeff91;
+  color: #00FF66;
   font-size: 0.75rem;
   width: 18px;
   height: 18px;
-  background: rgba(174, 255, 145, 0.12);
+  background: rgba(0, 255, 102, 0.12);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1306,27 +1306,27 @@ onMounted(() => {
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: rgba(174, 255, 145, 0.1);
-  border: 1px solid rgba(174, 255, 145, 0.25);
-  color: #aeff91;
+  background: rgba(0, 255, 102, 0.1);
+  border: 1px solid rgba(0, 255, 102, 0.25);
+  color: #00FF66;
 }
 
 .lp-btn-plan:hover {
-  background: rgba(174, 255, 145, 0.18);
-  border-color: rgba(174, 255, 145, 0.5);
+  background: rgba(0, 255, 102, 0.18);
+  border-color: rgba(0, 255, 102, 0.5);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(174, 255, 145, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 255, 102, 0.2);
 }
 
 .lp-pricing-card--popular .lp-btn-plan {
-  background: linear-gradient(135deg, #aeff91, #7de86a);
+  background: linear-gradient(135deg, #00FF66, #00cc52);
   border-color: transparent;
-  color: #0b1120;
-  box-shadow: 0 0 20px rgba(174, 255, 145, 0.3);
+  color: #060606;
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
 }
 
 .lp-pricing-card--popular .lp-btn-plan:hover {
-  box-shadow: 0 8px 30px rgba(174, 255, 145, 0.5);
+  box-shadow: 0 8px 30px rgba(0, 255, 102, 0.5);
 }
 
 /* === CTA === */
@@ -1335,8 +1335,8 @@ onMounted(() => {
 }
 
 .lp-cta-card {
-  background: linear-gradient(135deg, rgba(11, 13, 11, 0.95), rgba(11, 13, 11, 0.85));
-  border: 1px solid rgba(174, 255, 145, 0.2);
+  background: linear-gradient(135deg, rgba(20, 20, 20, 0.95), rgba(20, 20, 20, 0.85));
+  border: 1px solid rgba(0, 255, 102, 0.2);
   border-radius: 28px;
   padding: 80px 40px;
   text-align: center;
@@ -1351,7 +1351,7 @@ onMounted(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(174, 255, 145, 0.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 255, 102, 0.06) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -1373,7 +1373,7 @@ onMounted(() => {
 .lp-footer {
   padding: 32px 0;
   border-top: 1px solid rgba(148, 163, 184, 0.08);
-  background: rgba(9, 9, 10, 0.8);
+  background: rgba(6, 6, 6, 0.8);
 }
 
 .lp-footer-content {
@@ -1428,7 +1428,7 @@ onMounted(() => {
 }
 
 .lp-vpm-calc-card {
-  background: rgba(11, 13, 11, 0.9);
+  background: rgba(20, 20, 20, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 24px;
   padding: 40px 48px;
@@ -1462,14 +1462,14 @@ onMounted(() => {
 }
 
 .lp-vpm-calc-label b {
-  color: #aeff91;
+  color: #00FF66;
   font-weight: 700;
 }
 
 .lp-vpm-calc-number {
   font-size: 2.4rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #121212;
   letter-spacing: -1px;
   line-height: 1;
 }
@@ -1493,7 +1493,7 @@ onMounted(() => {
 .lp-vpm-calc-price {
   font-size: 3rem;
   font-weight: 900;
-  color: #aeff91;
+  color: #00FF66;
   letter-spacing: -2px;
   line-height: 1;
 }
@@ -1540,15 +1540,15 @@ onMounted(() => {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #0f172a;
-  border: 3px solid #aeff91;
+  background: #121212;
+  border: 3px solid #00FF66;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(174, 255, 145, 0.4);
+  box-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
   transition: box-shadow 0.15s;
 }
 
 .lp-vpm-calc-range::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 18px rgba(174, 255, 145, 0.7);
+  box-shadow: 0 0 18px rgba(0, 255, 102, 0.7);
 }
 
 .lp-vpm-calc-ticks {
@@ -1587,7 +1587,7 @@ onMounted(() => {
 .lp-vpm-calc-link {
   background: none;
   border: none;
-  color: #aeff91;
+  color: #00FF66;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -1601,7 +1601,7 @@ onMounted(() => {
 
 .lp-vpm-calc-link:hover { opacity: 0.75; }
 
-/* === Modal Tabela de Pre�os === */
+/* === Modal Tabela de Preços === */
 .lp-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1615,7 +1615,7 @@ onMounted(() => {
 }
 
 .lp-modal {
-  background: #0f172a;
+  background: #121212;
   border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 20px;
   width: 100%;
@@ -1692,7 +1692,7 @@ onMounted(() => {
 
 .lp-price-table-val {
   font-weight: 700;
-  color: #aeff91 !important;
+  color: #00FF66 !important;
 }
 
 .lp-price-table-per {

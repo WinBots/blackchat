@@ -230,19 +230,14 @@
                       Seu Link de Referência Pronto para Usar
                     </label>
                     
-                    <div class="ref-url-row">
-                      <input
-                        :value="getTelegramRefUrl(selectedStep.config.ref_key)"
-                        class="ref-input ref-url-highlight"
-                        readonly
-                        @click="selectAllText($event)"
-                      />
-                      <button 
-                        class="btn btn-primary btn-sm btn-icon-only" 
-                        @click="copyTelegramRefLink(selectedStep.config.ref_key)"
-                        :title="'Copiar link'"
-                      >
+                    <div class="ref-url-display-box" @click="copyTelegramRefLink(selectedStep.config.ref_key)">
+                      <div class="ref-url-display-inner">
+                        <i class="fa-brands fa-telegram ref-url-icon"></i>
+                        <span class="ref-url-text">{{ getTelegramRefUrl(selectedStep.config.ref_key) }}</span>
+                      </div>
+                      <button class="ref-url-copy-btn" @click.stop="copyTelegramRefLink(selectedStep.config.ref_key)" title="Copiar link">
                         <i class="fa-solid fa-copy"></i>
+                        Copiar
                       </button>
                     </div>
                     <p class="sidebar-tip success-tip">
@@ -1934,10 +1929,6 @@
             Telegram
           </div>
           <div class="trigger-nav-item disabled">
-            <i class="fa-brands fa-instagram"></i>
-            Instagram
-          </div>
-          <div class="trigger-nav-item disabled">
             <i class="fa-regular fa-square"></i>
             Eventos de contato
           </div>
@@ -2408,8 +2399,8 @@ const personalizationTags = [
   { label: 'ID do contato', value: '{contact_id}' },
   { label: 'Última mensagem', value: '{ultima_mensagem}' },
   { label: 'Telegram', value: '{telegram_username}' },
-  { label: 'Instagram', value: '{instagram_username}' }
 ]
+
 const textTagDropdownOpen = ref(false)
 const buttonTagDropdownOpen = ref(false)
 
@@ -3884,10 +3875,21 @@ const copyReferralLink = () => {
 const getTelegramRefUrl = (refKey) => {
   if (!refKey) return 'Configure a chave de referência primeiro'
   
-  // Se não há canal selecionado no fluxo, tentar usar o primeiro canal telegram disponível
   let usernameCandidate = botUsername.value
-  
-  if ((!flow.value?.channel_id || !usernameCandidate || usernameCandidate === 'seu_bot') && channelsCache.value.length > 0) {
+
+  // Se o fluxo tem canal vinculado, usar SOMENTE esse canal
+  if (flow.value?.channel_id && channelsCache.value.length > 0) {
+    const linkedChannel = channelsCache.value.find(c => c.id === flow.value.channel_id)
+    if (linkedChannel) {
+      try {
+        const cfg = typeof linkedChannel.config === 'string' ? JSON.parse(linkedChannel.config || '{}') : (linkedChannel.config || {})
+        usernameCandidate = (cfg.bot_username || '').replace('@', '')
+      } catch {
+        // ignore parse errors
+      }
+    }
+  } else if ((!usernameCandidate || usernameCandidate === 'seu_bot') && channelsCache.value.length > 0) {
+    // Sem canal selecionado: fallback para o primeiro canal com username
     const firstWithUsername = channelsCache.value.find(c => {
       try {
         const cfg = typeof c.config === 'string' ? JSON.parse(c.config || '{}') : (c.config || {})
@@ -3896,7 +3898,6 @@ const getTelegramRefUrl = (refKey) => {
         return false
       }
     })
-    
     if (firstWithUsername) {
       try {
         const cfg = typeof firstWithUsername.config === 'string' ? JSON.parse(firstWithUsername.config || '{}') : (firstWithUsername.config || {})
@@ -5998,35 +5999,67 @@ onBeforeUnmount(() => {
   margin-top: 12px;
 }
 
-.ref-url-row {
+.ref-url-display-box {
   display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.ref-url-row .ref-input {
-  flex: 1;
-  min-width: 0; /* Permite que o input encolha se necessário */
-  font-size: 0.875rem; /* Reduz tamanho da fonte para caber melhor */
-}
-
-.ref-url-highlight {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
-  border: 2px solid rgba(99, 102, 241, 0.3);
-  font-weight: 600;
-  color: var(--primary);
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(0, 255, 102, 0.05);
+  border: 1.5px solid rgba(0, 255, 102, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.ref-url-highlight:hover {
-  border-color: var(--primary);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+.ref-url-display-box:hover {
+  border-color: #00FF66;
+  background: rgba(0, 255, 102, 0.09);
 }
 
-.ref-url-highlight:focus {
-  border-color: var(--primary);
-  background: white;
+.ref-url-display-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ref-url-icon {
+  color: #00FF66;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ref-url-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #00FF66;
+  word-break: break-all;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+.ref-url-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  background: #00FF66;
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.ref-url-copy-btn:hover {
+  background: #00cc52;
 }
 
 .ref-warning {

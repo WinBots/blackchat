@@ -197,9 +197,15 @@
 
     <!-- Modal de Criação de Fluxo -->
     <div v-if="showCreateModal" class="modal-overlay" @click="showCreateModal = false">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h3 class="modal-title">Criar Novo Fluxo</h3>
+      <div class="modal-content create-flow-modal" @click.stop>
+        <div class="modal-header cfm-header">
+          <div class="cfm-title-group">
+            <div class="cfm-icon"><i class="fa-solid fa-bolt"></i></div>
+            <div>
+              <h3 class="modal-title">Novo Fluxo</h3>
+              <p class="cfm-subtitle">Configure as informações básicas</p>
+            </div>
+          </div>
           <button class="modal-close" @click="showCreateModal = false">
             <i class="fa-solid fa-times"></i>
           </button>
@@ -218,32 +224,32 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Selecione o Bot / Canal *</label>
-            <p class="form-helper">Escolha em qual bot este fluxo irá funcionar</p>
-            <div class="channel-selector">
+            <label class="form-label">Bot / Canal *</label>
+            <div class="cs-list">
               <button
                 v-for="channel in availableChannels"
                 :key="channel.id"
-                :class="['channel-card', { active: newFlow.channel_id === channel.id }]"
+                :class="['cs-item', { 'cs-item--active': newFlow.channel_id === channel.id }]"
                 @click="newFlow.channel_id = channel.id"
+                type="button"
               >
-                <div class="channel-card-icon" :style="{ background: getChannelColor(channel.type) }">
+                <div class="cs-item-icon" :style="{ background: getChannelColor(channel.type) }">
                   <i :class="getChannelIcon(channel.type)"></i>
                 </div>
-                <div class="channel-card-content">
-                  <h4>{{ channel.name }}</h4>
-                  <p>{{ getChannelTypeName(channel.type) }} • {{ channel.is_active ? 'Ativo' : 'Inativo' }}</p>
+                <div class="cs-item-body">
+                  <span class="cs-item-name">{{ channel.name }}</span>
+                  <span class="cs-item-meta">{{ getChannelTypeName(channel.type) }}</span>
                 </div>
-                <div class="channel-card-check">
-                  <i class="fa-solid fa-check-circle"></i>
+                <span :class="['cs-item-badge', channel.is_active ? 'cs-badge--on' : 'cs-badge--off']">{{ channel.is_active ? 'Ativo' : 'Inativo' }}</span>
+                <div class="cs-item-radio">
+                  <i v-if="newFlow.channel_id === channel.id" class="fa-solid fa-circle-check"></i>
+                  <i v-else class="fa-regular fa-circle"></i>
                 </div>
               </button>
-              
-              <div v-if="availableChannels.length === 0" class="no-channels-message">
-                <i class="fa-solid fa-exclamation-triangle"></i>
-                <p><strong>Nenhum bot ativo disponível</strong></p>
-                <p>Você precisa ter pelo menos um bot ativo para criar fluxos.</p>
-                <p>Vá em <router-link to="/settings">Configurações → Telegram</router-link> para ativar um bot.</p>
+
+              <div v-if="availableChannels.length === 0" class="cs-empty">
+                <i class="fa-brands fa-telegram"></i>
+                <span>Nenhum bot ativo. Vá em <router-link to="/settings">Configurações → Telegram</router-link> para adicionar um.</span>
               </div>
             </div>
           </div>
@@ -585,21 +591,8 @@ const availableSystems = [
     color: 'linear-gradient(135deg, #229ED9 0%, #1E88E5 100%)',
     description: 'Crie automações para o Telegram'
   },
-  {
-    id: 'instagram',
-    label: 'Instagram',
-    icon: 'fa-brands fa-instagram',
-    color: 'linear-gradient(135deg, #E1306C 0%, #F56040 50%, #FCAF45 100%)',
-    description: 'Crie automações para o Instagram'
-  },
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    icon: 'fa-brands fa-whatsapp',
-    color: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-    description: 'Crie automações para o WhatsApp'
-  }
 ]
+
 
 const loadChannels = async () => {
   try {
@@ -749,9 +742,6 @@ const getFlowSystem = (flow) => {
 const getChannelIcon = (channelType) => {
   const icons = {
     telegram: 'fa-brands fa-telegram',
-    whatsapp: 'fa-brands fa-whatsapp',
-    instagram: 'fa-brands fa-instagram',
-    messenger: 'fa-brands fa-facebook-messenger',
     default: 'fa-solid fa-message'
   }
   return icons[channelType] || icons.default
@@ -760,9 +750,6 @@ const getChannelIcon = (channelType) => {
 const getChannelColor = (channelType) => {
   const colors = {
     telegram: 'linear-gradient(135deg, #0088cc 0%, #229ED9 100%)',
-    whatsapp: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
-    instagram: 'linear-gradient(135deg, #E1306C 0%, #C13584 100%)',
-    messenger: 'linear-gradient(135deg, #0084FF 0%, #0068D9 100%)',
     default: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)'
   }
   return colors[channelType] || colors.default
@@ -771,9 +758,6 @@ const getChannelColor = (channelType) => {
 const getChannelTypeName = (channelType) => {
   const names = {
     telegram: 'Telegram',
-    whatsapp: 'WhatsApp',
-    instagram: 'Instagram',
-    messenger: 'Messenger',
     default: 'Chat'
   }
   return names[channelType] || names.default
@@ -783,8 +767,6 @@ const getSystemIcon = (flow) => {
   const system = getFlowSystem(flow)
   const icons = {
     telegram: 'fa-brands fa-telegram',
-    instagram: 'fa-brands fa-instagram',
-    whatsapp: 'fa-brands fa-whatsapp',
     manual: 'fa-solid fa-cog'
   }
   return icons[system] || icons.manual
@@ -802,10 +784,7 @@ const getSystemLabel = (flow) => {
   // Fallback para sistema genérico
   const system = getFlowSystem(flow)
   const labels = {
-    telegram: 'Telegram',
-    whatsapp: 'WhatsApp',
-    instagram: 'Instagram',
-    messenger: 'Messenger'
+    telegram: 'Telegram'
   }
   return labels[system] || system
 }
@@ -1475,93 +1454,172 @@ onMounted(async () => {
 }
 
 /* Channel Selector */
-.channel-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
 .form-helper {
   font-size: 0.875rem;
   color: var(--muted);
   margin: 0 0 12px;
 }
 
-.channel-card {
+/* ── Create flow modal ── */
+.create-flow-modal {
+  max-width: 460px;
+  border-top: 3px solid #00FF66;
+}
+
+.cfm-header {
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cfm-title-group {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: 12px;
+}
+
+.cfm-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(0,255,102,0.12);
+  border: 1px solid rgba(0,255,102,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #00FF66;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.cfm-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+.create-flow-modal .modal-body {
+  padding: 18px 22px;
+}
+
+.create-flow-modal .modal-footer {
+  padding: 14px 22px;
+}
+
+/* ── Compact channel selector ── */
+.cs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.cs-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
   background: var(--bg-secondary);
-  border: 2px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.15s, background 0.15s;
   text-align: left;
   width: 100%;
 }
 
-.channel-card:hover {
+.cs-item:hover {
   border-color: rgba(0, 255, 102, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 255, 102, 0.08);
+  background: rgba(0, 255, 102, 0.03);
 }
 
-.channel-card.active {
-  border-color: #00FF66;
-  background: rgba(0, 255, 102, 0.05);
-  box-shadow: 0 4px 12px rgba(0, 255, 102, 0.12);
+.cs-item--active {
+  border-color: #00FF66 !important;
+  background: rgba(0, 255, 102, 0.07) !important;
 }
 
-.channel-card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
+.cs-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 1.5rem;
+  font-size: 0.95rem;
   flex-shrink: 0;
 }
 
-.channel-card-content {
+.cs-item-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.channel-card-content h4 {
-  font-size: 1rem;
+.cs-item-name {
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.channel-card-content p {
-  font-size: 0.875rem;
+.cs-item-meta {
+  font-size: 0.7rem;
   color: var(--muted);
-  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.channel-card-check {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: transparent;
-  transition: all 0.2s;
+.cs-item-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
   flex-shrink: 0;
 }
 
-.channel-card.active .channel-card-check {
-  background: #00FF66;
-  border-color: #00FF66;
-  color: #000;
+.cs-badge--on {
+  background: rgba(0, 255, 102, 0.15);
+  color: #00cc52;
+}
+
+.cs-badge--off {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.cs-item-radio {
+  font-size: 1rem;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.cs-item--active .cs-item-radio {
+  color: #00FF66;
+}
+
+.cs-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+}
+
+.cs-empty i {
+  font-size: 1.5rem;
+  color: #2aabee;
+  flex-shrink: 0;
 }
 
 .no-channels-message {

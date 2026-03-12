@@ -184,7 +184,7 @@
                   }">{{ subscriptionStatusLabel }}</span>
                 </div>
                 <div class="settings-subs-header-right">
-                  <a href="#" class="settings-subscriptions-link" @click.prevent="selectTab('Cobran\u00e7a')">Ver cobran\u00e7a</a>
+                  <a href="#" class="settings-subscriptions-link" @click.prevent="selectTab('Cobrança')">Ver cobrança</a>
                 </div>
               </div>
 
@@ -313,8 +313,26 @@
             </div>
 
             <div v-else-if="activeTab === 'Telegram'" class="telegram-onboarding">
+
+              <!-- Loading skeleton -->
+              <div v-if="loadingTelegram" class="tg-loading">
+                <div class="tg-loading-header">
+                  <div class="tg-skel tg-skel-title"></div>
+                  <div class="tg-skel tg-skel-btn"></div>
+                </div>
+                <div class="tg-loading-grid">
+                  <div v-for="i in 3" :key="i" class="tg-skel-card">
+                    <div class="tg-skel-card-icon"></div>
+                    <div class="tg-skel-card-body">
+                      <div class="tg-skel tg-skel-line tg-skel-line--lg"></div>
+                      <div class="tg-skel tg-skel-line tg-skel-line--sm"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Tela 0: Lista de Bots Conectados -->
-              <div v-if="telegramStep === 'list'" class="telegram-bots-list">
+              <div v-else-if="telegramStep === 'list'" class="telegram-bots-list">
                 <div class="telegram-list-header">
                   <div>
                     <h2 class="telegram-section-title">Bots do Telegram Conectados</h2>
@@ -1033,6 +1051,7 @@ const webhookUrl = ref('')
 const validatingToken = ref(false)
 const tokenValidationResult = ref(null)
 const loading = ref(false)
+const loadingTelegram = ref(true)
 
 // Estados para edição de bot
 const showEditBotModal = ref(false)
@@ -1070,6 +1089,7 @@ const menuSections = [
 
 // Telegram Functions
 const loadTelegramChannels = async () => {
+  loadingTelegram.value = true
   try {
     console.log('🔍 Carregando canais...')
     const allChannels = await listChannels()
@@ -1093,6 +1113,8 @@ const loadTelegramChannels = async () => {
     console.error('❌ Erro ao carregar canais Telegram:', error)
     console.error('📋 Detalhes do erro:', error.response?.data)
     showStatus('Erro ao carregar canais Telegram')
+  } finally {
+    loadingTelegram.value = false
   }
 }
 
@@ -2010,6 +2032,70 @@ onMounted(async () => {
 }
 
 /* Telegram Onboarding Container */
+/* ── Telegram loading skeleton ── */
+@keyframes tg-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.tg-loading {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding-top: 8px;
+}
+
+.tg-loading-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.tg-skel {
+  background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+  background-size: 800px 100%;
+  animation: tg-shimmer 1.4s infinite linear;
+  border-radius: 6px;
+}
+
+.tg-skel-title  { width: 220px; height: 28px; }
+.tg-skel-btn    { width: 150px; height: 36px; border-radius: 20px; }
+
+.tg-skel-line         { height: 13px; margin-bottom: 8px; }
+.tg-skel-line--lg     { width: 60%; }
+.tg-skel-line--sm     { width: 40%; opacity: 0.6; }
+
+.tg-loading-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tg-skel-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.tg-skel-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #1e1e1e 25%, #2e2e2e 50%, #1e1e1e 75%);
+  background-size: 800px 100%;
+  animation: tg-shimmer 1.4s infinite linear;
+}
+
+.tg-skel-card-body {
+  flex: 1;
+}
+
 .telegram-onboarding {
   max-width: 100%;
   width: 100%;

@@ -1120,9 +1120,7 @@ const getAvatarColors = (id) => {
 
 const getChannelBadge = (channelType) => {
   const badges = {
-    telegram: 'badge-muted',
-    instagram: 'badge-warning',
-    whatsapp: 'badge-success'
+    telegram: 'badge-muted'
   }
   return badges[channelType] || 'badge-muted'
 }
@@ -1714,9 +1712,7 @@ const getChannelContactCount = (channelId) => {
 
 const getChannelIcon = (type) => {
   const icons = {
-    telegram: 'fa-brands fa-telegram',
-    instagram: 'fa-brands fa-instagram',
-    whatsapp: 'fa-brands fa-whatsapp'
+    telegram: 'fa-brands fa-telegram'
   }
   return icons[type] || 'fa-solid fa-circle-question'
 }
