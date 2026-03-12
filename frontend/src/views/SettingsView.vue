@@ -1446,7 +1446,19 @@ const toggleBotStatus = async (channel) => {
     })))
   } catch (error) {
     console.error(`❌ Erro ao ${action} bot:`, error)
-    toast.error(`Erro ao ${action} bot`)
+    const status = error?.response?.status
+    const detail = error?.response?.data?.detail
+    const detailText = typeof detail === 'string'
+      ? detail
+      : (detail?.message || detail?.error || detail?.description)
+
+    if (status === 502) {
+      toast.error(`Falha ao ${action} bot (502). O servidor pode estar reiniciando ou fora do ar.`)
+    } else if (detailText) {
+      toast.error(`Erro ao ${action} bot: ${detailText}`)
+    } else {
+      toast.error(`Erro ao ${action} bot`)
+    }
   }
 }
 

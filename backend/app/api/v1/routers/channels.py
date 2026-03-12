@@ -165,6 +165,12 @@ def update_channel(
     
     if not channel:
         raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    # Log leve para troubleshooting em produção (502 no proxy geralmente esconde o erro real)
+    try:
+        print("update_channel", {"channel_id": channel_id, "tenant_id": tenant.id, "payload": data.model_dump(exclude_none=True)})
+    except Exception:
+        pass
     
     # Atualizar campos
     if data.name is not None:
@@ -203,6 +209,8 @@ def update_channel(
             webhook_secret = config.get("webhook_secret")
             if webhook_secret:
                 webhook_url = f"{settings.PUBLIC_BASE_URL}/api/v1/webhooks/telegram/{webhook_secret}"
+                # Manter o config coerente com o .env atual
+                config["webhook_url"] = webhook_url
                 try:
                     telegram_api_url = f"https://api.telegram.org/bot{data.bot_token}/setWebhook"
                     webhook_response = httpx.post(
@@ -218,10 +226,69 @@ def update_channel(
                         print(f"✅ Webhook re-registrado com novo token: {webhook_url}")
                 except Exception as e:
                     print(f"⚠️ Erro ao re-registrar webhook: {e}")
-    
-    db.commit()
-    db.refresh(channel)
-    return channel
+
+    # Ao ligar/desligar o bot, re-registrar (ou remover) o webhook no Telegram.
+    # Importante: não falhar a operação caso o Telegram esteja indisponível.
+    if channel.type == "telegram" and data.is_active is not None:
+        settings = get_settings()
+        try:
+            config = json.loads(channel.config) if channel.config else {}
+        except json.JSONDecodeError:
+            config = {}
+
+        bot_token = config.get("bot_token")
+        webhook_secret = config.get("webhook_secret")
+
+        if bot_token:
+            # Sempre usar a URL derivada do .env (PUBLIC_BASE_URL) para evitar ficar preso
+            # em webhook_url antigo salvo no banco.
+            if not webhook_secret:
+                webhook_secret = str(uuid.uuid4())
+                config["webhook_secret"] = webhook_secret
+
+            webhook_url = f"{settings.PUBLIC_BASE_URL}/api/v1/webhooks/telegram/{webhook_secret}"
+            config["webhook_url"] = webhook_url
+            channel.config = json.dumps(config)
+
+            try:
+                if data.is_active:
+                    telegram_api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
+                    webhook_response = httpx.post(
+                        telegram_api_url,
+                        json={"url": webhook_url},
+                        timeout=5.0,
+                    )
+                    webhook_result = webhook_response.json()
+                    if not webhook_result.get("ok"):
+                        print(f"⚠️ Aviso: Não foi possível (re)registrar webhook ao ativar: {webhook_result.get('description')}")
+                    else:
+                        print(f"✅ Webhook (re)registrado ao ativar: {webhook_url}")
+                else:
+                    telegram_api_url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
+                    webhook_response = httpx.post(
+                        telegram_api_url,
+                        json={"drop_pending_updates": True},
+                        timeout=5.0,
+                    )
+                    webhook_result = webhook_response.json()
+                    if not webhook_result.get("ok"):
+                        print(f"⚠️ Aviso: Não foi possível remover webhook ao desativar: {webhook_result.get('description')}")
+                    else:
+                        print("✅ Webhook removido ao desativar")
+            except Exception as e:
+                print(f"⚠️ Erro ao sincronizar webhook ao alternar status: {e}")
+
+    try:
+        db.commit()
+        db.refresh(channel)
+        return channel
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print("update_channel commit error", {"channel_id": channel_id, "tenant_id": tenant.id, "error": str(exc)})
+        raise HTTPException(status_code=500, detail="Erro ao atualizar canal")
 
 
 @router.delete("/{channel_id}")
