@@ -46,6 +46,11 @@ class TelegramConfigPayload(BaseModel):
     bot_username: str | None = None
 
 
+class TelegramWebhookInfoOut(BaseModel):
+    expected_url: str | None = None
+    telegram: dict | None = None
+
+
 @router.get("/", response_model=list[ChannelOut])
 def list_channels(
     include_inactive: bool = True,
@@ -289,6 +294,100 @@ def update_channel(
             pass
         print("update_channel commit error", {"channel_id": channel_id, "tenant_id": tenant.id, "error": str(exc)})
         raise HTTPException(status_code=500, detail="Erro ao atualizar canal")
+
+
+@router.get("/{channel_id}/telegram-webhook-info", response_model=TelegramWebhookInfoOut)
+def get_telegram_webhook_info(
+    channel_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Diagnóstico: consulta getWebhookInfo do Telegram para o bot do canal."""
+    channel = db.query(Channel).filter(
+        Channel.id == channel_id,
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).first()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    try:
+        config = json.loads(channel.config) if channel.config else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    bot_token = config.get("bot_token")
+    webhook_secret = config.get("webhook_secret")
+    settings = get_settings()
+    expected_url = None
+    if webhook_secret:
+        expected_url = f"{settings.PUBLIC_BASE_URL}/api/v1/webhooks/telegram/{webhook_secret}"
+
+    if not bot_token:
+        return TelegramWebhookInfoOut(expected_url=expected_url, telegram={"ok": False, "description": "bot_token ausente no canal"})
+
+    try:
+        res = httpx.get(
+            f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
+            timeout=8.0,
+        )
+        return TelegramWebhookInfoOut(expected_url=expected_url, telegram=res.json())
+    except Exception as exc:
+        return TelegramWebhookInfoOut(expected_url=expected_url, telegram={"ok": False, "description": f"Falha ao consultar Telegram: {exc}"})
+
+
+@router.post("/{channel_id}/telegram-sync-webhook", response_model=TelegramWebhookInfoOut)
+def telegram_sync_webhook(
+    channel_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Força setWebhook usando URL derivada do .env (PUBLIC_BASE_URL + webhook_secret)."""
+    channel = db.query(Channel).filter(
+        Channel.id == channel_id,
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).first()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    settings = get_settings()
+    try:
+        config = json.loads(channel.config) if channel.config else {}
+    except json.JSONDecodeError:
+        config = {}
+
+    bot_token = config.get("bot_token")
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="bot_token ausente no canal")
+
+    webhook_secret = config.get("webhook_secret")
+    if not webhook_secret:
+        webhook_secret = str(uuid.uuid4())
+        config["webhook_secret"] = webhook_secret
+
+    expected_url = f"{settings.PUBLIC_BASE_URL}/api/v1/webhooks/telegram/{webhook_secret}"
+    config["webhook_url"] = expected_url
+    channel.config = json.dumps(config)
+
+    try:
+        telegram_api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
+        res = httpx.post(
+            telegram_api_url,
+            json={"url": expected_url},
+            timeout=8.0,
+        )
+        tg = res.json()
+    except Exception as exc:
+        tg = {"ok": False, "description": f"Falha ao chamar Telegram setWebhook: {exc}"}
+
+    try:
+        db.commit()
+        db.refresh(channel)
+    except Exception:
+        db.rollback()
+
+    return TelegramWebhookInfoOut(expected_url=expected_url, telegram=tg)
 
 
 @router.delete("/{channel_id}")
