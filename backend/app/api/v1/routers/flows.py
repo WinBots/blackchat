@@ -158,6 +158,7 @@ def get_flow(
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
+        channel_id=flow.channel_id,
         name=flow.name,
         description=flow.description,
         trigger_type=flow.trigger_type,
@@ -181,6 +182,8 @@ def update_flow(
 
     print("update_flow payload", data.model_dump())
 
+    if data.channel_id is not None:
+        flow.channel_id = data.channel_id
     if data.name is not None:
         flow.name = data.name
     if data.description is not None:
@@ -220,6 +223,7 @@ def update_flow(
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
+        channel_id=flow.channel_id,
         name=flow.name,
         description=flow.description,
         trigger_type=flow.trigger_type,
