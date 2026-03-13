@@ -2433,6 +2433,14 @@ const ensureMessageBlocks = (step) => {
   if (!Array.isArray(step.config.blocks)) {
     step.config.blocks = []
   }
+
+  // Compatibilidade: fluxos antigos podem ter blocks sem `id`.
+  // Sem `id`, o :key fica undefined e operações como remover/drag podem falhar.
+  step.config.blocks.forEach((block) => {
+    if (!block.id) {
+      block.id = uid()
+    }
+  })
 }
 
 // Canvas e Zoom

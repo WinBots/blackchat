@@ -23,7 +23,7 @@ from app.services.flow_logger import FlowLogger
 from app.services.billing_service import check_contact_limit, get_plan_for_tenant, LimitExceededError
 from app.config import get_settings
 from datetime import datetime, timedelta
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, case, func, cast, String
 
 logger = logging.getLogger(__name__)
 
@@ -802,6 +802,7 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                         flow_execution.context = json.dumps({
                             "waiting_for_field": waiting_field,
                             "next_step_index": step_index + 1,
+                            "channel_id": channel.id,
                             "chat_id": chat_id,
                             "bot_token": bot_token
                         })
@@ -1067,6 +1068,7 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                     flow_execution.status = 'waiting_response'
                                     flow_execution.context = json.dumps({
                                         "waiting_for": "button_click",
+                                        "channel_id": channel.id,
                                         "chat_id": chat_id,
                                         "bot_token": bot_token,
                                         "step_id": step.id
@@ -1129,6 +1131,7 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                     flow_execution.context = json.dumps({
                                         "waiting_for_field": waiting_field,
                                         "next_step_index": step_index + 2,
+                                        "channel_id": channel.id,
                                         "chat_id": chat_id,
                                         "bot_token": bot_token
                                     })
@@ -1156,6 +1159,7 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                     flow_execution.context = json.dumps({
                                         "waiting_for_field": waiting_field,
                                         "next_step_index": step_index + 2,
+                                        "channel_id": channel.id,
                                         "chat_id": chat_id,
                                         "bot_token": bot_token
                                     })
@@ -1494,6 +1498,7 @@ def telegram_webhook(
     # - "/start\npayload" (alguns clientes)
     ref_param = None
     normalized_text = (text or "").strip()
+    text_lower = normalized_text.lower()
     is_start_command = normalized_text.startswith("/start")
     if is_start_command:
         # Quebra em comando + resto
@@ -1533,10 +1538,11 @@ def telegram_webhook(
             f'%"user_id":{user_id}%'
         ]
 
+        # NÃO restringir por channel_id aqui: um mesmo usuário do Telegram pode falar com
+        # mais de um bot (canais diferentes) no mesmo tenant.
         recent_contact_ids = [
             cid for (cid,) in db.query(Message.contact_id).filter(
                 Message.tenant_id == channel.tenant_id,
-                Message.channel_id == channel.id,
                 Message.direction == 'inbound',
                 or_(*[Message.extra_data.like(p) for p in user_id_patterns])
             ).order_by(Message.created_at.desc()).limit(25).all()
@@ -1556,6 +1562,38 @@ def telegram_webhook(
                 contact = db.query(Contact).filter(Contact.id == recent_contact_ids[0]).first()
     except Exception as e:
         logger.warning(f"Falha ao buscar contato por user_id em messages/execuções: {e}")
+
+    # Fallback: buscar direto no Contact.custom_fields (telegram_user_id).
+    # Isso evita duplicar contato quando o usuário não tem username.
+    if not contact:
+        try:
+            # Normaliza custom_fields para lidar com dupla serialização (mesmo padrão usado em contacts.py)
+            custom_json = case(
+                (func.json_type(Contact.custom_fields) == "object", Contact.custom_fields),
+                (
+                    (func.json_type(Contact.custom_fields) == "text")
+                    & (func.json_valid(func.json_extract(Contact.custom_fields, "$")) == 1)
+                    & (func.json_type(func.json_extract(Contact.custom_fields, "$")) == "object"),
+                    func.json_extract(Contact.custom_fields, "$"),
+                ),
+                else_=Contact.custom_fields,
+            )
+
+            extracted_user_id = func.json_extract(custom_json, "$.telegram_user_id")
+            contact = (
+                db.query(Contact)
+                .filter(
+                    Contact.tenant_id == channel.tenant_id,
+                    or_(
+                        extracted_user_id == user_id,
+                        cast(extracted_user_id, String) == str(user_id),
+                    ),
+                )
+                .order_by(Contact.updated_at.desc())
+                .first()
+            )
+        except Exception as e:
+            logger.warning(f"Falha ao buscar contato por telegram_user_id no custom_fields: {e}")
 
     if not contact and username:
         contact = db.query(Contact).filter(
@@ -1592,7 +1630,9 @@ def telegram_webhook(
         contact.first_name = first_name or contact.first_name
         contact.last_name = last_name or contact.last_name
         contact.username = username or contact.username
-        if not contact.default_channel_id:
+        # Garantir que o contato fique associado ao bot/canal que recebeu a mensagem.
+        # Isso faz o contato aparecer no filtro por canal e evita confusão em multi-bots.
+        if contact.default_channel_id != channel.id:
             contact.default_channel_id = channel.id
         db.commit()
         logger.info(f"Contato atualizado: {contact.id} ({contact_full_name(contact)})")
@@ -1631,32 +1671,181 @@ def telegram_webhook(
     is_start_with_ref = is_start_command and bool(ref_param)
 
     if is_start_command:
-        cancelled = db.query(FlowExecution).filter(
+        # Cancelar apenas execuções pertencentes a ESTE bot/canal.
+        # (Contato pode conversar com vários bots; não queremos cancelar fluxos de outro bot.)
+        cancelled = 0
+        candidates = db.query(FlowExecution).filter(
             FlowExecution.contact_id == contact.id,
             FlowExecution.status.in_(['started', 'active', 'waiting_response', 'waiting_input'])
-        ).update(
-            {
-                'status': 'cancelled',
-                'completed_at': datetime.now(),
-                'current_step_id': None,
-                'context': None,
-            },
-            synchronize_session=False
-        )
-        db.commit()
+        ).order_by(FlowExecution.updated_at.desc()).all()
+
+        for ex in candidates:
+            ctx = {}
+            try:
+                ctx = json.loads(ex.context) if ex.context else {}
+            except Exception:
+                ctx = {}
+
+            ctx_bot_token = ctx.get('bot_token')
+            ctx_channel_id = ctx.get('channel_id')
+
+            # Execuções legadas podem não ter context. Nesse caso, tente inferir o bot
+            # pelo flow.channel_id para não cancelar execuções de outro bot por engano.
+            if not ctx_bot_token and not ctx_channel_id:
+                try:
+                    ex_flow_channel_id = db.query(Flow.channel_id).filter(Flow.id == ex.flow_id).scalar()
+                    if ex_flow_channel_id and int(ex_flow_channel_id) != int(channel.id):
+                        continue
+                except Exception:
+                    pass
+
+            # Se o contexto identifica outro bot, não cancele.
+            if ctx_bot_token and ctx_bot_token != bot_token:
+                continue
+            if ctx_channel_id and int(ctx_channel_id) != int(channel.id):
+                continue
+
+            ex.status = 'cancelled'
+            ex.completed_at = datetime.now()
+            ex.current_step_id = None
+            ex.context = None
+            cancelled += 1
+
         if cancelled:
-            print(f"🧹 /start canceladas {cancelled} execucao(oes) anterior(es) → reinicio limpo (contact_id={contact.id})")
-            logger.info(f"/start: canceladas {cancelled} execucoes anteriores (contact_id={contact.id})")
+            db.commit()
+            print(f"🧹 /start canceladas {cancelled} execucao(oes) deste bot → reinicio limpo (contact_id={contact.id}, channel_id={channel.id})")
+            logger.info(f"/start: canceladas {cancelled} execucoes deste bot (contact_id={contact.id}, channel_id={channel.id})")
     
     # 3.2. VERIFICAR SE EXISTE FLUXO ATIVO AGUARDANDO RESPOSTA
     # IMPORTANTE: qualquer /start deve iniciar fluxo novo, nunca continuar execução pausada.
     active_execution = None
     if not is_start_command:
-        active_execution = db.query(FlowExecution).filter(
+        # Somente continuar execuções que pertençam ao mesmo bot.
+        # Caso contrário, um texto no bot B poderia continuar um "waiting_response" do bot A.
+        candidates = db.query(FlowExecution).filter(
             FlowExecution.contact_id == contact.id,
             FlowExecution.status.in_(['waiting_response', 'waiting_input'])
-        ).order_by(FlowExecution.updated_at.desc()).first()
+        ).order_by(FlowExecution.updated_at.desc()).all()
+
+        for ex in candidates:
+            ctx = {}
+            try:
+                ctx = json.loads(ex.context) if ex.context else {}
+            except Exception:
+                ctx = {}
+
+            ctx_bot_token = ctx.get('bot_token')
+            ctx_channel_id = ctx.get('channel_id')
+
+            # Execução legada sem context: inferir canal pelo flow.channel_id para
+            # evitar continuar waiting de outro bot.
+            if not ctx_bot_token and not ctx_channel_id:
+                try:
+                    ex_flow_channel_id = db.query(Flow.channel_id).filter(Flow.id == ex.flow_id).scalar()
+                    if ex_flow_channel_id and int(ex_flow_channel_id) != int(channel.id):
+                        continue
+                except Exception:
+                    pass
+
+            if ctx_bot_token and ctx_bot_token != bot_token:
+                continue
+            if ctx_channel_id and int(ctx_channel_id) != int(channel.id):
+                continue
+
+            active_execution = ex
+            break
     
+    if active_execution:
+        # Se a mensagem é um gatilho explícito (keyword) de algum fluxo,
+        # priorize iniciar o novo fluxo ao invés de tratar como "resposta".
+        # (Usuário pode clicar/iniciar outro gatilho a qualquer momento.)
+        try:
+            flows_for_trigger_check = db.query(Flow).filter(
+                Flow.tenant_id == channel.tenant_id,
+                Flow.is_active == True,
+                ((Flow.channel_id == channel.id) | (Flow.channel_id == None))
+            ).all()
+
+            keyword_match_flow = None
+            for f in flows_for_trigger_check:
+                trigger_step = db.query(FlowStep).filter(
+                    FlowStep.flow_id == f.id,
+                    FlowStep.type == "trigger"
+                ).first()
+                if not trigger_step:
+                    continue
+
+                trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
+                if trigger_config.get("triggerType") != "message":
+                    continue
+
+                keywords = trigger_config.get("keywords", [])
+                keyword_list = []
+                for kw in keywords:
+                    if isinstance(kw, str):
+                        keyword_list.append(kw)
+                    elif isinstance(kw, dict):
+                        keyword_list.append(kw.get("text", ""))
+
+                for kw in keyword_list:
+                    if kw and kw.lower().strip() == text_lower:
+                        keyword_match_flow = f
+                        break
+                if keyword_match_flow:
+                    break
+
+            if keyword_match_flow:
+                logger.info(
+                    f"Keyword '{text_lower}' detectada durante waiting_response; "
+                    f"cancelando execuções pausadas deste bot e iniciando flow_id={keyword_match_flow.id}"
+                )
+
+                # Cancelar execuções pausadas DESTE bot
+                candidates = db.query(FlowExecution).filter(
+                    FlowExecution.contact_id == contact.id,
+                    FlowExecution.status.in_(['waiting_response', 'waiting_input'])
+                ).order_by(FlowExecution.updated_at.desc()).all()
+
+                cancelled = 0
+                for ex in candidates:
+                    ctx = {}
+                    try:
+                        ctx = json.loads(ex.context) if ex.context else {}
+                    except Exception:
+                        ctx = {}
+
+                    ctx_bot_token = ctx.get('bot_token')
+                    ctx_channel_id = ctx.get('channel_id')
+
+                    # Execução legada sem context: inferir canal pelo flow.channel_id para
+                    # evitar cancelar waiting de outro bot.
+                    if not ctx_bot_token and not ctx_channel_id:
+                        try:
+                            ex_flow_channel_id = db.query(Flow.channel_id).filter(Flow.id == ex.flow_id).scalar()
+                            if ex_flow_channel_id and int(ex_flow_channel_id) != int(channel.id):
+                                continue
+                        except Exception:
+                            pass
+                    if ctx_bot_token and ctx_bot_token != bot_token:
+                        continue
+                    if ctx_channel_id and int(ctx_channel_id) != int(channel.id):
+                        continue
+
+                    ex.status = 'cancelled'
+                    ex.completed_at = datetime.now()
+                    ex.current_step_id = None
+                    ex.context = None
+                    cancelled += 1
+
+                if cancelled:
+                    db.commit()
+                    logger.info(f"Canceladas {cancelled} execuções pausadas deste bot para priorizar keyword")
+
+                # Não continue execução antiga; siga para seleção/início do novo fluxo
+                active_execution = None
+        except Exception as e:
+            logger.warning(f"Falha ao checar keyword durante waiting_response: {e}")
+
     if active_execution:
         print(f"\n🔄 CONTINUANDO FLUXO ATIVO (Execução ID: {active_execution.id})")
         logger.info(f"Contato tem fluxo ativo aguardando resposta - Execução {active_execution.id}")
@@ -1800,6 +1989,19 @@ def telegram_webhook(
             FlowExecution.status == 'active'
         ).order_by(FlowExecution.started_at.desc()).first()
         if active_exec and active_exec.current_step_id:
+            # Evitar continuar execução de outro bot
+            try:
+                ctx = json.loads(active_exec.context) if active_exec.context else {}
+            except Exception:
+                ctx = {}
+            ctx_bot_token = ctx.get('bot_token')
+            ctx_channel_id = ctx.get('channel_id')
+            if ctx_bot_token and ctx_bot_token != bot_token:
+                active_exec = None
+            if active_exec and ctx_channel_id and int(ctx_channel_id) != int(channel.id):
+                active_exec = None
+
+        if active_exec and active_exec.current_step_id:
             current_step = db.query(FlowStep).filter(FlowStep.id == active_exec.current_step_id).first()
             if current_step and current_step.type == "action":
                 try:
@@ -1860,7 +2062,7 @@ def telegram_webhook(
     
     selected_flow = None
     ref_flow_matched = None
-    text_lower = text.lower().strip()
+    # `text_lower` já foi calculado acima a partir de `normalized_text`
     
     # Primeiro: verificar se há match de link de referência
     if ref_param and len(flows) > 0:
@@ -2076,7 +2278,12 @@ def telegram_webhook(
         contact_id=contact.id,
         flow_id=selected_flow.id,
         trigger_type=_trigger_type,
-        status='active'
+        status='active',
+        context=json.dumps({
+            "channel_id": channel.id,
+            "chat_id": chat_id,
+            "bot_token": bot_token,
+        })
     )
     db.add(flow_execution)
     db.commit()
