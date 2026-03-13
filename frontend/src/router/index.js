@@ -11,11 +11,13 @@ import BroadcastsView from '@/views/BroadcastsView.vue'
 import SuperAdminView from '@/views/SuperAdminView.vue'
 import ForgotPasswordView from '@/views/ForgotPasswordView.vue'
 import ResetPasswordView from '@/views/ResetPasswordView.vue'
+import ThankYouView from '@/views/ThankYouView.vue'
 
 const routes = [
   { path: '/', name: 'home', component: LandingPage },
   { path: '/login', name: 'login', component: LoginView },
   { path: '/register', name: 'register', component: RegisterView },
+  { path: '/thank-you', name: 'thank-you', component: ThankYouView },
   { path: '/dashboard', name: 'dashboard', component: DashboardView },
   { path: '/contacts', name: 'contacts', component: ContactsView },
   { path: '/flows', name: 'flows', component: FlowsView },
@@ -42,7 +44,7 @@ router.beforeEach((to, from, next) => {
   } catch {
     currentUser = null
   }
-  const publicPages = ['/', '/login', '/register', '/landing', '/forgot-password', '/reset-password']
+  const publicPages = ['/', '/login', '/register', '/landing', '/forgot-password', '/reset-password', '/thank-you']
   const authRequired = !publicPages.includes(to.path)
 
   // Se a rota requer autenticação e não há token

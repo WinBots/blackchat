@@ -236,8 +236,8 @@ def create_checkout_session(
         db.commit()
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
-    success_url = f"{frontend_url}/#/settings?tab=Assinaturas&billing=success"
-    cancel_url  = f"{frontend_url}/#/settings?tab=Assinaturas&billing=cancel"
+    success_url = f"{frontend_url}/thank-you"
+    cancel_url  = f"{frontend_url}/settings?tab=Cobran%C3%A7a&billing=cancel"
 
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -305,8 +305,8 @@ def create_enterprise_checkout(
     plan_id_meta = str(ent_plan.id) if ent_plan else "enterprise"
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
-    success_url = f"{frontend_url}/#/settings?tab=Assinaturas&billing=success"
-    cancel_url  = f"{frontend_url}/#/settings?tab=Assinaturas&billing=cancel"
+    success_url = f"{frontend_url}/thank-you"
+    cancel_url  = f"{frontend_url}/settings?tab=Cobran%C3%A7a&billing=cancel"
 
     session = stripe.checkout.Session.create(
         mode="subscription",
