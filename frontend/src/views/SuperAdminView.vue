@@ -1,264 +1,384 @@
 <template>
   <AppLayout>
     <div class="super-admin-page">
-      <div class="card">
-      <div class="page-header">
-        <div>
-          <h2 class="page-title">Super Admin</h2>
-          <p class="page-description">Gerencie tenants, usuários e assinaturas de todo o sistema</p>
-        </div>
-        <button class="btn btn-ghost btn-sm" type="button" @click="load" :disabled="loading">
-          {{ loading ? 'Carregando…' : 'Atualizar' }}
-        </button>
-      </div>
-
-      <div v-if="error" style="padding: 10px 0; color: #ef4444;">
-        {{ error }}
-      </div>
-
-      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div class="card" style="padding: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <h3 style="margin: 0; font-size: 1rem;">Tenants</h3>
-            <span style="color: var(--muted); font-size: 0.875rem;">{{ tenants.length }}</span>
+      <div class="card super-admin-card">
+        <div class="page-header super-admin-header">
+          <div>
+            <h2 class="page-title">Super Admin</h2>
+            <p class="page-description">Gerencie tenants, usuários e assinaturas de todo o sistema</p>
           </div>
+          <button class="btn btn-ghost btn-sm" type="button" @click="load" :disabled="loading">
+            {{ loading ? 'Carregando…' : 'Atualizar' }}
+          </button>
+        </div>
 
-          <div class="table-wrapper" style="margin-top: 10px;">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Nome</th>
-                  <th>Email</th>
-                  <th>Plano</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="loading">
-                  <td colspan="5" style="color: var(--muted); padding: 14px;">Carregando…</td>
-                </tr>
-                <tr v-else-if="tenants.length === 0">
-                  <td colspan="5" style="color: var(--muted); padding: 14px;">Nenhum tenant.</td>
-                </tr>
-                <tr
-                  v-else
-                  v-for="row in tenants"
-                  :key="row.tenant.id"
-                  @click="selectTenant(row)"
-                  style="cursor: pointer;"
-                  :style="selectedTenant?.tenant?.id === row.tenant.id ? 'background: var(--accent-soft);' : ''"
-                >
-                  <td>{{ row.tenant.id }}</td>
-                  <td>{{ row.tenant.name }}</td>
-                  <td>{{ row.tenant.email }}</td>
-                  <td>{{ row.plan?.display_name || '—' }}</td>
-                  <td>{{ row.subscription?.status || '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
+        <div v-if="loading" class="super-admin-loading loading" aria-busy="true">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <div>
+            <div class="super-admin-loading-title">Carregando dados…</div>
+            <div class="super-admin-loading-subtitle">Tenants, usuários e planos</div>
           </div>
         </div>
 
-        <div class="card" style="padding: 14px;">
-          <h3 style="margin: 0 0 10px 0; font-size: 1rem;">Editar Tenant</h3>
-
-          <div v-if="!selectedTenant" style="color: var(--muted); padding: 10px 0;">
-            Selecione um tenant na lista.
+        <template v-else>
+          <div class="super-admin-tabs" role="tablist" aria-label="Super Admin">
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'tenants' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'tenants'"
+              @click="activeTab = 'tenants'"
+            >
+              Tenants
+              <span class="super-admin-tab-count">{{ tenants.length }}</span>
+            </button>
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'users' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'users'"
+              @click="activeTab = 'users'"
+            >
+              Usuários
+              <span class="super-admin-tab-count">{{ users.length }}</span>
+            </button>
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'plans' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'plans'"
+              @click="activeTab = 'plans'"
+            >
+              Planos
+              <span class="super-admin-tab-count">{{ plans.length }}</span>
+            </button>
           </div>
 
-          <div v-else>
-            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div class="input-group">
-                <label class="input-label">Nome</label>
-                <input class="input" type="text" v-model="tenantDraft.name" />
+          <div v-if="error" class="super-admin-error">
+            {{ error }}
+          </div>
+
+          <div v-if="activeTab === 'tenants'" class="super-admin-tab-panel" role="tabpanel">
+          <div class="super-admin-grid">
+            <div class="card super-admin-section">
+              <div class="super-admin-section-header">
+                <div>
+                  <h3 class="super-admin-section-title">Lista de tenants</h3>
+                  <div class="super-admin-section-subtitle">Selecione para editar</div>
+                </div>
+                <div class="super-admin-pagination">
+                  <span class="super-admin-pagination-range">{{ tenantsRangeLabel }}</span>
+                  <select class="input super-admin-page-size" v-model.number="tenantsPageSize" :disabled="loading">
+                    <option :value="10">10</option>
+                    <option :value="25">25</option>
+                    <option :value="50">50</option>
+                    <option :value="100">100</option>
+                  </select>
+                  <button class="btn btn-ghost btn-sm" type="button" @click="tenantsPage--" :disabled="loading || tenantsPage <= 1">Anterior</button>
+                  <button class="btn btn-ghost btn-sm" type="button" @click="tenantsPage++" :disabled="loading || tenantsPage >= tenantsTotalPages">Próximo</button>
+                </div>
               </div>
-              <div class="input-group">
-                <label class="input-label">Email</label>
-                <input class="input" type="text" v-model="tenantDraft.email" />
+
+              <div class="table-wrapper super-admin-table">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Nome</th>
+                      <th>Email</th>
+                      <th>Plano</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="loading">
+                      <td colspan="5" class="super-admin-muted">Carregando…</td>
+                    </tr>
+                    <tr v-else-if="tenants.length === 0">
+                      <td colspan="5" class="super-admin-muted">Nenhum tenant.</td>
+                    </tr>
+                    <tr
+                      v-else
+                      v-for="row in pagedTenants"
+                      :key="row.tenant.id"
+                      class="super-admin-row-clickable"
+                      :class="selectedTenant?.tenant?.id === row.tenant.id ? 'super-admin-row-selected' : ''"
+                      @click="selectTenant(row)"
+                    >
+                      <td>{{ row.tenant.id }}</td>
+                      <td>{{ row.tenant.name }}</td>
+                      <td>{{ row.tenant.email }}</td>
+                      <td>{{ row.plan?.display_name || '—' }}</td>
+                      <td>{{ row.subscription?.status || '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div class="input-group">
-                <label class="input-label">Timezone</label>
-                <input class="input" type="text" v-model="tenantDraft.timezone" placeholder="(ex: America/Sao_Paulo)" />
+            </div>
+
+            <div class="card super-admin-section">
+              <div class="super-admin-section-header">
+                <div>
+                  <h3 class="super-admin-section-title">Edição do tenant</h3>
+                  <div class="super-admin-section-subtitle" v-if="selectedTenant">
+                    <span class="super-admin-tenant-pill">
+                      ID {{ selectedTenant.tenant.id }} • {{ selectedTenant.tenant.name }}
+                    </span>
+                  </div>
+                  <div class="super-admin-section-subtitle" v-else>Selecione um tenant na lista</div>
+                </div>
               </div>
-              <div class="input-group">
-                <label class="input-label">Ativo</label>
-                <select class="input" v-model="tenantDraft.is_active">
-                  <option :value="true">Sim</option>
-                  <option :value="false">Não</option>
+
+              <div v-if="!selectedTenant" class="super-admin-muted-block">
+                Selecione um tenant para editar dados e assinatura.
+              </div>
+
+              <div v-else>
+                <div class="super-admin-tenant-summary">
+                  <div class="super-admin-summary-item">
+                    <div class="super-admin-summary-label">Status</div>
+                    <div class="super-admin-summary-value">{{ selectedTenant.subscription?.status || '—' }}</div>
+                  </div>
+                  <div class="super-admin-summary-item">
+                    <div class="super-admin-summary-label">Plano</div>
+                    <div class="super-admin-summary-value">{{ selectedTenant.plan?.display_name || '—' }}</div>
+                  </div>
+                  <div class="super-admin-summary-item">
+                    <div class="super-admin-summary-label">Stripe customer</div>
+                    <div class="super-admin-summary-value">{{ selectedTenant.tenant?.stripe_customer_id || '—' }}</div>
+                  </div>
+                </div>
+
+                <div class="super-admin-subsection">
+                  <h4 class="super-admin-subtitle">Dados do tenant</h4>
+                  <div class="super-admin-form-grid">
+                    <div class="input-group">
+                      <label class="input-label">Nome</label>
+                      <input class="input" type="text" v-model="tenantDraft.name" />
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Email</label>
+                      <input class="input" type="text" v-model="tenantDraft.email" />
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Timezone</label>
+                      <input class="input" type="text" v-model="tenantDraft.timezone" placeholder="(ex: America/Sao_Paulo)" />
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Ativo</label>
+                      <select class="input" v-model="tenantDraft.is_active">
+                        <option :value="true">Sim</option>
+                        <option :value="false">Não</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="super-admin-actions">
+                    <button class="btn btn-primary" type="button" @click="saveTenant" :disabled="savingTenant">
+                      {{ savingTenant ? 'Salvando…' : 'Salvar dados do tenant' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div class="super-admin-subsection">
+                  <h4 class="super-admin-subtitle">Assinatura</h4>
+                  <div class="super-admin-form-grid">
+                    <div class="input-group">
+                      <label class="input-label">Plano</label>
+                      <select class="input" v-model="subDraft.plan_id">
+                        <option :value="null">(não definido)</option>
+                        <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.display_name }} ({{ fmtPrice(p.price_monthly) }})</option>
+                      </select>
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Status</label>
+                      <select class="input" v-model="subDraft.status">
+                        <option value="trial">trial</option>
+                        <option value="active">active</option>
+                        <option value="past_due">past_due</option>
+                        <option value="canceled">canceled</option>
+                        <option value="expired">expired</option>
+                      </select>
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Period start (ISO)</label>
+                      <input class="input" type="text" v-model="subDraft.current_period_start" placeholder="2026-02-27T02:23:21Z" />
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Trial ends (ISO)</label>
+                      <input class="input" type="text" v-model="subDraft.trial_ends_at" placeholder="2026-03-13T02:23:21Z" />
+                    </div>
+                    <div class="input-group">
+                      <label class="input-label">Period end (ISO)</label>
+                      <input class="input" type="text" v-model="subDraft.current_period_end" placeholder="2026-03-13T02:23:21Z" />
+                    </div>
+                  </div>
+                  <div class="super-admin-actions">
+                    <button class="btn btn-outline" type="button" @click="saveSubscription" :disabled="savingSubscription">
+                      {{ savingSubscription ? 'Salvando…' : 'Salvar assinatura' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="activeTab === 'users'" class="super-admin-tab-panel" role="tabpanel">
+          <div class="card super-admin-section super-admin-section--full">
+            <div class="super-admin-section-header">
+              <div>
+                <h3 class="super-admin-section-title">Usuários</h3>
+                <div class="super-admin-section-subtitle">{{ users.length }} no total</div>
+              </div>
+              <div class="super-admin-pagination">
+                <span class="super-admin-pagination-range">{{ usersRangeLabel }}</span>
+                <select class="input super-admin-page-size" v-model.number="usersPageSize" :disabled="loading">
+                  <option :value="10">10</option>
+                  <option :value="25">25</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
                 </select>
+                <button class="btn btn-ghost btn-sm" type="button" @click="usersPage--" :disabled="loading || usersPage <= 1">Anterior</button>
+                <button class="btn btn-ghost btn-sm" type="button" @click="usersPage++" :disabled="loading || usersPage >= usersTotalPages">Próximo</button>
               </div>
             </div>
 
-            <div style="margin-top: 14px;">
-              <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Assinatura</h4>
-              <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="input-group">
-                  <label class="input-label">Plano</label>
-                  <select class="input" v-model="subDraft.plan_id">
-                    <option :value="null">(não definido)</option>
-                    <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.display_name }} ({{ fmtPrice(p.price_monthly) }})</option>
-                  </select>
-                </div>
-                <div class="input-group">
-                  <label class="input-label">Status</label>
-                  <select class="input" v-model="subDraft.status">
-                    <option value="trial">trial</option>
-                    <option value="active">active</option>
-                    <option value="past_due">past_due</option>
-                    <option value="canceled">canceled</option>
-                    <option value="expired">expired</option>
-                  </select>
-                </div>
-                <div class="input-group">
-                  <label class="input-label">Period start (ISO)</label>
-                  <input class="input" type="text" v-model="subDraft.current_period_start" placeholder="2026-02-27T02:23:21Z" />
-                </div>
-                <div class="input-group">
-                  <label class="input-label">Trial ends (ISO)</label>
-                  <input class="input" type="text" v-model="subDraft.trial_ends_at" placeholder="2026-03-13T02:23:21Z" />
-                </div>
-                <div class="input-group">
-                  <label class="input-label">Period end (ISO)</label>
-                  <input class="input" type="text" v-model="subDraft.current_period_end" placeholder="2026-03-13T02:23:21Z" />
-                </div>
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 10px; margin-top: 14px;">
-              <button class="btn btn-primary" type="button" @click="saveTenant" :disabled="saving">
-                {{ saving ? 'Salvando…' : 'Salvar Tenant' }}
-              </button>
-              <button class="btn btn-outline" type="button" @click="saveSubscription" :disabled="saving">
-                {{ saving ? 'Salvando…' : 'Salvar Assinatura' }}
-              </button>
+            <div class="table-wrapper super-admin-table">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Tenant</th>
+                    <th>Email</th>
+                    <th>Nome</th>
+                    <th>Ativo</th>
+                    <th>Admin</th>
+                    <th>Super</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="loading">
+                    <td colspan="8" class="super-admin-muted">Carregando…</td>
+                  </tr>
+                  <tr v-else-if="users.length === 0">
+                    <td colspan="8" class="super-admin-muted">Nenhum usuário.</td>
+                  </tr>
+                  <tr v-else v-for="u in pagedUsers" :key="u.id">
+                    <td>{{ u.id }}</td>
+                    <td>{{ u.tenant_id }}</td>
+                    <td>{{ u.email }}</td>
+                    <td class="super-admin-cell-wide">
+                      <input class="input" type="text" v-model="u.full_name" />
+                    </td>
+                    <td>
+                      <select class="input" v-model="u.is_active">
+                        <option :value="true">Sim</option>
+                        <option :value="false">Não</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select class="input" v-model="u.is_admin">
+                        <option :value="true">Sim</option>
+                        <option :value="false">Não</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select class="input" v-model="u.is_super_admin">
+                        <option :value="true">Sim</option>
+                        <option :value="false">Não</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" type="button" @click="saveUser(u)" :disabled="savingUserId === u.id">
+                        {{ savingUserId === u.id ? 'Salvando…' : 'Salvar' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="card" style="padding: 14px; margin-top: 16px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-          <h3 style="margin: 0; font-size: 1rem;">Usuários</h3>
-          <span style="color: var(--muted); font-size: 0.875rem;">{{ users.length }}</span>
-        </div>
+        <div v-else class="super-admin-tab-panel" role="tabpanel">
+          <div class="card super-admin-section super-admin-section--full">
+            <div class="super-admin-section-header">
+              <div>
+                <h3 class="super-admin-section-title">Planos (Stripe price_id)</h3>
+                <div class="super-admin-section-subtitle">{{ plans.length }} no total</div>
+              </div>
+              <div class="super-admin-pagination">
+                <span class="super-admin-pagination-range">{{ plansRangeLabel }}</span>
+                <select class="input super-admin-page-size" v-model.number="plansPageSize" :disabled="loading">
+                  <option :value="10">10</option>
+                  <option :value="25">25</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" type="button" @click="plansPage--" :disabled="loading || plansPage <= 1">Anterior</button>
+                <button class="btn btn-ghost btn-sm" type="button" @click="plansPage++" :disabled="loading || plansPage >= plansTotalPages">Próximo</button>
+              </div>
+            </div>
 
-        <div class="table-wrapper" style="margin-top: 10px;">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Tenant</th>
-                <th>Email</th>
-                <th>Nome</th>
-                <th>Ativo</th>
-                <th>Admin</th>
-                <th>Super</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="8" style="color: var(--muted); padding: 14px;">Carregando…</td>
-              </tr>
-              <tr v-else-if="users.length === 0">
-                <td colspan="8" style="color: var(--muted); padding: 14px;">Nenhum usuário.</td>
-              </tr>
-              <tr v-else v-for="u in users" :key="u.id">
-                <td>{{ u.id }}</td>
-                <td>{{ u.tenant_id }}</td>
-                <td>{{ u.email }}</td>
-                <td style="min-width: 220px;">
-                  <input class="input" type="text" v-model="u.full_name" />
-                </td>
-                <td>
-                  <select class="input" v-model="u.is_active">
-                    <option :value="true">Sim</option>
-                    <option :value="false">Não</option>
-                  </select>
-                </td>
-                <td>
-                  <select class="input" v-model="u.is_admin">
-                    <option :value="true">Sim</option>
-                    <option :value="false">Não</option>
-                  </select>
-                </td>
-                <td>
-                  <select class="input" v-model="u.is_super_admin">
-                    <option :value="true">Sim</option>
-                    <option :value="false">Não</option>
-                  </select>
-                </td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" type="button" @click="saveUser(u)" :disabled="saving">
-                    Salvar
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+            <div class="table-wrapper super-admin-table">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Display</th>
+                    <th>Preço</th>
+                    <th>Ativo</th>
+                    <th>Stripe price_id mensal</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="loading">
+                    <td colspan="7" class="super-admin-muted">Carregando…</td>
+                  </tr>
+                  <tr v-else-if="plans.length === 0">
+                    <td colspan="7" class="super-admin-muted">Nenhum plano.</td>
+                  </tr>
+                  <tr v-else v-for="p in pagedPlans" :key="p.id">
+                    <td>{{ p.id }}</td>
+                    <td>{{ p.name }}</td>
+                    <td>{{ p.display_name }}</td>
+                    <td class="super-admin-cell-narrow">
+                      <input class="input" type="number" step="0.01" v-model="p.price_monthly" />
+                    </td>
+                    <td class="super-admin-cell-narrow">
+                      <select class="input" v-model="p.is_active">
+                        <option :value="true">Sim</option>
+                        <option :value="false">Não</option>
+                      </select>
+                    </td>
+                    <td class="super-admin-cell-xl">
+                      <input class="input" type="text" v-model="p.stripe_price_id_monthly" placeholder="price_..." />
+                    </td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" type="button" @click="savePlan(p)" :disabled="savingPlanId === p.id">
+                        {{ savingPlanId === p.id ? 'Salvando…' : 'Salvar' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div class="card" style="padding: 14px; margin-top: 16px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-          <h3 style="margin: 0; font-size: 1rem;">Planos (Stripe price_id)</h3>
-          <span style="color: var(--muted); font-size: 0.875rem;">{{ plans.length }}</span>
-        </div>
-
-        <div class="table-wrapper" style="margin-top: 10px;">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Nome</th>
-                <th>Display</th>
-                <th>Preço</th>
-                <th>Ativo</th>
-                <th>Stripe price_id mensal</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading">
-                <td colspan="7" style="color: var(--muted); padding: 14px;">Carregando…</td>
-              </tr>
-              <tr v-else-if="plans.length === 0">
-                <td colspan="7" style="color: var(--muted); padding: 14px;">Nenhum plano.</td>
-              </tr>
-              <tr v-else v-for="p in plans" :key="p.id">
-                <td>{{ p.id }}</td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.display_name }}</td>
-                <td style="min-width: 140px;">
-                  <input class="input" type="number" step="0.01" v-model="p.price_monthly" />
-                </td>
-                <td style="min-width: 120px;">
-                  <select class="input" v-model="p.is_active">
-                    <option :value="true">Sim</option>
-                    <option :value="false">Não</option>
-                  </select>
-                </td>
-                <td style="min-width: 320px;">
-                  <input class="input" type="text" v-model="p.stripe_price_id_monthly" placeholder="price_..." />
-                </td>
-                <td>
-                  <button class="btn btn-ghost btn-sm" type="button" @click="savePlan(p)" :disabled="saving">
-                    Salvar
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+        </template>
       </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useToast } from '@/composables/useToast'
@@ -276,8 +396,13 @@ const router = useRouter()
 const toast = useToast()
 
 const loading = ref(false)
-const saving = ref(false)
+const savingTenant = ref(false)
+const savingSubscription = ref(false)
+const savingUserId = ref(null)
+const savingPlanId = ref(null)
 const error = ref('')
+
+const activeTab = ref('tenants')
 
 const tenants = ref([])
 const users = ref([])
@@ -286,6 +411,58 @@ const plans = ref([])
 const selectedTenant = ref(null)
 const tenantDraft = ref({ name: '', email: '', timezone: '', is_active: true })
 const subDraft = ref({ plan_id: null, status: 'trial', current_period_start: '', trial_ends_at: '', current_period_end: '' })
+
+// Pagination states
+const tenantsPage = ref(1)
+const tenantsPageSize = ref(25)
+const usersPage = ref(1)
+const usersPageSize = ref(25)
+const plansPage = ref(1)
+const plansPageSize = ref(25)
+
+const tenantsTotalPages = computed(() => Math.max(1, Math.ceil((tenants.value?.length || 0) / tenantsPageSize.value)))
+const usersTotalPages = computed(() => Math.max(1, Math.ceil((users.value?.length || 0) / usersPageSize.value)))
+const plansTotalPages = computed(() => Math.max(1, Math.ceil((plans.value?.length || 0) / plansPageSize.value)))
+
+const pagedTenants = computed(() => {
+  const start = (tenantsPage.value - 1) * tenantsPageSize.value
+  return (tenants.value || []).slice(start, start + tenantsPageSize.value)
+})
+
+const pagedUsers = computed(() => {
+  const start = (usersPage.value - 1) * usersPageSize.value
+  return (users.value || []).slice(start, start + usersPageSize.value)
+})
+
+const pagedPlans = computed(() => {
+  const start = (plansPage.value - 1) * plansPageSize.value
+  return (plans.value || []).slice(start, start + plansPageSize.value)
+})
+
+const makeRangeLabel = (total, page, pageSize) => {
+  const n = Number(total || 0)
+  if (n <= 0) return '0–0 de 0'
+  const start = (page - 1) * pageSize + 1
+  const end = Math.min(n, page * pageSize)
+  return `${start}–${end} de ${n}`
+}
+
+const tenantsRangeLabel = computed(() => makeRangeLabel(tenants.value.length, tenantsPage.value, tenantsPageSize.value))
+const usersRangeLabel = computed(() => makeRangeLabel(users.value.length, usersPage.value, usersPageSize.value))
+const plansRangeLabel = computed(() => makeRangeLabel(plans.value.length, plansPage.value, plansPageSize.value))
+
+watch(tenantsTotalPages, (tp) => {
+  if (tenantsPage.value > tp) tenantsPage.value = tp
+})
+watch(usersTotalPages, (tp) => {
+  if (usersPage.value > tp) usersPage.value = tp
+})
+watch(plansTotalPages, (tp) => {
+  if (plansPage.value > tp) plansPage.value = tp
+})
+watch(tenantsPageSize, () => { tenantsPage.value = 1 })
+watch(usersPageSize, () => { usersPage.value = 1 })
+watch(plansPageSize, () => { plansPage.value = 1 })
 
 const fmtPrice = (v) => {
   const n = Number(v || 0)
@@ -326,6 +503,11 @@ const load = async () => {
     tenants.value = Array.isArray(t) ? t : []
     users.value = Array.isArray(u) ? u : []
     plans.value = Array.isArray(p) ? p : []
+
+    // Reset pagination to first page when data refreshes
+    tenantsPage.value = 1
+    usersPage.value = 1
+    plansPage.value = 1
   } catch (e) {
     console.error(e)
     const msg = e?.response?.data?.detail || 'Sem permissão (é preciso ser super admin)'
@@ -340,7 +522,7 @@ const load = async () => {
 
 const saveTenant = async () => {
   if (!selectedTenant.value?.tenant?.id) return
-  saving.value = true
+  savingTenant.value = true
   try {
     const updated = await adminUpdateTenant(selectedTenant.value.tenant.id, tenantDraft.value)
     toast.success('Tenant atualizado')
@@ -351,13 +533,13 @@ const saveTenant = async () => {
     console.error(e)
     toast.error(e?.response?.data?.detail || 'Erro ao salvar tenant')
   } finally {
-    saving.value = false
+    savingTenant.value = false
   }
 }
 
 const saveSubscription = async () => {
   if (!selectedTenant.value?.tenant?.id) return
-  saving.value = true
+  savingSubscription.value = true
   try {
     const payload = {
       plan_id: subDraft.value.plan_id,
@@ -374,13 +556,13 @@ const saveSubscription = async () => {
     console.error(e)
     toast.error(e?.response?.data?.detail || 'Erro ao salvar assinatura')
   } finally {
-    saving.value = false
+    savingSubscription.value = false
   }
 }
 
 const saveUser = async (u) => {
   if (!u?.id) return
-  saving.value = true
+  savingUserId.value = u.id
   try {
     await adminUpdateUser(u.id, {
       full_name: u.full_name,
@@ -393,13 +575,13 @@ const saveUser = async (u) => {
     console.error(e)
     toast.error(e?.response?.data?.detail || 'Erro ao salvar usuário')
   } finally {
-    saving.value = false
+    if (savingUserId.value === u.id) savingUserId.value = null
   }
 }
 
 const savePlan = async (p) => {
   if (!p?.id) return
-  saving.value = true
+  savingPlanId.value = p.id
   try {
     await adminUpdatePlan(p.id, {
       price_monthly: p.price_monthly,
@@ -411,7 +593,7 @@ const savePlan = async (p) => {
     console.error(e)
     toast.error(e?.response?.data?.detail || 'Erro ao salvar plano')
   } finally {
-    saving.value = false
+    if (savingPlanId.value === p.id) savingPlanId.value = null
   }
 }
 
@@ -427,20 +609,273 @@ onMounted(load)
   color-scheme: dark;
 }
 
-.super-admin-page .input {
-  border-radius: var(--radius-sm);
+.super-admin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.super-admin-header {
+  margin-bottom: 0;
+}
+
+.super-admin-loading {
+  padding: 48px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+.super-admin-loading-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-primary);
+}
+
+.super-admin-loading-subtitle {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.super-admin-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+.super-admin-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
   padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all var(--transition-fast);
 }
 
-.super-admin-page select.input {
-  border-radius: var(--radius-sm);
+.super-admin-tab:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(0, 255, 102, 0.12);
 }
 
-.super-admin-page .btn {
-  border-radius: var(--radius-sm);
+.super-admin-tab--active {
+  background: rgba(0, 255, 102, 0.12);
+  border-color: rgba(0, 255, 102, 0.18);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.08);
 }
 
+.super-admin-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 255, 102, 0.12);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.super-admin-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.super-admin-error {
+  padding: 10px 0;
+  color: #ef4444;
+}
+
+.super-admin-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 1100px) {
+  .super-admin-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.super-admin-section {
+  padding: 14px;
+}
+
+.super-admin-section--full {
+  grid-column: 1 / -1;
+}
+
+.super-admin-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.super-admin-section-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.super-admin-section-subtitle {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.super-admin-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.super-admin-pagination-range {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.super-admin-page-size {
+  width: 92px;
+  padding: 8px 10px;
+}
+
+.super-admin-table {
+  margin-top: 10px;
+}
+
+.super-admin-muted,
+.super-admin-muted-block {
+  color: var(--muted);
+  padding: 14px;
+}
+
+.super-admin-muted-block {
+  padding: 10px 0;
+}
+
+.super-admin-row-clickable {
+  cursor: pointer;
+}
+
+.super-admin-row-clickable:hover {
+  background: var(--bg-card-hover);
+}
+
+.super-admin-row-selected {
+  background: var(--accent-soft);
+}
+
+.super-admin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 820px) {
+  .super-admin-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.super-admin-subsection {
+  margin-top: 14px;
+}
+
+.super-admin-subtitle {
+  margin: 0 0 10px 0;
+  font-size: 0.95rem;
+}
+
+.super-admin-tenant-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  border: 1px solid rgba(0, 255, 102, 0.14);
+}
+
+.super-admin-tenant-summary {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(0, 255, 102, 0.12);
+  background: rgba(0, 255, 102, 0.06);
+  border-radius: var(--radius-lg);
+  margin-bottom: 12px;
+}
+
+@media (min-width: 820px) {
+  .super-admin-tenant-summary {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.super-admin-summary-item {
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 255, 102, 0.08);
+}
+
+.super-admin-summary-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+.super-admin-summary-value {
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.super-admin-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.super-admin-cell-wide {
+  min-width: 220px;
+}
+
+.super-admin-cell-narrow {
+  min-width: 140px;
+}
+
+.super-admin-cell-xl {
+  min-width: 320px;
+}
+
+.super-admin-page .input,
+.super-admin-page .btn,
+.super-admin-page select.input,
 .super-admin-page .btn-sm {
   border-radius: var(--radius-sm);
+}
+
+.super-admin-page .input {
+  padding: 10px 12px;
 }
 </style>

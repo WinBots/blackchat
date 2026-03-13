@@ -1107,36 +1107,65 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
 
                             # Se houver execução ativa, pausar aguardando resposta (bloco data é um prompt de input)
                             if flow_execution:
-                                # Tentar inferir o campo a partir do próximo step (action set_field)
-                                waiting_field = None
-                                next_step = None
-                                if step_index + 1 < len(steps):
-                                    next_step = steps[step_index + 1]
-                                    if next_step.type == "action":
-                                        try:
-                                            next_config = json.loads(next_step.config) if next_step.config else {}
-                                            next_actions = next_config.get("actions", [])
-                                            for action in next_actions:
-                                                if action.get("type") == "set_field":
-                                                    field_value = action.get("field_value") or action.get("value") or action.get("fieldValue") or ""
-                                                    if field_value and ("ultima_mensagem" in str(field_value) or "last_message" in str(field_value)):
-                                                        waiting_field = action.get("field_name")
-                                                        break
-                                        except Exception as e:
-                                            logger.error(f"Erro ao inspecionar ação de captura: {e}")
+                                waiting_field = block.get("field") or block.get("field_name") or block.get("fieldName")
+                                next_step = steps[step_index + 1] if (step_index + 1 < len(steps)) else None
 
-                                if waiting_field and next_step:
+                                pause_step_id = step.id
+                                next_step_index = step_index + 1
+
+                                # Se existir um próximo step de action que captura {ultima_mensagem}, pausar nele
+                                # (assim a rotina de continuação sabe pular set_field placeholder).
+                                if waiting_field and next_step and next_step.type == "action":
+                                    try:
+                                        next_config = json.loads(next_step.config) if next_step.config else {}
+                                        next_actions = next_config.get("actions", [])
+
+                                        has_placeholder_capture = False
+                                        for action in next_actions:
+                                            if action.get("type") != "set_field":
+                                                continue
+                                            field_value = action.get("field_value") or action.get("value") or action.get("fieldValue") or ""
+                                            if field_value and ("ultima_mensagem" in str(field_value) or "last_message" in str(field_value)):
+                                                has_placeholder_capture = True
+                                                break
+
+                                        if has_placeholder_capture:
+                                            pause_step_id = next_step.id
+                                            next_step_index = step_index + 2
+                                    except Exception as e:
+                                        logger.error(f"Erro ao inspecionar ação de captura (data block): {e}")
+
+                                # Fallback legado: se não veio field no bloco, inferir pelo próximo action set_field
+                                if not waiting_field and next_step and next_step.type == "action":
+                                    try:
+                                        next_config = json.loads(next_step.config) if next_step.config else {}
+                                        next_actions = next_config.get("actions", [])
+                                        for action in next_actions:
+                                            if action.get("type") != "set_field":
+                                                continue
+                                            field_value = action.get("field_value") or action.get("value") or action.get("fieldValue") or ""
+                                            if field_value and ("ultima_mensagem" in str(field_value) or "last_message" in str(field_value)):
+                                                waiting_field = action.get("field_name")
+                                                pause_step_id = next_step.id
+                                                next_step_index = step_index + 2
+                                                break
+                                    except Exception as e:
+                                        logger.error(f"Erro ao inspecionar ação de captura: {e}")
+
+                                if waiting_field:
                                     flow_execution.status = 'waiting_response'
-                                    flow_execution.current_step_id = next_step.id
+                                    flow_execution.current_step_id = pause_step_id
                                     flow_execution.context = json.dumps({
                                         "waiting_for_field": waiting_field,
-                                        "next_step_index": step_index + 2,
+                                        "next_step_index": next_step_index,
                                         "channel_id": channel.id,
                                         "chat_id": chat_id,
                                         "bot_token": bot_token
                                     })
                                     db.commit()
-                                    logger.info(f"   ✓ Execução {flow_execution.id} aguardando resposta para campo '{waiting_field}'")
+                                    logger.info(
+                                        f"   ✓ Execução {flow_execution.id} aguardando resposta para campo '{waiting_field}' (data block)"
+                                    )
                                     return
 
                     # Se o próximo step for ação com captura de resposta, pausar AQUI (depois de enviar todas as mensagens)

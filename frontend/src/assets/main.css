@@ -3266,11 +3266,12 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--accent);
   font-size: 18px;
   flex-shrink: 0;
 }
@@ -3293,7 +3294,7 @@ body {
 
 .sidebar-title-input:focus {
   outline: none;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .sidebar-close-btn {
@@ -3428,8 +3429,8 @@ input.sidebar-textarea {
 }
 
 .sidebar-action-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
-  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(0, 0, 0, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
 }
 
 .sidebar-action-btn i {
@@ -3453,14 +3454,14 @@ input.sidebar-textarea {
 
 .content-block-btn:hover {
   background: rgba(0, 0, 0, 0.6);
-  border-color: rgba(59, 130, 246, 0.4);
+  border-color: rgba(148, 163, 184, 0.28);
 }
 
 .content-block-icon {
   width: 30px;
   height: 30px;
   border-radius: 6px;
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(148, 163, 184, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3704,7 +3705,7 @@ input.sidebar-textarea {
   width: 100%;
   padding: 14px;
   background: transparent;
-  border: 2px dashed rgba(59, 130, 246, 0.4);
+  border: 2px dashed rgba(148, 163, 184, 0.28);
   border-radius: 8px;
   color: var(--accent);
   font-size: 0.875rem;
@@ -3718,7 +3719,7 @@ input.sidebar-textarea {
 }
 
 .sidebar-next-step-btn:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 0, 0, 0.55);
   border-color: var(--accent);
 }
 
@@ -3785,9 +3786,9 @@ input.sidebar-textarea {
 .btn-add-button {
   width: 100%;
   padding: 10px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 0, 0, 0.45);
   color: var(--accent);
-  border: 1px dashed var(--accent);
+  border: 1px dashed rgba(148, 163, 184, 0.35);
   border-radius: 6px;
   font-size: 0.875rem;
   font-weight: 500;
@@ -3800,8 +3801,8 @@ input.sidebar-textarea {
 }
 
 .btn-add-button:hover {
-  background: rgba(59, 130, 246, 0.15);
-  border-style: solid;
+  background: rgba(0, 0, 0, 0.65);
+  border-color: var(--accent);
 }
 
 /* Contact Messages Panel */
@@ -4021,7 +4022,7 @@ input.sidebar-textarea {
 
 .flow-node.is-selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 0 3px var(--accent-soft-hover);
 }
 
 
@@ -4056,8 +4057,8 @@ input.sidebar-textarea {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
   padding: 10px 12px;
   color: var(--text-primary);

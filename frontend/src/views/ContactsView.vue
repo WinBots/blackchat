@@ -2,6 +2,16 @@
   <AppLayout>
     <div class="ct-page">
 
+      <div v-if="pageLoading" class="ct-page-loading loading" aria-busy="true">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <div>
+          <div class="ct-page-loading-title">Carregando contatos…</div>
+          <div class="ct-page-loading-subtitle">Canais, estatísticas e lista</div>
+        </div>
+      </div>
+
+      <template v-else>
+
       <!-- Page Header -->
       <div class="ct-header">
         <div class="ct-header-left">
@@ -667,6 +677,8 @@
       </div>
       <!-- /ct-body -->
 
+      </template>
+
     </div>
     <!-- /ct-page -->
 
@@ -941,6 +953,7 @@ import { listChannels } from '@/api/channels'
 const searchQuery = ref('')
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
+const pageLoading = ref(true)
 const loading = ref(false)
 const loadingMore = ref(false)
 const filtersOpen = ref(true)
@@ -1586,10 +1599,17 @@ const handleOutsideEmojiClick = (event) => {
 // Carregar ao montar
 onMounted(async () => {
   document.addEventListener('mousedown', handleOutsideEmojiClick)
-  await loadChannels()
-  await loadContactStats()
-  await loadFieldStats()
-  await loadContacts({ reset: true })
+  pageLoading.value = true
+  try {
+    await loadChannels()
+    await Promise.all([
+      loadContactStats(),
+      loadFieldStats(),
+    ])
+    await loadContacts({ reset: true })
+  } finally {
+    pageLoading.value = false
+  }
 })
 
 onUnmounted(() => {
@@ -2264,6 +2284,28 @@ const deleteSegment = (idx) => {
 </script>
 
 <style scoped>
+.ct-page-loading {
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  justify-content: center;
+  gap: 12px;
+  min-height: 180px;
+}
+
+.ct-page-loading-title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ct-page-loading-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* ═══════════════════════════════════════════
    CONTACTS VIEW — Complete Redesign
    ─────────────────────────────────────────── */

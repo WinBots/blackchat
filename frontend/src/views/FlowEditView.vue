@@ -137,10 +137,24 @@
           class="flow-editor-sidebar"
           v-if="selectedStep"
           ref="sidebarRootRef"
+          :style="{ width: `${sidebarWidth}px` }"
+          :class="{ 'is-resizing': isResizingSidebar }"
           @focusin="handleSidebarFocusIn"
           @focusout="handleSidebarFocusOut"
           @mousedown="handleSidebarMouseDown"
         >
+          <div
+            class="sidebar-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            :aria-valuenow="sidebarWidth"
+            :aria-valuemin="SIDEBAR_MIN_W"
+            :aria-valuemax="SIDEBAR_MAX_W"
+            tabindex="0"
+            title="Arraste para ajustar a largura"
+            @mousedown.stop.prevent="startSidebarResize"
+          ></div>
+
           <div class="sidebar-header">
             <div class="sidebar-header-icon">
               <i class="fa-solid fa-message"></i>
@@ -1485,16 +1499,13 @@
           :class="{ 'with-sidebar': selectedStep }"
           ref="containerRef"
           @wheel.prevent="handleWheel"
-          @mousedown.self="startPan"
-          @mousemove="handlePanMove"
-          @mouseup="endPan"
-          @mouseleave="endPan"
+          @mousedown="startPan"
         >
         <div 
           class="flow-canvas-workspace"
           ref="workspaceRef"
           :style="{
-            transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${canvasScale})`,
+            transform: `translate(${(isPanning ? panOffset.x : canvasOffset.x)}px, ${(isPanning ? panOffset.y : canvasOffset.y)}px) scale(${canvasScale})`,
             transformOrigin: '0 0'
           }"
         >
@@ -1525,14 +1536,36 @@
             />
             
             <!-- Conexões permanentes -->
-            <path
+            <g
               v-for="conn in connectionPaths"
               :key="conn.id"
-              :d="conn.path"
-              class="connection-line connection-line-animated"
-              marker-end="url(#arrow-end)"
-              @click="removeConnection(conn.id)"
-            />
+              class="connection-group"
+            >
+              <path
+                :d="conn.path"
+                class="connection-line connection-line-animated"
+                marker-end="url(#arrow-end)"
+              />
+
+              <!-- Lixeira no meio da linha (deletar conexão) -->
+              <g
+                class="connection-delete"
+                :transform="`translate(${conn.midX}, ${conn.midY})`"
+                role="button"
+                tabindex="0"
+                @mousedown.stop.prevent
+                @click.stop.prevent="removeConnection(conn.id)"
+              >
+                <circle class="connection-delete-bg" r="9" />
+                <g class="connection-delete-icon" transform="translate(-4.5,-5)">
+                  <rect x="1.5" y="3" width="6" height="7" rx="1" />
+                  <path d="M1 3h7" />
+                  <path d="M3 3V2h2v1" />
+                  <line x1="3.5" y1="5" x2="3.5" y2="9" />
+                  <line x1="5.5" y1="5" x2="5.5" y2="9" />
+                </g>
+              </g>
+            </g>
           </svg>
 
           <!-- Empty state -->
@@ -1589,7 +1622,17 @@
                 <div style="flex:1; min-width:0;" v-else>
                   <div class="flow-node-title">Mensagem</div>
                 </div>
-                <button class="btn-node-delete" @click.stop="deleteStep(step.id)">
+                <button
+                  class="btn-node-duplicate"
+                  title="Duplicar (em branco)"
+                  @click.stop="duplicateStep(step)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="11" height="11" rx="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                </button>
+                <button class="btn-node-delete" title="Excluir" @click.stop="deleteStep(step.id)">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
                     <line x1="6" y1="6" x2="18" y2="18"/>
@@ -1610,6 +1653,7 @@
                     }
                   ]"
                   :data-block-index="blockIndex"
+                  :data-block-id="block.id"
                   @click.stop="selectBlock(step, block)"
                   @mousedown="startBlockDrag($event, step, block, blockIndex)"
                   :data-selected="selectedBlock && selectedBlock.blockId === block.id"
@@ -2016,6 +2060,57 @@ const selectedBlock = ref(null)
 const isSaving = ref(false)
 const isPageLoading = ref(true)
 let saveTimeout = null
+let saveStepTimeout = null
+let workflowSaveOptions = { withStepSync: false }
+
+const SIDEBAR_MIN_W = 280
+const SIDEBAR_MAX_W = 720
+const sidebarWidth = ref(280)
+const isResizingSidebar = ref(false)
+let _sidebarResizeStartX = 0
+let _sidebarResizeStartW = 280
+let _sidebarResizeMoveHandler = null
+let _sidebarResizeUpHandler = null
+let _sidebarResizePrevCursor = ''
+let _sidebarResizePrevUserSelect = ''
+
+const clamp = (val, min, max) => Math.min(max, Math.max(min, val))
+
+const startSidebarResize = (e) => {
+  if (e.button !== 0) return
+  if (isResizingSidebar.value) return
+
+  isResizingSidebar.value = true
+  _sidebarResizeStartX = e.clientX
+  _sidebarResizeStartW = sidebarWidth.value
+
+  _sidebarResizePrevCursor = document.body.style.cursor
+  _sidebarResizePrevUserSelect = document.body.style.userSelect
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+
+  const handleMove = (ev) => {
+    const dx = ev.clientX - _sidebarResizeStartX
+    sidebarWidth.value = clamp(_sidebarResizeStartW + dx, SIDEBAR_MIN_W, SIDEBAR_MAX_W)
+  }
+
+  const handleUp = () => {
+    isResizingSidebar.value = false
+    document.body.style.cursor = _sidebarResizePrevCursor
+    document.body.style.userSelect = _sidebarResizePrevUserSelect
+
+    if (_sidebarResizeMoveHandler) document.removeEventListener('mousemove', _sidebarResizeMoveHandler)
+    if (_sidebarResizeUpHandler) document.removeEventListener('mouseup', _sidebarResizeUpHandler)
+    _sidebarResizeMoveHandler = null
+    _sidebarResizeUpHandler = null
+  }
+
+  _sidebarResizeMoveHandler = handleMove
+  _sidebarResizeUpHandler = handleUp
+
+  document.addEventListener('mousemove', _sidebarResizeMoveHandler)
+  document.addEventListener('mouseup', _sidebarResizeUpHandler)
+}
 const showTriggerModal = ref(false)
 const showAddBlockModal = ref(false)
 const blockSearch = ref('')
@@ -2310,12 +2405,32 @@ const handleDocumentMouseDown = (event) => {
   }
 }
 
+const handleDocumentClickCloseSidebar = (event) => {
+  if (!selectedStep.value) return
+  if (isResizingSidebar.value) return
+
+  const target = event.target
+  const sidebarEl = sidebarRootRef.value
+
+  const clickedInsideSidebar = sidebarEl && (sidebarEl === target || sidebarEl.contains(target))
+  if (clickedInsideSidebar) return
+
+  const clickedOnNode = target?.closest?.('.flow-node')
+  if (clickedOnNode) return
+
+  // Clique em qualquer outro lugar (canvas vazio, linhas, etc) fecha o menu
+  selectedStep.value = null
+  selectedBlock.value = null
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleDocumentMouseDown)
+  document.addEventListener('click', handleDocumentClickCloseSidebar)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
+  document.removeEventListener('click', handleDocumentClickCloseSidebar)
 })
 
 // Busca username via token e persiste no canal
@@ -2449,6 +2564,7 @@ const workspaceRef = ref(null)
 const canvasScale = ref(1)
 const canvasOffset = ref({ x: 50, y: 50 })
 const isPanning = ref(false)
+const panOffset = ref({ x: 50, y: 50 })
 const panStart = ref({ x: 0, y: 0 })
 
 // Helper: aplica o transform direto no DOM (zero overhead de reatividade)
@@ -2462,9 +2578,27 @@ const applyWorkspaceTransform = (x, y, scale) => {
 let _panCurrentX = 50
 let _panCurrentY = 50
 
+let _panFrame = null
+let _pendingPanOffset = null
+const schedulePanOffsetUpdate = () => {
+  if (_panFrame) return
+  _panFrame = requestAnimationFrame(() => {
+    _panFrame = null
+    if (_pendingPanOffset) {
+      panOffset.value = _pendingPanOffset
+      _pendingPanOffset = null
+    }
+  })
+}
+
+const getCanvasOffsetCurrent = () => {
+  return isPanning.value ? panOffset.value : canvasOffset.value
+}
+
 // Posições dos Nós (livre)
 const nodePositions = ref({}) // { stepId: { x, y } }
 const draggingNodeId = ref(null)
+const dragNodePos = ref({ x: 0, y: 0 })
 const dragStart = ref({ x: 0, y: 0, nodeX: 0, nodeY: 0 })
 
 // Drag and Drop de Blocos
@@ -2482,12 +2616,17 @@ const tempConnectionEnd = ref({ x: 0, y: 0 })
 const hoveredPort = ref(null)
 const portRefs = ref({})
 let updateFrame = null
+let _connectionsDirty = false
 
 const scheduleConnectionUpdate = () => {
-  if (updateFrame) {
-    cancelAnimationFrame(updateFrame)
-  }
-  updateFrame = requestAnimationFrame(updateConnectionPaths)
+  _connectionsDirty = true
+  if (updateFrame) return
+  updateFrame = requestAnimationFrame(() => {
+    updateFrame = null
+    if (!_connectionsDirty) return
+    _connectionsDirty = false
+    updateConnectionPaths()
+  })
 }
 
 const registerPort = (el, stepId, portType) => {
@@ -2506,9 +2645,10 @@ const screenToWorkspace = ({ x, y }) => {
   const container = containerRef.value
   if (!container) return { x: 0, y: 0 }
   const rect = container.getBoundingClientRect()
+  const offset = getCanvasOffsetCurrent()
   return {
-    x: (x - rect.left - canvasOffset.value.x) / canvasScale.value,
-    y: (y - rect.top - canvasOffset.value.y) / canvasScale.value
+    x: (x - rect.left - offset.x) / canvasScale.value,
+    y: (y - rect.top - offset.y) / canvasScale.value
   }
 }
 
@@ -2690,34 +2830,38 @@ const loadData = async () => {
 }
 
 // ==================== SAVE WORKFLOW ====================
-const saveWorkflow = async () => {
+const saveWorkflow = async (opts = {}) => {
   if (isSaving.value || !flow.value) return
+
+  const withStepSync = opts.withStepSync !== undefined ? !!opts.withStepSync : true
   
   try {
     isSaving.value = true
-    
-    // IMPORTANTE: Recalcular order_index baseado nas conexões
-    recalculateOrderIndex()
 
-    // Sincronizar targetStepId de todos os botões a partir das conexões visuais
-    // Garante consistência mesmo que o update reativo não tenha sido salvo antes
-    steps.value.forEach(step => {
-      if (step.config?.blocks) {
-        step.config.blocks.forEach(block => {
-          if (block.type === 'button' && block.buttons) {
-            block.buttons.forEach((btn, btnIdx) => {
-              if (btn.action === 'flow') {
-                const outputId = `btn-${block.id}-${btnIdx}`
-                const conn = connections.value.find(c => c.from === step.id && c.outputId === outputId)
-                if (conn) {
-                  btn.targetStepId = conn.to
+    if (withStepSync) {
+      // IMPORTANTE: Recalcular order_index baseado nas conexões
+      recalculateOrderIndex()
+
+      // Sincronizar targetStepId de todos os botões a partir das conexões visuais
+      // Garante consistência mesmo que o update reativo não tenha sido salvo antes
+      steps.value.forEach(step => {
+        if (step.config?.blocks) {
+          step.config.blocks.forEach(block => {
+            if (block.type === 'button' && block.buttons) {
+              block.buttons.forEach((btn, btnIdx) => {
+                if (btn.action === 'flow') {
+                  const outputId = `btn-${block.id}-${btnIdx}`
+                  const conn = connections.value.find(c => c.from === step.id && c.outputId === outputId)
+                  if (conn) {
+                    btn.targetStepId = conn.to
+                  }
                 }
-              }
-            })
-          }
-        })
-      }
-    })
+              })
+            }
+          })
+        }
+      })
+    }
     
     // Salvar posições e conexões no config do flow
     const flowConfig = {
@@ -2732,24 +2876,22 @@ const saveWorkflow = async () => {
       config: flowConfig
     }
     
-    console.log('💾 Salvando workflow...', payload)
-    
     await updateFlow(flowId.value, payload)
-    
-    // Salvar o order_index atualizado de cada step
-    for (const step of steps.value) {
-      try {
-        await updateFlowStep(flowId.value, step.id, {
-          type: step.type,
-          config: step.config,
-          order_index: step.order_index
-        })
-      } catch (error) {
-        console.error(`❌ Erro ao atualizar order_index do step ${step.id}:`, error)
+
+    if (withStepSync) {
+      // Salvar o order_index atualizado de cada step
+      for (const step of steps.value) {
+        try {
+          await updateFlowStep(flowId.value, step.id, {
+            type: step.type,
+            config: step.config,
+            order_index: step.order_index
+          })
+        } catch (error) {
+          console.error(`❌ Erro ao atualizar order_index do step ${step.id}:`, error)
+        }
       }
     }
-    
-    console.log('✅ Workflow salvo! Posições:', Object.keys(nodePositions.value).length, 'Conexões:', connections.value.length, 'Steps:', steps.value.length)
   } catch (error) {
     console.error('❌ Erro ao salvar workflow:', error)
     console.error('❌ Detalhes:', error.response?.data)
@@ -2813,36 +2955,53 @@ const recalculateOrderIndex = () => {
   return orderedSteps
 }
 
-// Auto-save com debounce (espera 1 segundo após última alteração)
-const autoSave = async () => {
-  console.log('🔄 Auto-save iniciado...')
-  
-  // Se estiver editando um step (mensagem ou gatilho), salvar o step
-  if (selectedStep.value) {
+const scheduleStepSave = (stepSnapshot) => {
+  if (saveStepTimeout) clearTimeout(saveStepTimeout)
+  saveStepTimeout = setTimeout(async () => {
     try {
-      const payload = {
-        type: selectedStep.value.type,
-        config: selectedStep.value.config,
-        order_index: selectedStep.value.order_index
-      }
-      
-      console.log('💾 Salvando step:', selectedStep.value.id, payload)
-      
-      await updateFlowStep(flowId.value, selectedStep.value.id, payload)
-      console.log('✅ Step salvo com sucesso!')
+      await updateFlowStep(flowId.value, stepSnapshot.id, {
+        type: stepSnapshot.type,
+        config: stepSnapshot.config,
+        order_index: stepSnapshot.order_index
+      })
     } catch (error) {
       console.error('❌ Erro ao salvar step:', error)
       console.error('❌ Detalhes:', error.response?.data)
     }
+  }, 650)
+}
+
+const scheduleWorkflowSave = (opts = {}) => {
+  workflowSaveOptions = {
+    withStepSync: !!opts.withStepSync || !!workflowSaveOptions.withStepSync
   }
-  
-  // Salvar workflow (posições e conexões) com debounce
-  if (saveTimeout) {
-    clearTimeout(saveTimeout)
-  }
+
+  if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(() => {
-    saveWorkflow()
-  }, 1000)
+    const currentOpts = workflowSaveOptions
+    workflowSaveOptions = { withStepSync: false }
+    saveWorkflow({ withStepSync: currentOpts.withStepSync })
+  }, 900)
+}
+
+// Auto-save (debounced): por padrão salva só o step (não o workflow)
+const autoSave = (opts = {}) => {
+  const scope = opts.scope || 'step' // 'step' | 'workflow' | 'both'
+
+  if ((scope === 'step' || scope === 'both') && selectedStep.value) {
+    // Snapshot leve para não depender de seleção futura
+    const stepSnapshot = {
+      id: selectedStep.value.id,
+      type: selectedStep.value.type,
+      config: selectedStep.value.config,
+      order_index: selectedStep.value.order_index
+    }
+    scheduleStepSave(stepSnapshot)
+  }
+
+  if (scope === 'workflow' || scope === 'both') {
+    scheduleWorkflowSave({ withStepSync: !!opts.withStepSync })
+  }
 }
 
 // ==================== NODE OPERATIONS ====================
@@ -2868,7 +3027,7 @@ const addMessageStep = async () => {
     steps.value.push(newStep)
     
     // Auto-salvar após adicionar bloco
-    autoSave()
+    autoSave({ scope: 'workflow', withStepSync: false })
   } catch (error) {
     console.error('Erro ao adicionar passo:', error)
   }
@@ -3000,7 +3159,7 @@ const handleAddBlock = async (type) => {
     selectedStep.value = newStep
     
     // Auto-salvar
-    autoSave()
+    autoSave({ scope: 'workflow', withStepSync: false })
     
     toast.success('Bloco adicionado ao fluxo')
   } catch (error) {
@@ -3052,6 +3211,86 @@ const deleteStep = async (stepId) => {
   } catch (error) {
     console.error('❌ Erro ao deletar step:', error)
     toast.error('Erro ao excluir bloco')
+  }
+}
+
+const getBlankConfigForStepType = (type) => {
+  switch (type) {
+    case 'message':
+      return { text: '', blocks: [] }
+
+    case 'action':
+      return { actions: [] }
+
+    case 'condition':
+      return {
+        conditionType: 'field',
+        field: '',
+        operator: 'equals',
+        value: '',
+        conditions: []
+      }
+
+    case 'randomizer':
+      return {
+        paths: [
+          { id: uid(), name: 'Caminho A', percentage: 50 },
+          { id: uid(), name: 'Caminho B', percentage: 50 }
+        ]
+      }
+
+    case 'wait':
+      return {
+        delayType: 'fixed',
+        value: 5,
+        unit: 'seconds',
+        randomMin: 1,
+        randomMax: 10
+      }
+
+    case 'comment':
+      return { text: '', color: '#f59e0b' }
+
+    case 'start_automation':
+      return { flowId: null, flowName: '' }
+
+    default:
+      // fallback seguro
+      return { text: '', blocks: [] }
+  }
+}
+
+const duplicateStep = async (step) => {
+  try {
+    if (!step?.id) return
+    if (step.type === 'trigger') {
+      toast.info('Gatilho não pode ser duplicado')
+      return
+    }
+
+    const nextIndex = steps.value.length + 1
+    const stepType = step.type
+    const stepConfig = getBlankConfigForStepType(stepType)
+
+    const newStep = await createFlowStep(flowId.value, {
+      type: stepType,
+      order_index: nextIndex,
+      config: stepConfig
+    })
+
+    const srcPos = nodePositions.value[step.id]
+    nodePositions.value[newStep.id] = srcPos
+      ? { x: srcPos.x + 40, y: srcPos.y + 40 }
+      : { x: 120, y: 120 }
+
+    steps.value.push(newStep)
+    selectedStep.value = newStep
+
+    autoSave({ scope: 'workflow', withStepSync: false })
+    toast.success('Bloco duplicado (em branco)')
+  } catch (error) {
+    console.error('Erro ao duplicar step:', error)
+    toast.error('Erro ao duplicar bloco')
   }
 }
 
@@ -3178,11 +3417,12 @@ const startBlockDrag = (event, step, block, blockIndex) => {
   }
   
   event.stopPropagation()
-  draggingBlock.value = { ...block, originalIndex: blockIndex }
+  draggingBlock.value = { ...block, startIndex: blockIndex, currentIndex: blockIndex }
   blockDragStep.value = step
   
   // Criar elemento ghost
   const originalElement = event.target.closest('.msg-block')
+  const blocksContainerEl = originalElement?.parentElement || null
   const ghost = originalElement.cloneNode(true)
   ghost.classList.add('msg-block-ghost')
   ghost.style.position = 'fixed'
@@ -3194,6 +3434,37 @@ const startBlockDrag = (event, step, block, blockIndex) => {
   document.body.appendChild(ghost)
   ghostElement.value = ghost
   
+  let pendingReorderIndex = null
+  let reorderFrame = null
+
+  const applyReorder = () => {
+    reorderFrame = null
+    if (!draggingBlock.value || pendingReorderIndex === null) return
+    const blocks = blockDragStep.value?.config?.blocks
+    if (!blocks) return
+
+    const draggedId = String(draggingBlock.value.id)
+    const fromIndex = blocks.findIndex(b => String(b.id) === draggedId)
+    if (fromIndex < 0) return
+
+    let toIndex = pendingReorderIndex
+    // Inserção pode ser no final (length)
+    toIndex = Math.max(0, Math.min(blocks.length, toIndex))
+    if (toIndex === fromIndex) return
+
+    const [moved] = blocks.splice(fromIndex, 1)
+    // Após remover, o array diminui 1; clamp novamente
+    toIndex = Math.max(0, Math.min(blocks.length, toIndex))
+    blocks.splice(toIndex, 0, moved)
+    draggingBlock.value.currentIndex = toIndex
+  }
+
+  const scheduleReorder = (toIndex) => {
+    pendingReorderIndex = toIndex
+    if (reorderFrame) return
+    reorderFrame = requestAnimationFrame(applyReorder)
+  }
+
   const handleMouseMove = (e) => {
     if (!draggingBlock.value) return
     
@@ -3203,49 +3474,82 @@ const startBlockDrag = (event, step, block, blockIndex) => {
       ghostElement.value.style.top = `${e.clientY - 20}px`
     }
     
-    // Calcular sobre qual bloco está passando
-    const blocks = blockDragStep.value.config.blocks
-    const mouseY = e.clientY
-    
-    // Encontrar o bloco mais próximo
-    let closestIndex = draggingBlock.value.originalIndex
-    let closestDistance = Infinity
-    
-    blocks.forEach((_, index) => {
-      if (index === draggingBlock.value.originalIndex) return
-      
-      const element = document.querySelector(`[data-block-index="${index}"]`)
-      if (element) {
-        const rect = element.getBoundingClientRect()
-        const centerY = rect.top + rect.height / 2
-        const distance = Math.abs(mouseY - centerY)
-        
-        if (distance < closestDistance) {
-          closestDistance = distance
-          closestIndex = index
+    const blocks = blockDragStep.value?.config?.blocks
+    if (!blocks || blocks.length < 2) return
+
+    // Descobrir qual bloco está sob o mouse (sem depender do índice original)
+    const el = document.elementFromPoint(e.clientX, e.clientY)
+    const overBlockEl = el?.closest?.('.msg-block')
+    const overId = overBlockEl?.dataset?.blockId
+    const draggedId = String(draggingBlock.value.id)
+
+    const isInThisContainer = (candidateEl) => {
+      if (!blocksContainerEl || !candidateEl) return true
+      return blocksContainerEl.contains(candidateEl)
+    }
+
+    let targetIndex = null
+    if (overId && overId !== draggedId && isInThisContainer(overBlockEl)) {
+      const overIndex = blocks.findIndex(b => String(b.id) === String(overId))
+      if (overIndex >= 0) {
+        const rect = overBlockEl.getBoundingClientRect()
+        const insertAfter = e.clientY > rect.top + rect.height / 2
+        targetIndex = insertAfter ? overIndex + 1 : overIndex
+      }
+    }
+
+    // Fallback: mouse entre blocos (ou fora do bloco) → usar o mais próximo pelo eixo Y
+    if (targetIndex === null && blocksContainerEl) {
+      const blockEls = Array.from(blocksContainerEl.querySelectorAll('.msg-block[data-block-id]'))
+      const closest = blockEls
+        .map((node) => {
+          const rect = node.getBoundingClientRect()
+          const centerY = rect.top + rect.height / 2
+          return { node, rect, distance: Math.abs(e.clientY - centerY) }
+        })
+        .sort((a, b) => a.distance - b.distance)[0]
+
+      if (closest?.node) {
+        const cid = closest.node.dataset.blockId
+        if (cid && cid !== draggedId) {
+          const overIndex = blocks.findIndex(b => String(b.id) === String(cid))
+          if (overIndex >= 0) {
+            const insertAfter = e.clientY > (closest.rect.top + closest.rect.height / 2)
+            targetIndex = insertAfter ? overIndex + 1 : overIndex
+          }
         }
       }
-    })
-    
-    dragOverIndex.value = closestIndex
+    }
+
+    if (targetIndex === null) {
+      dragOverIndex.value = null
+      return
+    }
+
+    // Ajuste do índice de inserção considerando remoção
+    const fromIndex = blocks.findIndex(b => String(b.id) === draggedId)
+    if (fromIndex < 0) return
+    let toIndex = targetIndex
+    if (toIndex > fromIndex) toIndex -= 1
+
+    if (toIndex === fromIndex) {
+      dragOverIndex.value = null
+      return
+    }
+
+    dragOverIndex.value = toIndex
+    scheduleReorder(toIndex)
   }
   
   const handleMouseUp = () => {
-    if (draggingBlock.value && dragOverIndex.value !== null) {
-      const blocks = blockDragStep.value.config.blocks
-      const fromIndex = draggingBlock.value.originalIndex
-      const toIndex = dragOverIndex.value
-      
-      if (fromIndex !== toIndex) {
-        // Remover do índice original
-        const [movedBlock] = blocks.splice(fromIndex, 1)
-        // Inserir no novo índice
-        blocks.splice(toIndex, 0, movedBlock)
-        
-        console.log(`Bloco movido de ${fromIndex} para ${toIndex}`)
-        autoSave()
-        toast.success('Sequência atualizada')
-      }
+    if (reorderFrame) cancelAnimationFrame(reorderFrame)
+    reorderFrame = null
+    pendingReorderIndex = null
+
+    const moved = draggingBlock.value && draggingBlock.value.startIndex !== draggingBlock.value.currentIndex
+    if (moved) {
+      autoSave()
+      toast.success('Sequência atualizada')
     }
     
     // Remover ghost com animação
@@ -3344,7 +3648,9 @@ const addContentBlock = (type) => {
 }
 
 const getNodeStyle = (stepId) => {
-  const pos = nodePositions.value[stepId] || { x: 0, y: 0 }
+  const pos = draggingNodeId.value === stepId
+    ? dragNodePos.value
+    : (nodePositions.value[stepId] || { x: 0, y: 0 })
   return {
     transform: `translate(${pos.x}px, ${pos.y}px)`
   }
@@ -3362,6 +3668,20 @@ const registerNodeEl = (el, stepId) => {
 let _dragNodeX = 0
 let _dragNodeY = 0
 
+let _nodeDragFrame = null
+let _pendingDragNodePos = null
+
+const scheduleDragNodePosUpdate = () => {
+  if (_nodeDragFrame) return
+  _nodeDragFrame = requestAnimationFrame(() => {
+    _nodeDragFrame = null
+    if (_pendingDragNodePos) {
+      dragNodePos.value = _pendingDragNodePos
+      _pendingDragNodePos = null
+    }
+  })
+}
+
 const startNodeDrag = (e, stepId) => {
   if (e.button !== 0) return
 
@@ -3371,6 +3691,9 @@ const startNodeDrag = (e, stepId) => {
   const pos = nodePositions.value[stepId] || { x: 0, y: 0 }
   _dragNodeX = pos.x
   _dragNodeY = pos.y
+
+  // Mantém o nó seguindo o mouse mesmo com re-render
+  dragNodePos.value = { x: pos.x, y: pos.y }
 
   dragStart.value = {
     x: e.clientX,
@@ -3391,9 +3714,9 @@ const handleNodeDragMove = (e) => {
   _dragNodeX = dragStart.value.nodeX + dx
   _dragNodeY = dragStart.value.nodeY + dy
 
-  // DOM direto — zero reatividade Vue
-  const el = nodeEls[draggingNodeId.value]
-  if (el) el.style.transform = `translate(${_dragNodeX}px, ${_dragNodeY}px)`
+  // Atualiza posição do nó em drag (throttled por RAF)
+  _pendingDragNodePos = { x: _dragNodeX, y: _dragNodeY }
+  scheduleDragNodePosUpdate()
 
   scheduleConnectionUpdate()
 }
@@ -3404,29 +3727,64 @@ const endNodeDrag = () => {
   document.removeEventListener('mousemove', handleNodeDragMove)
   document.removeEventListener('mouseup', endNodeDrag)
 
+  if (_nodeDragFrame) {
+    cancelAnimationFrame(_nodeDragFrame)
+    _nodeDragFrame = null
+  }
+  _pendingDragNodePos = null
+
   // Sincroniza estado reativo uma vez ao soltar
   if (id) {
     nodePositions.value[id] = { x: _dragNodeX, y: _dragNodeY }
-    autoSave()
+    dragNodePos.value = { x: _dragNodeX, y: _dragNodeY }
+    autoSave({ scope: 'workflow', withStepSync: false })
   }
 }
 
 // ==================== PAN ====================
 const startPan = (e) => {
   if (e.button !== 0) return
+
+  // Não iniciar pan se estiver arrastando nó ou conexão
+  if (draggingNodeId.value) return
+  if (isDraggingConnection.value) return
+
+  // Se clicou em algo "interativo", não panear (nó, porta, linha)
+  const t = e.target
+  if (
+    t?.closest?.('.flow-node') ||
+    t?.closest?.('.flow-port') ||
+    t?.closest?.('.connection-line')
+  ) {
+    return
+  }
+
+  e.preventDefault()
+
   isPanning.value = true
   _panCurrentX = canvasOffset.value.x
   _panCurrentY = canvasOffset.value.y
+
+  // estado reativo usado no template durante o pan
+  panOffset.value = { x: _panCurrentX, y: _panCurrentY }
   panStart.value = {
     x: e.clientX - canvasOffset.value.x,
     y: e.clientY - canvasOffset.value.y
   }
+
+  document.addEventListener('mousemove', handlePanMove)
+  document.addEventListener('mouseup', endPan)
 }
 
 const handlePanMove = (e) => {
   if (!isPanning.value) return
   _panCurrentX = e.clientX - panStart.value.x
   _panCurrentY = e.clientY - panStart.value.y
+
+  _pendingPanOffset = { x: _panCurrentX, y: _panCurrentY }
+  schedulePanOffsetUpdate()
+
+  // Aplicação direta no DOM para resposta imediata
   applyWorkspaceTransform(_panCurrentX, _panCurrentY, canvasScale.value)
 }
 
@@ -3434,7 +3792,17 @@ const endPan = () => {
   if (!isPanning.value) return
   isPanning.value = false
   canvasOffset.value = { x: _panCurrentX, y: _panCurrentY }
+  panOffset.value = { x: _panCurrentX, y: _panCurrentY }
   scheduleConnectionUpdate()
+
+  document.removeEventListener('mousemove', handlePanMove)
+  document.removeEventListener('mouseup', endPan)
+
+  if (_panFrame) {
+    cancelAnimationFrame(_panFrame)
+    _panFrame = null
+  }
+  _pendingPanOffset = null
 }
 
 // ==================== ZOOM ====================
@@ -3520,11 +3888,10 @@ const completeConnection = (toStepId) => {
     }
     
     // IMPORTANTE: Recalcular order_index imediatamente ao conectar blocos
-    console.log('🔗 Conexão criada! Recalculando order_index...')
     recalculateOrderIndex()
     
     // Auto-salvar após criar conexão
-    autoSave()
+    autoSave({ scope: 'workflow', withStepSync: true })
   }
   
   cancelConnection()
@@ -3568,6 +3935,8 @@ const onBtnActionToUrl = (btn, btnIdx) => {
   btn.targetStepId = ''
   if (step && block) {
     syncBtnConnection(step, block, btnIdx, '')
+    // A ação remove conexões do workflow + altera config do step
+    autoSave({ scope: 'workflow', withStepSync: true })
   }
 }
 
@@ -3640,11 +4009,10 @@ const removeConnection = async (connId) => {
   updateConnectionPaths()
   
   // IMPORTANTE: Recalcular order_index ao remover conexão
-  console.log('🔗 Conexão removida! Recalculando order_index...')
   recalculateOrderIndex()
   
   // Auto-salvar após remover conexão
-  autoSave()
+  autoSave({ scope: 'workflow', withStepSync: true })
 }
 
 // ==================== SVG PATHS ====================
@@ -3662,6 +4030,7 @@ const updateConnectionPaths = () => {
     const dx = toPoint.x - fromPoint.x
     const dy = toPoint.y - fromPoint.y
     const distance = Math.sqrt(dx * dx + dy * dy)
+    if (!distance) return null
     
     // Deslocamento para dar espaço à seta no final
     const offsetEnd = 15   // espaço para a seta
@@ -3672,9 +4041,19 @@ const updateConnectionPaths = () => {
     const endY = toPoint.y - (dy / distance) * offsetEnd
     
     const controlOffset = Math.abs(dx) * 0.5
-    const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`
+    const c1x = startX + controlOffset
+    const c1y = startY
+    const c2x = endX - controlOffset
+    const c2y = endY
+    const path = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`
+
+    // Ponto aproximado do meio da curva (t=0.5) para posicionar o botão de delete
+    const t = 0.5
+    const mt = 1 - t
+    const midX = (mt * mt * mt) * startX + (3 * mt * mt * t) * c1x + (3 * mt * t * t) * c2x + (t * t * t) * endX
+    const midY = (mt * mt * mt) * startY + (3 * mt * mt * t) * c1y + (3 * mt * t * t) * c2y + (t * t * t) * endY
     
-    return { id: conn.id, path }
+    return { id: conn.id, path, midX, midY }
   }).filter(Boolean)
 }
 
@@ -4000,15 +4379,17 @@ const onActionTypeChange = (action, index) => {
 }
 
 // ==================== LIFECYCLE ====================
+const handleTooltipDocumentClick = (e) => {
+  if (!e.target.closest('.info-icon')) {
+    closeTooltip()
+  }
+}
+
 onMounted(() => {
   loadData()
   
   // Fechar tooltip ao clicar fora
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.info-icon')) {
-      closeTooltip()
-    }
-  })
+  document.addEventListener('click', handleTooltipDocumentClick)
 })
 
 // Watch para recarregar quando mudar o ID da rota
@@ -4020,7 +4401,7 @@ watch(() => route.params.id, (newId, oldId) => {
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', closeTooltip)
+  document.removeEventListener('click', handleTooltipDocumentClick)
 })
 
 onBeforeUnmount(() => {
@@ -4028,10 +4409,77 @@ onBeforeUnmount(() => {
   document.removeEventListener('mouseup', endNodeDrag)
   document.removeEventListener('mousemove', handleConnectionDragMove)
   document.removeEventListener('mouseup', cancelConnection)
+  document.removeEventListener('mousemove', handlePanMove)
+  document.removeEventListener('mouseup', endPan)
+
+  if (_sidebarResizeMoveHandler) document.removeEventListener('mousemove', _sidebarResizeMoveHandler)
+  if (_sidebarResizeUpHandler) document.removeEventListener('mouseup', _sidebarResizeUpHandler)
+  _sidebarResizeMoveHandler = null
+  _sidebarResizeUpHandler = null
+  document.body.style.cursor = _sidebarResizePrevCursor
+  document.body.style.userSelect = _sidebarResizePrevUserSelect
+
+  if (_panFrame) {
+    cancelAnimationFrame(_panFrame)
+    _panFrame = null
+  }
+
+  // Caso estivesse redimensionando e a view seja desmontada
+  isResizingSidebar.value = false
 })
 </script>
 
 <style scoped>
+
+/* ===================== SIDEBAR RESIZER ===================== */
+.flow-editor-sidebar {
+  position: relative;
+}
+
+.flow-editor-sidebar .sidebar-header {
+  position: relative;
+  z-index: 10;
+  padding-right: 18px;
+}
+
+.flow-editor-sidebar .sidebar-close-btn {
+  position: relative;
+  z-index: 11;
+}
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  background: transparent;
+}
+
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: rgba(148, 163, 184, 0.18);
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.flow-editor-sidebar:hover .sidebar-resizer::after {
+  opacity: 1;
+}
+
+.flow-editor-sidebar.is-resizing .sidebar-resizer::after {
+  opacity: 1;
+  background: var(--accent);
+}
+
 
 /* ===================== FLOW EDITOR LOADER ===================== */
 
@@ -4239,13 +4687,34 @@ onBeforeUnmount(() => {
   stroke-linecap: round;
   filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
   pointer-events: stroke;
-  cursor: pointer;
+  cursor: default;
   transition: stroke 0.2s, stroke-width 0.2s;
 }
 
 .connection-line:hover {
-  stroke: rgba(239, 68, 68, 0.9);
+  stroke: rgba(34, 197, 94, 1);
   stroke-width: 4;
+}
+
+.connection-delete {
+  opacity: 1;
+  pointer-events: all;
+  transition: opacity 0.15s ease;
+  cursor: pointer;
+}
+
+.connection-delete-bg {
+  fill: rgba(2, 6, 23, 0.75);
+  stroke: rgba(239, 68, 68, 0.55);
+  stroke-width: 1;
+}
+
+.connection-delete-icon {
+  fill: none;
+  stroke: rgba(239, 68, 68, 0.95);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .connection-line-animated {
@@ -4277,14 +4746,14 @@ onBeforeUnmount(() => {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  border: none;
-  color: white;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: var(--accent);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   z-index: 10;
@@ -4292,8 +4761,9 @@ onBeforeUnmount(() => {
 
 .btn-add-block-circle:hover {
   transform: scale(1.1);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: rgba(0, 0, 0, 0.75);
+  border-color: var(--accent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 4px var(--accent-soft-hover);
 }
 
 .btn-add-block-circle:active {
@@ -4301,7 +4771,7 @@ onBeforeUnmount(() => {
 }
 
 .btn-add-block-circle svg {
-  stroke: white;
+  stroke: currentColor;
 }
 
 /* ===================== MODAL ADICIONAR BLOCO (ABM) ===================== */
@@ -4680,8 +5150,9 @@ onBeforeUnmount(() => {
 }
 
 .abm-badge-pro {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--text-primary);
 }
 
 .abm-badge-ai {
@@ -4764,8 +5235,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 6px;
   color: var(--accent);
   font-size: 0.8125rem;
@@ -4777,8 +5248,8 @@ onBeforeUnmount(() => {
 }
 
 .btn-add-action:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(0, 0, 0, 0.6);
+  border-color: var(--accent);
 }
 
 .actions-empty {
@@ -5412,6 +5883,22 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-sm);
   pointer-events: auto;
   transition: all 0.2s;
+}
+
+.btn-node-duplicate {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  pointer-events: auto;
+  transition: all 0.2s;
+}
+
+.btn-node-duplicate:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .btn-node-delete:hover {
