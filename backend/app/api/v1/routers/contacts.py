@@ -546,14 +546,94 @@ def get_contacts_field_stats(
 ):
     """Retorna agregação simples de campos personalizados (key:value) para a sidebar.
 
-    Implementação focada em SQLite (json_each). Para bases sem JSON1, pode falhar.
+    Suporta SQLite (JSON1: json_each) e SQL Server (OPENJSON).
     """
     limit = max(1, min(int(limit or 60), 200))
+
+    dialect = None
+    try:
+        dialect = (db.get_bind().dialect.name or "").lower()
+    except Exception:
+        dialect = None
+
+    if not dialect:
+        logger.warning("field-stats: não foi possível determinar o dialeto do banco; retornando vazio")
+        return []
+
+    if dialect == "mssql":
+        # SQL Server: usar JSON nativo. Também lida com custom_fields duplamente serializado,
+        # ex: '"{\"cidade\":\"BH\"}"' — nesse caso JSON_VALUE(custom_fields,'$') retorna o JSON interno.
+        sql = text(
+            """
+            WITH cf AS (
+              SELECT
+                CASE
+                  WHEN ISJSON(c.custom_fields) = 1 AND JSON_QUERY(c.custom_fields, '$') IS NOT NULL
+                    THEN c.custom_fields
+                  WHEN ISJSON(c.custom_fields) = 1
+                       AND JSON_VALUE(c.custom_fields, '$') IS NOT NULL
+                       AND ISJSON(JSON_VALUE(c.custom_fields, '$')) = 1
+                    THEN JSON_VALUE(c.custom_fields, '$')
+                  ELSE NULL
+                END AS cf_json
+              FROM contacts c
+              WHERE c.tenant_id = :tenant_id
+                AND c.custom_fields IS NOT NULL
+                AND LTRIM(RTRIM(c.custom_fields)) != ''
+                AND ISJSON(c.custom_fields) = 1
+            ), kv AS (
+              SELECT
+                je.[key] AS field,
+                CASE
+                  WHEN je.[type] = 1 THEN je.[value]
+                  WHEN je.[type] IN (2, 5) THEN CAST(je.[value] AS NVARCHAR(4000))
+                  WHEN je.[type] = 3 THEN 'true'
+                  WHEN je.[type] = 4 THEN 'false'
+                  ELSE NULL
+                END AS value
+              FROM cf
+              CROSS APPLY OPENJSON(cf.cf_json) AS je
+              WHERE cf.cf_json IS NOT NULL
+                AND je.[key] IS NOT NULL
+            )
+            SELECT
+              kv.field AS field,
+              kv.value AS value,
+              COUNT(*) AS count
+            FROM kv
+            WHERE kv.value IS NOT NULL AND kv.value != ''
+            GROUP BY kv.field, kv.value
+            ORDER BY COUNT(*) DESC
+            OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY;
+            """
+        )
+
+        try:
+            rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
+        except Exception as e:
+            logger.warning(
+                f"field-stats: falha ao executar JSON no SQL Server, retornando vazio: {e}"
+            )
+            rows = []
+
+        out: List[FieldPairCountOut] = []
+        for row in rows:
+            try:
+                out.append(
+                    FieldPairCountOut(
+                        field=str(row.field),
+                        value=str(row.value),
+                        count=int(row.count or 0),
+                    )
+                )
+            except Exception:
+                continue
+        return out
 
     # Alguns registros antigos podem ter custom_fields como JSON string (duplamente serializado),
     # ex: '"{\"cidade\":\"BH\"}"'. Nesse caso json_each(custom_fields) pode gerar key=NULL.
     # Normalizamos para sempre iterar sobre um JSON object.
-    sql = text(
+        sql = text(
         """
         WITH cf AS (
           SELECT
@@ -592,7 +672,11 @@ def get_contacts_field_stats(
         """
     )
 
-    rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
+    try:
+        rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
+    except Exception as e:
+        logger.warning(f"field-stats: falha ao executar JSON (sqlite), retornando vazio: {e}")
+        rows = []
     out: List[FieldPairCountOut] = []
     for row in rows:
         try:
