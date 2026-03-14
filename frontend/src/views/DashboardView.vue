@@ -5,16 +5,15 @@
       <div class="card card-interactive">
         <div class="stats-card">
           <div class="stats-label">Total de Contatos</div>
-          <div class="stats-value">{{ fmtInt(metrics?.contacts_total) }}</div>
+          <div v-if="loading" class="dash-skel dash-skel-value"></div>
+          <div v-else class="stats-value">{{ fmtInt(metrics?.contacts_total) }}</div>
           <div class="stats-change" :class="metrics?.contacts_last_24h ? 'positive' : ''">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
               <polyline points="17 6 23 6 23 12"/>
             </svg>
-            <span>
-              <template v-if="loading">Carregando…</template>
-              <template v-else>+{{ fmtInt(metrics?.contacts_last_24h) }} nas últimas 24h</template>
-            </span>
+            <span v-if="loading" class="dash-skel dash-skel-line"></span>
+            <span v-else>+{{ fmtInt(metrics?.contacts_last_24h) }} nas últimas 24h</span>
           </div>
         </div>
       </div>
@@ -22,15 +21,14 @@
       <div class="card card-interactive">
         <div class="stats-card">
           <div class="stats-label">Fluxos Ativos</div>
-          <div class="stats-value">{{ fmtInt(metrics?.flows_active) }}</div>
+          <div v-if="loading" class="dash-skel dash-skel-value"></div>
+          <div v-else class="stats-value">{{ fmtInt(metrics?.flows_active) }}</div>
           <div class="stats-change">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
-            <span>
-              <template v-if="loading">Carregando…</template>
-              <template v-else>{{ fmtInt(metrics?.flow_executions_today) }} disparados hoje</template>
-            </span>
+            <span v-if="loading" class="dash-skel dash-skel-line"></span>
+            <span v-else>{{ fmtInt(metrics?.flow_executions_today) }} disparados hoje</span>
           </div>
         </div>
       </div>
@@ -38,15 +36,14 @@
       <div class="card card-interactive">
         <div class="stats-card">
           <div class="stats-label">Canais Conectados</div>
-          <div class="stats-value">{{ fmtInt(metrics?.channels_connected) }}</div>
+          <div v-if="loading" class="dash-skel dash-skel-value"></div>
+          <div v-else class="stats-value">{{ fmtInt(metrics?.channels_connected) }}</div>
           <div class="stats-change">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
             </svg>
-            <span>
-              <template v-if="loading">Carregando…</template>
-              <template v-else>Ativos no tenant</template>
-            </span>
+            <span v-if="loading" class="dash-skel dash-skel-line"></span>
+            <span v-else>Ativos no tenant</span>
           </div>
         </div>
       </div>
@@ -78,9 +75,15 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="loading">
-              <td colspan="5" style="color: var(--muted); padding: 18px;">Carregando atividade…</td>
-            </tr>
+            <template v-if="loading">
+              <tr v-for="n in 5" :key="n">
+                <td><div class="dash-skel dash-skel-cell" style="width:120px"></div></td>
+                <td><div class="dash-skel dash-skel-cell" style="width:70px"></div></td>
+                <td><div class="dash-skel dash-skel-cell" style="width:100px"></div></td>
+                <td><div class="dash-skel dash-skel-cell" style="width:60px"></div></td>
+                <td><div class="dash-skel dash-skel-cell" style="width:60px"></div></td>
+              </tr>
+            </template>
             <tr v-else-if="recentActivity.length === 0">
               <td colspan="5" style="color: var(--muted); padding: 18px;">Sem atividade recente.</td>
             </tr>
@@ -172,7 +175,7 @@ import { getDashboardMetrics } from '@/api/dashboard'
 
 const router = useRouter()
 
-const loading = ref(false)
+const loading = ref(true)
 const error = ref('')
 const metrics = ref(null)
 const recentActivity = ref([])
@@ -237,3 +240,39 @@ onMounted(() => {
   load()
 })
 </script>
+
+<style scoped>
+/* ─── Dashboard skeleton shimmer ─────────────────────────── */
+@keyframes dash-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.dash-skel {
+  background: linear-gradient(90deg, var(--bg-secondary, #1a1a1a) 25%, var(--border, #2a2a2a) 50%, var(--bg-secondary, #1a1a1a) 75%);
+  background-size: 800px 100%;
+  animation: dash-shimmer 1.4s infinite linear;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.dash-skel-value {
+  width: 80px;
+  height: 38px;
+  border-radius: 6px;
+  margin: 4px 0;
+}
+
+.dash-skel-line {
+  width: 160px;
+  height: 13px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.dash-skel-cell {
+  height: 16px;
+  border-radius: 4px;
+  display: block;
+}
+</style>

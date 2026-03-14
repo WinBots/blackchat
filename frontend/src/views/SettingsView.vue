@@ -99,6 +99,27 @@
             </div>
 
             <div v-else-if="activeTab === 'Cobrança'" class="settings-subscriptions-card">
+
+              <!-- ── Skeleton while billing data loads ───────────────── -->
+              <div v-if="billingDataLoading" class="billing-skel">
+                <div class="billing-skel-head">
+                  <div class="tg-skel billing-skel-title"></div>
+                  <div class="tg-skel billing-skel-badge"></div>
+                </div>
+                <div class="billing-skel-rows">
+                  <div v-for="i in 3" :key="i" class="billing-skel-row">
+                    <div class="tg-skel billing-skel-cell billing-skel-cell--lg"></div>
+                    <div class="tg-skel billing-skel-cell billing-skel-cell--sm"></div>
+                  </div>
+                </div>
+                <div class="billing-skel-actions">
+                  <div class="tg-skel billing-skel-btn"></div>
+                  <div class="tg-skel billing-skel-btn"></div>
+                </div>
+              </div>
+
+              <!-- ── Real content ───────────────────────────────────── -->
+              <template v-else>
               <div class="settings-subscriptions-head">
                 <div>
                   <p class="settings-subscriptions-title">Situação da conta</p>
@@ -169,10 +190,30 @@
                   Ver planos
                 </button>
               </div>
+              </template><!-- /v-else billing loaded -->
             </div>
 
             <div v-else-if="activeTab === 'Planos'" class="settings-subs-wrap">
 
+              <!-- ── Skeleton while billing data loads ───────────────── -->
+              <div v-if="billingDataLoading" class="billing-skel">
+                <div class="billing-skel-head">
+                  <div class="tg-skel billing-skel-title"></div>
+                  <div class="tg-skel billing-skel-badge"></div>
+                </div>
+                <div class="billing-skel-plans-grid">
+                  <div v-for="i in 3" :key="i" class="billing-skel-plan-card">
+                    <div class="tg-skel billing-skel-plan-name"></div>
+                    <div class="tg-skel billing-skel-plan-price"></div>
+                    <div class="tg-skel billing-skel-plan-line"></div>
+                    <div class="tg-skel billing-skel-plan-line billing-skel-plan-line--sm"></div>
+                    <div class="tg-skel billing-skel-plan-btn"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Real content ───────────────────────────────────── -->
+              <template v-else>
               <!-- Header: título + toggle + link -->
               <div class="settings-subs-header">
                 <div class="settings-subs-header-left">
@@ -309,6 +350,7 @@
                   }}</b>
                 </span>
               </div>
+              </template><!-- /v-else billing loaded -->
 
             </div>
 
@@ -983,6 +1025,7 @@ const savingGeneral = ref(false)
 const plans = ref([])
 const subscriptionData = ref(null)
 const billingLoading = ref(false)
+const billingDataLoading = ref(true)
 const billingStatus = ref(null)
 const billingInterval = ref('monthly')
 const vpmEstimate = ref(null)
@@ -1679,32 +1722,37 @@ const openBillingPortal = async () => {
 }
 
 const loadBillingData = async () => {
+  billingDataLoading.value = true
   try {
-    plans.value = await listPlans()
-  } catch (e) {
-    console.error(e)
-    plans.value = []
-  }
+    try {
+      plans.value = await listPlans()
+    } catch (e) {
+      console.error(e)
+      plans.value = []
+    }
 
-  try {
-    subscriptionData.value = await getMySubscription()
-  } catch (e) {
-    console.error(e)
-    subscriptionData.value = null
-  }
+    try {
+      subscriptionData.value = await getMySubscription()
+    } catch (e) {
+      console.error(e)
+      subscriptionData.value = null
+    }
 
-  try {
-    billingStatus.value = await getBillingStatus()
-  } catch (e) {
-    console.error(e)
-    billingStatus.value = null
-  }
+    try {
+      billingStatus.value = await getBillingStatus()
+    } catch (e) {
+      console.error(e)
+      billingStatus.value = null
+    }
 
-  try {
-    const est = await getVpmEstimate()
-    vpmEstimate.value = est?.is_vpm_plan ? est : null
-  } catch (e) {
-    vpmEstimate.value = null
+    try {
+      const est = await getVpmEstimate()
+      vpmEstimate.value = est?.is_vpm_plan ? est : null
+    } catch (e) {
+      vpmEstimate.value = null
+    }
+  } finally {
+    billingDataLoading.value = false
   }
 }
 
@@ -2122,6 +2170,51 @@ onMounted(async () => {
 .tg-skel-card-body {
   flex: 1;
 }
+
+/* ─── Billing (Cobrança / Planos) skeleton ──────────────── */
+.billing-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 0;
+}
+.billing-skel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.billing-skel-title  { width: 200px; height: 24px; }
+.billing-skel-badge  { width: 80px;  height: 22px; border-radius: 20px; }
+
+.billing-skel-rows   { display: flex; flex-direction: column; gap: 10px; }
+.billing-skel-row    { display: flex; gap: 20px; }
+.billing-skel-cell   { height: 16px; border-radius: 4px; }
+.billing-skel-cell--lg { width: 180px; }
+.billing-skel-cell--md { width: 130px; }
+.billing-skel-cell--sm { width: 90px; }
+
+.billing-skel-actions { display: flex; gap: 12px; }
+.billing-skel-btn     { width: 130px; height: 36px; border-radius: 8px; }
+
+.billing-skel-plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.billing-skel-plan-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.billing-skel-plan-name  { height: 20px; width: 70%;  border-radius: 4px; }
+.billing-skel-plan-price { height: 32px; width: 50%;  border-radius: 4px; }
+.billing-skel-plan-line  { height: 13px; width: 85%;  border-radius: 4px; }
+.billing-skel-plan-line--sm { width: 60%; opacity: 0.6; }
+.billing-skel-plan-btn   { height: 36px; width: 100%; border-radius: 8px; margin-top: 8px; }
 
 .telegram-onboarding {
   max-width: 100%;

@@ -577,17 +577,17 @@ def get_contacts_field_stats(
         logger.warning("field-stats: não foi possível determinar o dialeto do banco; retornando vazio")
         return []
 
-        if dialect != "mssql":
-                logger.warning("field-stats: dialeto não suportado (somente mssql); retornando vazio")
-                return []
+    if dialect != "mssql":
+        logger.warning("field-stats: dialeto não suportado (somente mssql); retornando vazio")
+        return []
 
-        # SQL Server: usar JSON nativo. Também lida com custom_fields duplamente serializado,
-        # ex: '"{\"cidade\":\"BH\"}"' — nesse caso JSON_VALUE(custom_fields,'$') retorna o JSON interno.
-        sql = text(
-            """
-            WITH cf AS (
-              SELECT
-                CASE
+    # SQL Server: usar JSON nativo. Também lida com custom_fields duplamente serializado,
+    # ex: '"{\"cidade\":\"BH\"}"' — nesse caso JSON_VALUE(custom_fields,'$') retorna o JSON interno.
+    sql = text(
+        """
+        WITH cf AS (
+          SELECT
+            CASE
                   WHEN ISJSON(c.custom_fields) = 1 AND JSON_QUERY(c.custom_fields, '$') IS NOT NULL
                     THEN c.custom_fields
                   WHEN ISJSON(c.custom_fields) = 1
@@ -626,29 +626,27 @@ def get_contacts_field_stats(
             ORDER BY COUNT(*) DESC
             OFFSET 0 ROWS FETCH NEXT :limit ROWS ONLY;
             """
-        )
+    )
 
+    try:
+        rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
+    except Exception as e:
+        logger.warning(f"field-stats: falha ao executar JSON no SQL Server, retornando vazio: {e}")
+        rows = []
+
+    out: List[FieldPairCountOut] = []
+    for row in rows:
         try:
-                rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
-        except Exception as e:
-                logger.warning(
-                        f"field-stats: falha ao executar JSON no SQL Server, retornando vazio: {e}"
+            out.append(
+                FieldPairCountOut(
+                    field=str(row.field),
+                    value=str(row.value),
+                    count=int(row.count or 0),
                 )
-                rows = []
-
-        out: List[FieldPairCountOut] = []
-        for row in rows:
-                try:
-                        out.append(
-                                FieldPairCountOut(
-                                        field=str(row.field),
-                                        value=str(row.value),
-                                        count=int(row.count or 0),
-                                )
-                        )
-                except Exception:
-                        continue
-        return out
+            )
+        except Exception:
+            continue
+    return out
 
 
 @router.get("/", response_model=ContactListOut)
