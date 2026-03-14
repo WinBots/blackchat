@@ -6,10 +6,9 @@
         Pagamento confirmado
       </div>
 
-      <h1 class="thankyou-title">Obrigado por assinar a Blackchat Pro</h1>
+      <h1 class="thankyou-title">Obrigado por assinar o plano <span class="thankyou-plan">{{ planName }}</span>!</h1>
       <p class="thankyou-subtitle">
-        Seu plano foi ativado com sucesso. Agora você pode configurar seu ambiente e começar a automatizar
-        conversas no Telegram.
+        Seu plano foi ativado com sucesso. Agora você pode aproveitar todos os recursos disponíveis.
       </p>
 
       <div class="thankyou-section">
@@ -23,29 +22,44 @@
       </div>
 
       <div class="thankyou-actions">
-        <button class="btn btn-primary" type="button" @click="goToPlatform">Acessar Plataforma</button>
+        <button class="btn btn-primary" type="button" @click="goToPlans">Ver meu plano</button>
+        <button class="btn btn-ghost" type="button" @click="goToDashboard">Ir para Dashboard</button>
       </div>
-
-      <p class="thankyou-footnote">
-        Se você ainda não estiver logado, vamos te levar para o login.
-      </p>
     </div>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
 const auth = useAuth()
 
-const goToPlatform = () => {
+const planName = computed(() => {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('plan') || 'Pro'
+  } catch {
+    return 'Pro'
+  }
+})
+
+const goToPlans = () => {
+  if (auth.isAuthenticated.value) {
+    router.push('/settings?tab=Planos&checkout=success')
+  } else {
+    router.push('/login')
+  }
+}
+
+const goToDashboard = () => {
   if (auth.isAuthenticated.value) {
     router.push('/dashboard')
-    return
+  } else {
+    router.push('/login')
   }
-  router.push('/login')
 }
 </script>
 
@@ -92,6 +106,10 @@ const goToPlatform = () => {
   letter-spacing: -0.6px;
 }
 
+.thankyou-plan {
+  color: var(--accent);
+}
+
 .thankyou-subtitle {
   margin-top: 10px;
   color: var(--text-secondary);
@@ -120,12 +138,7 @@ const goToPlatform = () => {
 .thankyou-actions {
   margin-top: 22px;
   display: flex;
-  justify-content: flex-start;
-}
-
-.thankyou-footnote {
-  margin-top: 12px;
-  font-size: 0.85rem;
-  color: var(--muted);
+  gap: 10px;
+  flex-wrap: wrap;
 }
 </style>

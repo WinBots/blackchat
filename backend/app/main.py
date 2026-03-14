@@ -8,6 +8,7 @@ from app.api.v1.routers import (
     telegram, instagram, instagram_connect, media, admin, public, debug, dev_tools, dashboard,
     plans, subscription, billing
 )
+from app.api.v1.routers.stripe_config import router as stripe_config_router
 from app.db.session import Base, engine
 from app.db.auto_migrate import run_auto_migrations
 
@@ -46,6 +47,7 @@ app.add_middleware(
 app.include_router(public.router, prefix="/api/v1/public", tags=["public"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(stripe_config_router, prefix="/api/v1/admin", tags=["admin-stripe"])
 app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 app.include_router(channels.router, prefix="/api/v1/channels", tags=["channels"])
 app.include_router(flows.router, prefix="/api/v1/flows", tags=["flows"])

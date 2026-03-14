@@ -15,13 +15,9 @@ class Settings(BaseSettings):
     APP_HOST: str = "127.0.0.1"
     APP_PORT: int = 8061
 
-    # SQLite (dev local): sqlite:///./data/app.db
-    # SQL Server (produção): mssql+pyodbc://user:pass@host/dbname?driver=ODBC+Driver+17+for+SQL+Server
-    DATABASE_URL: str = "sqlite:///./data/app.db"
-
-    # Segurança: evitar cair silenciosamente em SQLite por falta de .env/variáveis
-    # Para permitir SQLite em dev, defina ALLOW_SQLITE=true no ambiente.
-    ALLOW_SQLITE: bool = False
+    # SQL Server (obrigatório):
+    # mssql+pyodbc://USER:PASSWORD@HOST:1433/DBNAME?driver=ODBC+Driver+17+for+SQL+Server
+    DATABASE_URL: str = ""
 
     # Autenticação
     JWT_SECRET_KEY: str = "9f4c2e7a1b8d6f3c0a5e9b7d1c4f8a2e6b3d0c7f1a9e5d2c8b4f6a0e3d7c1b5"
@@ -41,6 +37,11 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # Stripe — Price IDs (produção/live e dev/test)
+    # Para planos de preço fixo (ex.: Pro). Em produção, *sempre* use IDs do modo Live.
+    STRIPE_PRO_PRICE_ID_MONTHLY: str = ""
+    STRIPE_PRO_PRICE_ID_YEARLY: str = ""
+
     # Email (SMTP) - ex: Titan/HostGator
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
@@ -58,11 +59,13 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if not self.ALLOW_SQLITE and str(self.DATABASE_URL).strip().lower().startswith("sqlite"):
-            raise ValueError(
-                "SQLite não é permitido (ALLOW_SQLITE=false). Defina DATABASE_URL para SQL Server "
-                "ou configure ALLOW_SQLITE=true para uso local."
-            )
+        db_url = str(self.DATABASE_URL or "").strip()
+        if not db_url:
+            raise ValueError("DATABASE_URL é obrigatório e deve apontar para SQL Server (mssql+pyodbc://...).")
+
+        db_url_l = db_url.lower()
+        if not (db_url_l.startswith("mssql+pyodbc://") or db_url_l.startswith("mssql://") or "mssql" in db_url_l):
+            raise ValueError("Somente SQL Server é suportado. Configure DATABASE_URL com 'mssql+pyodbc://...'.")
         # Sincronizar JWT_SECRET_KEY e SECRET_KEY
         if self.JWT_SECRET_KEY != "changeme":
             self.SECRET_KEY = self.JWT_SECRET_KEY

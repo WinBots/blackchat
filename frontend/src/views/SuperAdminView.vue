@@ -55,6 +55,19 @@
               Planos
               <span class="super-admin-tab-count">{{ plans.length }}</span>
             </button>
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'stripe' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'stripe'"
+              @click="activeTab = 'stripe'; loadStripeConfig()"
+            >
+              Stripe
+              <span v-if="stripeConfig" class="super-admin-tab-badge" :class="stripeConfig.mode_active === 'live' ? 'badge-live' : 'badge-test'">
+                {{ stripeConfig.mode_active === 'live' ? 'LIVE' : 'TEST' }}
+              </span>
+            </button>
           </div>
 
           <div v-if="error" class="super-admin-error">
@@ -304,7 +317,7 @@
           </div>
         </div>
 
-        <div v-else class="super-admin-tab-panel" role="tabpanel">
+        <div v-else-if="activeTab === 'plans'" class="super-admin-tab-panel" role="tabpanel">
           <div class="card super-admin-section super-admin-section--full">
             <div class="super-admin-section-header">
               <div>
@@ -371,6 +384,135 @@
             </div>
           </div>
         </div>
+        <div v-else-if="activeTab === 'stripe'" class="super-admin-tab-panel" role="tabpanel">
+          <div class="card super-admin-section super-admin-section--full">
+            <div class="super-admin-section-header">
+              <div>
+                <h3 class="super-admin-section-title">Configuração Stripe</h3>
+                <div class="super-admin-section-subtitle">Chaves e produtos para integração com Stripe</div>
+              </div>
+            </div>
+
+            <div v-if="stripeLoadError" class="super-admin-error">{{ stripeLoadError }}</div>
+
+            <div v-if="stripeConfig" class="stripe-config-section">
+              <!-- Checklist de validação -->
+              <div class="stripe-validation">
+                <span class="stripe-validation-item" :class="stripeConfig.test_secret_key_set ? 'valid' : 'invalid'">TEST secret_key</span>
+                <span class="stripe-validation-item" :class="stripeConfig.test_pro_price_id ? 'valid' : 'invalid'">TEST pro_price_id</span>
+                <span class="stripe-validation-item" :class="stripeConfig.test_enterprise_product_id ? 'valid' : 'invalid'">TEST enterprise_product_id</span>
+                <span class="stripe-validation-item" :class="stripeConfig.live_secret_key_set ? 'valid' : 'invalid'">LIVE secret_key</span>
+                <span class="stripe-validation-item" :class="stripeConfig.live_pro_price_id ? 'valid' : 'invalid'">LIVE pro_price_id</span>
+                <span class="stripe-validation-item" :class="stripeConfig.live_enterprise_product_id ? 'valid' : 'invalid'">LIVE enterprise_product_id</span>
+              </div>
+
+              <!-- Modo Atual -->
+              <div class="stripe-mode-box" :class="stripeConfig.mode_active === 'live' ? 'stripe-mode-live' : 'stripe-mode-test'">
+                <div class="stripe-mode-label">
+                  <strong>Modo ativo:</strong>
+                  <span class="super-admin-tab-badge" :class="stripeConfig.mode_active === 'live' ? 'badge-live' : 'badge-test'">{{ stripeConfig.mode_active?.toUpperCase() }}</span>
+                </div>
+                <div v-if="stripeConfig.mode_active === 'live'" class="stripe-mode-warn">⚠ Modo LIVE ativo — transações reais</div>
+                <div class="stripe-mode-actions">
+                  <button class="btn btn-ghost btn-sm" type="button" :disabled="stripeConfig.mode_active === 'test' || stripeSaving" @click="toggleStripeMode('test')">Usar TEST</button>
+                  <button class="btn btn-danger btn-sm" type="button" :disabled="stripeConfig.mode_active === 'live' || stripeSaving" @click="toggleStripeMode('live')">Usar LIVE</button>
+                </div>
+              </div>
+
+              <!-- Credenciais TEST -->
+              <div class="super-admin-subsection">
+                <h4 class="super-admin-subtitle">Credenciais TEST</h4>
+                <div class="super-admin-form-grid">
+                  <div class="input-group">
+                    <label class="input-label">Secret Key <span v-if="stripeConfig.test_secret_key_set" class="stripe-key-set">✓ definida</span></label>
+                    <div class="stripe-secret-wrap">
+                      <input class="input" :type="showKeys.test_secret_key ? 'text' : 'password'" v-model="stripeDraft.test_secret_key"
+                        :placeholder="stripeConfig.test_secret_key_masked || 'sk_test_…'" autocomplete="off" />
+                      <button type="button" class="stripe-eye-btn" @click="showKeys.test_secret_key = !showKeys.test_secret_key" :title="showKeys.test_secret_key ? 'Ocultar' : 'Mostrar'">
+                        <svg v-if="!showKeys.test_secret_key" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Publishable Key <span v-if="stripeConfig.test_publishable_key" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.test_publishable_key" placeholder="pk_test_…" />
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Webhook Secret <span v-if="stripeConfig.test_webhook_secret_set" class="stripe-key-set">✓ definida</span></label>
+                    <div class="stripe-secret-wrap">
+                      <input class="input" :type="showKeys.test_webhook_secret ? 'text' : 'password'" v-model="stripeDraft.test_webhook_secret"
+                        :placeholder="stripeConfig.test_webhook_secret_masked || 'whsec_…'" autocomplete="off" />
+                      <button type="button" class="stripe-eye-btn" @click="showKeys.test_webhook_secret = !showKeys.test_webhook_secret" :title="showKeys.test_webhook_secret ? 'Ocultar' : 'Mostrar'">
+                        <svg v-if="!showKeys.test_webhook_secret" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Pro Price ID <span v-if="stripeConfig.test_pro_price_id" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.test_pro_price_id" placeholder="price_test_…" />
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Enterprise Product ID <span v-if="stripeConfig.test_enterprise_product_id" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.test_enterprise_product_id" placeholder="prod_test_…" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Credenciais LIVE -->
+              <div class="super-admin-subsection">
+                <h4 class="super-admin-subtitle">Credenciais LIVE</h4>
+                <div class="super-admin-form-grid">
+                  <div class="input-group">
+                    <label class="input-label">Secret Key <span v-if="stripeConfig.live_secret_key_set" class="stripe-key-set">✓ definida</span></label>
+                    <div class="stripe-secret-wrap">
+                      <input class="input" :type="showKeys.live_secret_key ? 'text' : 'password'" v-model="stripeDraft.live_secret_key"
+                        :placeholder="stripeConfig.live_secret_key_masked || 'sk_live_…'" autocomplete="off" />
+                      <button type="button" class="stripe-eye-btn" @click="showKeys.live_secret_key = !showKeys.live_secret_key" :title="showKeys.live_secret_key ? 'Ocultar' : 'Mostrar'">
+                        <svg v-if="!showKeys.live_secret_key" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Publishable Key <span v-if="stripeConfig.live_publishable_key" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.live_publishable_key" placeholder="pk_live_…" />
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Webhook Secret <span v-if="stripeConfig.live_webhook_secret_set" class="stripe-key-set">✓ definida</span></label>
+                    <div class="stripe-secret-wrap">
+                      <input class="input" :type="showKeys.live_webhook_secret ? 'text' : 'password'" v-model="stripeDraft.live_webhook_secret"
+                        :placeholder="stripeConfig.live_webhook_secret_masked || 'whsec_…'" autocomplete="off" />
+                      <button type="button" class="stripe-eye-btn" @click="showKeys.live_webhook_secret = !showKeys.live_webhook_secret" :title="showKeys.live_webhook_secret ? 'Ocultar' : 'Mostrar'">
+                        <svg v-if="!showKeys.live_webhook_secret" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Pro Price ID <span v-if="stripeConfig.live_pro_price_id" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.live_pro_price_id" placeholder="price_live_…" />
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label">Enterprise Product ID <span v-if="stripeConfig.live_enterprise_product_id" class="stripe-key-set">✓</span></label>
+                    <input class="input" type="text" v-model="stripeDraft.live_enterprise_product_id" placeholder="prod_live_…" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="super-admin-actions">
+                <button class="btn btn-primary" type="button" @click="saveStripeConfig" :disabled="stripeSaving">
+                  {{ stripeSaving ? 'Salvando…' : 'Salvar configuração Stripe' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-else class="super-admin-muted-block">
+              <button class="btn btn-ghost" type="button" @click="loadStripeConfig">Carregar configuração</button>
+            </div>
+          </div>
+        </div>
         </template>
       </div>
     </div>
@@ -391,6 +533,7 @@ import {
   adminListPlans,
   adminUpdatePlan
 } from '@/api/superAdmin'
+import { getStripeConfig, updateStripeConfig, setStripeMode } from '@/api/stripeConfig'
 
 const router = useRouter()
 const toast = useToast()
@@ -401,6 +544,29 @@ const savingSubscription = ref(false)
 const savingUserId = ref(null)
 const savingPlanId = ref(null)
 const error = ref('')
+
+// ── Stripe ────────────────────────────────────────────────────────────────
+const stripeConfig = ref(null)
+const stripeLoadError = ref('')
+const stripeSaving = ref(false)
+const showKeys = ref({
+  test_secret_key: false,
+  test_webhook_secret: false,
+  live_secret_key: false,
+  live_webhook_secret: false,
+})
+const stripeDraft = ref({
+  test_secret_key: '',
+  test_publishable_key: '',
+  test_webhook_secret: '',
+  test_pro_price_id: '',
+  test_enterprise_product_id: '',
+  live_secret_key: '',
+  live_publishable_key: '',
+  live_webhook_secret: '',
+  live_pro_price_id: '',
+  live_enterprise_product_id: ''
+})
 
 const activeTab = ref('tenants')
 
@@ -594,6 +760,80 @@ const savePlan = async (p) => {
     toast.error(e?.response?.data?.detail || 'Erro ao salvar plano')
   } finally {
     if (savingPlanId.value === p.id) savingPlanId.value = null
+  }
+}
+
+const loadStripeConfig = async () => {
+  stripeLoadError.value = ''
+  try {
+    stripeConfig.value = await getStripeConfig()
+    // Pré-popula campos não-sensíveis no draft para que fiquem visíveis ao usuário
+    const c = stripeConfig.value
+    stripeDraft.value.test_publishable_key      = c.test_publishable_key || ''
+    stripeDraft.value.test_pro_price_id         = c.test_pro_price_id || ''
+    stripeDraft.value.test_enterprise_product_id = c.test_enterprise_product_id || ''
+    stripeDraft.value.live_publishable_key      = c.live_publishable_key || ''
+    stripeDraft.value.live_pro_price_id         = c.live_pro_price_id || ''
+    stripeDraft.value.live_enterprise_product_id = c.live_enterprise_product_id || ''
+    // Campos sensíveis ficam em branco (o placeholder mostra a versão mascarada)
+    stripeDraft.value.test_secret_key    = ''
+    stripeDraft.value.test_webhook_secret = ''
+    stripeDraft.value.live_secret_key    = ''
+    stripeDraft.value.live_webhook_secret = ''
+  } catch (e) {
+    console.error(e)
+    stripeLoadError.value = e?.response?.data?.detail || 'Erro ao carregar configuração Stripe'
+  }
+}
+
+const saveStripeConfig = async () => {
+  stripeSaving.value = true
+  try {
+    // Monta payload com todos os campos do draft (vazios limpam o campo no banco)
+    const payload = { ...stripeDraft.value }
+    // Campos sensíveis vazios são omitidos (não apagar acidentalmente)
+    const sensitiveFields = ['test_secret_key', 'test_webhook_secret', 'live_secret_key', 'live_webhook_secret']
+    sensitiveFields.forEach(k => {
+      if (!payload[k] || !payload[k].trim()) delete payload[k]
+    })
+    stripeConfig.value = await updateStripeConfig(payload)
+    // Mantém campos públicos no draft com valores salvos; limpa apenas os sensíveis
+    const c = stripeConfig.value
+    stripeDraft.value.test_publishable_key       = c.test_publishable_key || ''
+    stripeDraft.value.test_pro_price_id          = c.test_pro_price_id || ''
+    stripeDraft.value.test_enterprise_product_id = c.test_enterprise_product_id || ''
+    stripeDraft.value.live_publishable_key       = c.live_publishable_key || ''
+    stripeDraft.value.live_pro_price_id          = c.live_pro_price_id || ''
+    stripeDraft.value.live_enterprise_product_id = c.live_enterprise_product_id || ''
+    stripeDraft.value.test_secret_key    = ''
+    stripeDraft.value.test_webhook_secret = ''
+    stripeDraft.value.live_secret_key    = ''
+    stripeDraft.value.live_webhook_secret = ''
+    toast.success('Configuração Stripe salva!')
+  } catch (e) {
+    console.error(e)
+    toast.error(e?.response?.data?.detail || 'Erro ao salvar configuração Stripe')
+  } finally {
+    stripeSaving.value = false
+  }
+}
+
+const toggleStripeMode = async (mode) => {
+  if (mode === 'live') {
+    const ok = window.confirm(
+      'Tem certeza que deseja ativar o modo LIVE?\nTransações reais serão cobradas dos clientes.'
+    )
+    if (!ok) return
+  }
+  stripeSaving.value = true
+  try {
+    stripeConfig.value = await setStripeMode(mode)
+    toast.success(`Stripe agora em modo ${mode.toUpperCase()}`)
+  } catch (e) {
+    console.error(e)
+    toast.error(e?.response?.data?.detail || 'Erro ao alternar modo Stripe')
+  } finally {
+    stripeSaving.value = false
   }
 }
 
@@ -878,4 +1118,40 @@ onMounted(load)
 .super-admin-page .input {
   padding: 10px 12px;
 }
+
+/* ── Stripe Config Panel ─────────────────────────────── */
+.super-admin-tab-badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:var(--radius-full); font-size:0.75rem; font-weight:700; }
+.badge-test { background:rgba(234,179,8,0.15); color:#eab308; }
+.badge-live { background:rgba(239,68,68,0.15); color:#ef4444; }
+.stripe-mode-box { padding:14px; border-radius:var(--radius-lg); border:1px solid; margin-bottom:12px; }
+.stripe-mode-test { background:rgba(234,179,8,0.05); border-color:rgba(234,179,8,0.2); }
+.stripe-mode-live { background:rgba(239,68,68,0.05); border-color:rgba(239,68,68,0.3); }
+.stripe-mode-label { display:flex; align-items:center; gap:8px; font-size:1rem; }
+.stripe-mode-warn { margin-top:8px; color:#f87171; font-size:0.875rem; }
+.stripe-mode-actions { display:flex; gap:10px; margin-top:12px; }
+.stripe-config-section .input-label { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.stripe-key-set {
+  display:inline-flex; align-items:center; gap:3px;
+  color:#22c55e; font-size:0.72rem; font-weight:600;
+  background:rgba(34,197,94,0.12); border-radius:4px;
+  padding:1px 7px; white-space:nowrap; flex-shrink:0;
+  border:1px solid rgba(34,197,94,0.25);
+}
+.stripe-validation { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+.stripe-validation-item { padding:6px 12px; border-radius:var(--radius-full); font-size:0.85rem; font-weight:600; }
+.stripe-validation-item.valid { background:rgba(34,197,94,0.12); color:#22c55e; }
+.stripe-validation-item.invalid { background:rgba(239,68,68,0.1); color:#f87171; }
+.btn-danger { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#f87171; }
+.btn-danger:hover { background:rgba(239,68,68,0.25); }
+
+.stripe-secret-wrap { position:relative; display:flex; align-items:center; }
+.stripe-secret-wrap .input { flex:1; padding-right:38px; }
+.stripe-eye-btn {
+  position:absolute; right:8px;
+  background:none; border:none; cursor:pointer;
+  color:var(--text-muted, #888); padding:4px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:4px; transition:color 0.15s;
+}
+.stripe-eye-btn:hover { color:var(--text-primary, #fff); }
 </style>

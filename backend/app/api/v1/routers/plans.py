@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_tenant
+from app.config import get_settings
 from app.db.session import get_db
 from app.db.models.plan import Plan
 from app.db.models import Tenant
@@ -51,6 +52,15 @@ class PlanOut(BaseModel):
 
 def _seed_plans(db: Session) -> None:
     """Cria ou atualiza os 3 planos canônicos (Free / Pro / Enterprise) conforme PLANOS.md."""
+
+    settings = get_settings()
+
+    # Pro (fixo): em produção, configure via .env com IDs do modo LIVE.
+    # Em ambiente local, mantém fallback para o price_id de teste legado (facilita dev).
+    pro_monthly_price_id = (getattr(settings, "STRIPE_PRO_PRICE_ID_MONTHLY", "") or "").strip() or None
+    pro_yearly_price_id = (getattr(settings, "STRIPE_PRO_PRICE_ID_YEARLY", "") or "").strip() or None
+    if settings.ENVIRONMENT in {"local", "dev", "development"} and not pro_monthly_price_id:
+        pro_monthly_price_id = "price_1T5g14H2dYCb5KgDXFXPwDtI"
 
     canonical = [
         # ── Free ─────────────────────────────────────────────────────
@@ -100,8 +110,8 @@ def _seed_plans(db: Session) -> None:
             has_whitelabel=False,
             has_early_access=False,
             is_active=True,
-            stripe_price_id_monthly="price_1T5g14H2dYCb5KgDXFXPwDtI",
-            stripe_price_id_yearly=None,
+            stripe_price_id_monthly=pro_monthly_price_id,
+            stripe_price_id_yearly=pro_yearly_price_id,
         ),
         # ── Enterprise ───────────────────────────────────────────────
         dict(
@@ -135,6 +145,9 @@ def _seed_plans(db: Session) -> None:
         if existing:
             # Atualiza todos os campos de preços, VPM, IDs do Stripe e limites
             for k, v in data.items():
+                # Não sobrescreve IDs Stripe existentes quando o seed não tem valor.
+                if k in {"stripe_price_id_monthly", "stripe_price_id_yearly"} and v is None:
+                    continue
                 setattr(existing, k, v)
         else:
             db.add(Plan(**data))

@@ -42,10 +42,13 @@ class Subscription(Base):
     # Contatos contratados (Enterprise: valor escolhido no checkout; Pro: implícito pelo plano)
     contracted_contacts = Column(Integer, nullable=True)
 
-    # Stripe linkage (opcional)
-    stripe_subscription_id = Column(String(255), nullable=True)
-    stripe_price_id = Column(String(255), nullable=True)
-    
+    # Stripe linkage
+    stripe_subscription_id  = Column(String(255), nullable=True)
+    stripe_price_id         = Column(String(255), nullable=True)   # Pro: price_id usado
+    stripe_product_id       = Column(String(255), nullable=True)   # Enterprise: product_id
+    stripe_mode             = Column(String(10),  nullable=True)   # "test" ou "live"
+    monthly_amount_cents    = Column(Integer,      nullable=True)   # Valor contratado em centavos
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

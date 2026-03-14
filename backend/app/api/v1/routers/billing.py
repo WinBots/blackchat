@@ -9,6 +9,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from starlette.requests import ClientDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -20,7 +21,10 @@ from app.db.models.user import User
 from app.db.models.plan import Plan
 from app.db.models.subscription import Subscription, SubscriptionStatus
 from app.db.models.stripe_webhook_event import StripeWebhookEvent
+from app.db.models.stripe_config import StripeConfig
+from app.db.models.subscription_history import SubscriptionHistory
 from app.services.billing_service import estimate_billing
+from app.services import stripe_service
 from app.services.email_sender import (
     send_plan_activated_email,
     send_plan_upgraded_email,
@@ -138,10 +142,9 @@ def billing_status(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    settings = get_settings()
     stripe = _get_stripe()
     return BillingStatusOut(
-        stripe_configured=bool(stripe and getattr(settings, "STRIPE_SECRET_KEY", "")),
+        stripe_configured=bool(stripe and stripe_service.is_configured(db)),
         has_customer=bool(getattr(tenant, "stripe_customer_id", None)),
     )
 
@@ -202,27 +205,28 @@ def create_checkout_session(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
+    """
+    Checkout Pro — utiliza o price_id fixo recorrente mensal configurado pelo superadmin.
+    O ambiente (test/live) e as credenciais são resolvidos pelo stripe_service.
+    """
     settings = get_settings()
     stripe = _get_stripe()
     if not stripe:
         raise HTTPException(status_code=500, detail="Stripe SDK não está instalado.")
-    if not getattr(settings, "STRIPE_SECRET_KEY", None):
-        raise HTTPException(status_code=500, detail="STRIPE_SECRET_KEY não configurada.")
+
+    creds = stripe_service.require_pro_credentials(db)
 
     plan = db.query(Plan).filter(Plan.id == body.plan_id, Plan.is_active == True).first()  # noqa: E712
     if not plan:
         raise HTTPException(status_code=404, detail="Plano não encontrado.")
+    if plan.name == "free":
+        raise HTTPException(status_code=400, detail="Plano Free não precisa de checkout.")
+    if plan.name == "unlimited":
+        raise HTTPException(status_code=400, detail="Use /enterprise-checkout para o plano Enterprise.")
 
-    if body.interval == "yearly":
-        price_id = getattr(plan, "stripe_price_id_yearly", None)
-        if not price_id:
-            raise HTTPException(status_code=400, detail="Plano sem Stripe price_id anual configurado.")
-    else:
-        price_id = getattr(plan, "stripe_price_id_monthly", None)
-        if not price_id:
-            raise HTTPException(status_code=400, detail="Plano sem Stripe price_id mensal configurado.")
+    price_id = creds.pro_price_id  # vem do stripe_config (test ou live)
 
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_key = creds.secret_key
 
     customer_id = getattr(tenant, "stripe_customer_id", None)
     if not customer_id:
@@ -236,7 +240,7 @@ def create_checkout_session(
         db.commit()
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
-    success_url = f"{frontend_url}/thank-you"
+    success_url = f"{frontend_url}/thank-you?plan={plan.display_name}&checkout=success"
     cancel_url  = f"{frontend_url}/settings?tab=Cobran%C3%A7a&billing=cancel"
 
     session = stripe.checkout.Session.create(
@@ -250,14 +254,15 @@ def create_checkout_session(
             "app": "blackchatpro",
             "tenant_id": str(tenant.id),
             "plan_id": str(plan.id),
-            "interval": body.interval,
+            "interval": "monthly",
+            "stripe_mode": creds.mode,
         },
         subscription_data={
             "metadata": {
                 "app": "blackchatpro",
                 "tenant_id": str(tenant.id),
                 "plan_id": str(plan.id),
-                "interval": body.interval,
+                "stripe_mode": creds.mode,
             }
         },
     )
@@ -272,22 +277,22 @@ def create_enterprise_checkout(
     db: Session = Depends(get_db),
 ):
     """
-    Cria uma sessão de checkout Stripe com preço dinâmico para o plano Enterprise.
-    Não usa price_id fixo — calcula o preço pelo volume de contatos e usa price_data.
+    Checkout Enterprise — preço recorrente mensal inline calculado pelo backend.
+    Usa o product_id do produto 'BlackChat Enterprise' configurado pelo superadmin.
+    O frontend envia apenas a quantidade de contatos; o backend calcula o valor.
     """
     settings = get_settings()
     stripe = _get_stripe()
     if not stripe:
         raise HTTPException(status_code=500, detail="Stripe SDK não está instalado.")
-    if not getattr(settings, "STRIPE_SECRET_KEY", None):
-        raise HTTPException(status_code=500, detail="STRIPE_SECRET_KEY não configurada.")
+
+    creds = stripe_service.require_enterprise_credentials(db)
 
     contact_count = max(body.contact_count, 1)
     monthly_price = calculate_enterprise_price(contact_count)
-    # Stripe trabalha em centavos (inteiro)
     unit_amount_cents = int(round(monthly_price * 100))
 
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    stripe.api_key = creds.secret_key
 
     customer_id = getattr(tenant, "stripe_customer_id", None)
     if not customer_id:
@@ -300,23 +305,24 @@ def create_enterprise_checkout(
         tenant.stripe_customer_id = customer_id
         db.commit()
 
-    # Busca o plano Enterprise para registrar o plan_id nos metadados
+    # Busca o plano Enterprise no banco para gravar plan_id nos metadados
     ent_plan = db.query(Plan).filter(Plan.name == "unlimited", Plan.is_active == True).first()  # noqa: E712
     plan_id_meta = str(ent_plan.id) if ent_plan else "enterprise"
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
-    success_url = f"{frontend_url}/thank-you"
+    ent_display = ent_plan.display_name if ent_plan else "Enterprise"
+    success_url = f"{frontend_url}/thank-you?plan={ent_display}&checkout=success"
     cancel_url  = f"{frontend_url}/settings?tab=Cobran%C3%A7a&billing=cancel"
 
+    # Enterprise: inline/custom recurring monthly usando o product_id configurado.
+    # O 'product' garante que a Stripe associa ao produto correto (sem criar novos produtos a cada checkout).
     session = stripe.checkout.Session.create(
         mode="subscription",
         customer=customer_id,
         line_items=[{
             "price_data": {
                 "currency": "brl",
-                "product_data": {
-                    "name": f"Blackchat Pro Enterprise — até {contact_count:,} contatos/mês".replace(",", "."),
-                },
+                "product": creds.enterprise_product_id,
                 "unit_amount": unit_amount_cents,
                 "recurring": {"interval": "month"},
             },
@@ -330,14 +336,17 @@ def create_enterprise_checkout(
             "tenant_id": str(tenant.id),
             "plan_id": plan_id_meta,
             "interval": "monthly",
+            "stripe_mode": creds.mode,
             "enterprise_contacts": str(contact_count),
             "enterprise_price": str(monthly_price),
+            "enterprise_product_id": creds.enterprise_product_id,
         },
         subscription_data={
             "metadata": {
                 "app": "blackchatpro",
                 "tenant_id": str(tenant.id),
                 "plan_id": plan_id_meta,
+                "stripe_mode": creds.mode,
                 "enterprise_contacts": str(contact_count),
                 "enterprise_price": str(monthly_price),
             }
@@ -356,17 +365,16 @@ def create_portal_session(
     stripe = _get_stripe()
     if not stripe:
         raise HTTPException(status_code=500, detail="Stripe SDK não está instalado.")
-    if not getattr(settings, "STRIPE_SECRET_KEY", None):
-        raise HTTPException(status_code=500, detail="STRIPE_SECRET_KEY não configurada.")
 
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    creds = stripe_service._safe_get_creds(db)
+    stripe.api_key = creds.secret_key
 
     customer_id = getattr(tenant, "stripe_customer_id", None)
     if not customer_id:
         raise HTTPException(status_code=400, detail="Nenhum customer Stripe associado ao tenant.")
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
-    return_url = f"{frontend_url}/#/settings?tab=Cobran%C3%A7a"
+    return_url = f"{frontend_url}/settings?tab=Cobran%C3%A7a"
     session = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
     return BillingUrlOut(url=session["url"])
 
@@ -391,22 +399,54 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     if not stripe:
         raise HTTPException(status_code=500, detail="Stripe SDK não instalado.")
 
-    payload = await request.body()
+    try:
+        payload = await request.body()
+    except ClientDisconnect:
+        # Stripe fechou a conexão antes do corpo ser lido; retorna 200 para
+        # evitar loop de reenvio — o evento será reenviado se necessário.
+        logger.warning("[webhook] ClientDisconnect ao ler body — ignorando")
+        return {"received": True, "skipped": "client_disconnect"}
+
     sig_header = request.headers.get("stripe-signature")
+
+    # ── Detecta o modo do evento (test/live) pelo campo livemode no payload ───
+    # Isso permite aceitar eventos de ambos os ambientes no mesmo endpoint.
+    try:
+        raw_event = json.loads(payload.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Payload inválido.")
+
+    event_livemode = raw_event.get("livemode", False)
+    event_mode = "live" if event_livemode else "test"
+
+    # Resolve webhook_secret do ambiente correspondente ao evento
+    try:
+        cfg = db.query(StripeConfig).filter(StripeConfig.id == 1).first()
+        if cfg is None:
+            cfg = StripeConfig(id=1, mode_active="test")
+        if event_mode == "live":
+            webhook_secret = (cfg.live_webhook_secret or "").strip() or None
+        else:
+            webhook_secret = (cfg.test_webhook_secret or "").strip() or None
+    except Exception:
+        webhook_secret = None
 
     # Valida assinatura do webhook
     event = None
-    webhook_secret = getattr(settings, "STRIPE_WEBHOOK_SECRET", None)
-    if webhook_secret:
+    if webhook_secret and sig_header:
         try:
             event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except Exception:
             raise HTTPException(status_code=400, detail="Webhook signature inválida.")
     else:
-        try:
-            event = json.loads(payload.decode("utf-8"))
-        except Exception:
-            raise HTTPException(status_code=400, detail="Payload inválido.")
+        if event_mode == "live":
+            raise HTTPException(
+                status_code=400,
+                detail="Webhook secret LIVE não configurado. Configure em Super Admin → Stripe antes de ativar o modo produção.",
+            )
+        # Mode test sem secret: aceita sem validação (apenas desenvolvimento)
+        logger.warning("[webhook] webhook_secret TEST não configurado — aceitando sem validação (somente em teste)")
+        event = raw_event
 
     stripe_event_id = event.get("id", "")
     event_type = event.get("type", "")
@@ -424,8 +464,9 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
             wh_event = StripeWebhookEvent(
                 stripe_event_id=stripe_event_id,
                 event_type=event_type,
-                payload_json=json.dumps(event)[:10000],  # Limita tamanho
+                payload_json=json.dumps(event)[:10000],
                 status="received",
+                stripe_mode=event_mode,
             )
             db.add(wh_event)
             db.flush()
@@ -437,7 +478,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     data_object = (event.get("data") or {}).get("object") or {}
 
     try:
-        _process_event(event_type, data_object, db, background_tasks)
+        _process_event(event_type, data_object, db, background_tasks, event_mode)
 
         if wh_event:
             wh_event.status = "processed"
@@ -468,7 +509,7 @@ def _get_tenant_owner(db: Session, tenant_id: int):
     return None, None
 
 
-def _process_event(event_type: str, data_object: dict, db: Session, bg: BackgroundTasks) -> None:
+def _process_event(event_type: str, data_object: dict, db: Session, bg: BackgroundTasks, event_mode: str = "test") -> None:
     """Processa o evento Stripe e atualiza a assinatura local."""
 
     # ── checkout.session.completed ────────────────────────────────────────────
@@ -501,6 +542,20 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 enterprise_contacts = _safe_int(metadata.get("enterprise_contacts"))
                 if enterprise_contacts:
                     sub.contracted_contacts = enterprise_contacts
+                # Persiste modo Stripe e valor mensal contratado
+                stripe_mode_meta = metadata.get("stripe_mode") or data_object.get("livemode_str")
+                if stripe_mode_meta:
+                    sub.stripe_mode = stripe_mode_meta
+                enterprise_price_str = metadata.get("enterprise_price")
+                if enterprise_price_str:
+                    try:
+                        sub.monthly_amount_cents = int(round(float(enterprise_price_str) * 100))
+                    except Exception:
+                        pass
+                # Persiste product_id do Enterprise
+                ent_product_id = metadata.get("enterprise_product_id")
+                if ent_product_id:
+                    sub.stripe_product_id = ent_product_id
                 # Ativa a assinatura independente do status anterior
                 sub.status = SubscriptionStatus.ACTIVE
                 # E-mail de plano ativado
@@ -521,7 +576,7 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
 
     # ── customer.subscription.created / updated ───────────────────────────────
     elif event_type in ("customer.subscription.created", "customer.subscription.updated"):
-        _sync_subscription_status(data_object, db, bg)
+        _sync_subscription_status(data_object, db, bg, event_mode)
 
     # ── customer.subscription.deleted ────────────────────────────────────────
     elif event_type == "customer.subscription.deleted":
@@ -535,6 +590,7 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 # Capturar nome do plano antes de fazer downgrade
                 old_plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
                 old_plan_name = getattr(old_plan, "display_name", old_plan.name) if old_plan else ""
+                old_status = sub.status.value if hasattr(sub.status, "value") else str(sub.status)
 
                 sub.status     = SubscriptionStatus.CANCELED
                 sub.canceled_at = datetime.now(timezone.utc)
@@ -542,6 +598,19 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 free_plan = db.query(Plan).filter(Plan.name == "free").first()
                 if free_plan:
                     sub.plan_id = free_plan.id
+
+                # Histórico de cancelamento
+                db.add(SubscriptionHistory(
+                    subscription_id=sub.id,
+                    tenant_id=sub.tenant_id,
+                    event_type="cancellation",
+                    old_plan_name=old_plan_name,
+                    new_plan_name="free",
+                    old_status=old_status,
+                    new_status="canceled",
+                    stripe_mode=event_mode,
+                    note=f"Assinatura cancelada pela Stripe ({stripe_sub_id})",
+                ))
 
                 # E-mail de cancelamento
                 tenant = db.query(Tenant).filter(Tenant.stripe_customer_id == str(customer_id)).first() if customer_id else None
@@ -555,8 +624,8 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                             plan_name=old_plan_name,
                         )
 
-    # ── invoice.payment_succeeded ─────────────────────────────────────────────
-    elif event_type == "invoice.payment_succeeded":
+    # ── invoice.paid / invoice.payment_succeeded ─────────────────────────────
+    elif event_type in ("invoice.paid", "invoice.payment_succeeded"):
         customer_id = data_object.get("customer")
         if customer_id:
             tenant = db.query(Tenant).filter(
@@ -597,7 +666,7 @@ def _resolve_plan_from_price(price_id: str, db: Session) -> Optional[Plan]:
     return plan
 
 
-def _sync_subscription_status(data_object: dict, db: Session, bg: BackgroundTasks) -> None:
+def _sync_subscription_status(data_object: dict, db: Session, bg: BackgroundTasks, event_mode: str = "test") -> None:
     """Sincroniza status e plano da assinatura baseado nos dados do objeto Stripe subscription."""
     stripe_sub_id = data_object.get("id")
     customer_id = data_object.get("customer")
@@ -622,17 +691,34 @@ def _sync_subscription_status(data_object: dict, db: Session, bg: BackgroundTask
 
     sub.stripe_subscription_id = str(stripe_sub_id)
 
-    # Resolver plano pelo price_id dos itens da assinatura (cobre upgrade/downgrade via portal)
+    # Atualiza stripe_mode com o ambiente do evento
+    sub.stripe_mode = event_mode
+
+    # Resolver plano + price_id pelo itens da assinatura (cobre upgrade/downgrade via portal)
     try:
         items = ((data_object.get("items") or {}).get("data") or [])
         if items:
             price_id = (items[0].get("price") or {}).get("id")
+            if price_id:
+                sub.stripe_price_id = price_id  # ← Item 1: persiste price_id usado (PRO)
             resolved_plan = _resolve_plan_from_price(price_id, db)
             if resolved_plan and resolved_plan.id != sub.plan_id:
-                # Plano mudou — e-mail de upgrade/downgrade
+                # Plano mudou — e-mail de upgrade/downgrade + histórico
                 old_plan = db.query(Plan).filter(Plan.id == sub.plan_id).first()
                 old_plan_name = getattr(old_plan, "display_name", old_plan.name) if old_plan else ""
                 new_plan_name = getattr(resolved_plan, "display_name", resolved_plan.name)
+
+                # Grava histórico de mudança de plano
+                db.add(SubscriptionHistory(
+                    subscription_id=sub.id,
+                    tenant_id=tenant.id,
+                    event_type="plan_change",
+                    old_plan_name=old_plan_name,
+                    new_plan_name=new_plan_name,
+                    stripe_mode=event_mode,
+                    note=f"Plano alterado via webhook {data_object.get('id', '')}",
+                ))
+
                 email, full_name = _get_tenant_owner(db, tenant.id)
                 if email:
                     bg.add_task(

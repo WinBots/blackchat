@@ -1856,15 +1856,30 @@ const selectTab = (label) => {
 
 // Carregar canais ao montar o componente
 onMounted(async () => {
+  let checkoutSuccess = false
   try {
     const params = new URLSearchParams(window.location.search || '')
     const tab = params.get('tab')
     if (tab) activeTab.value = tab
+    checkoutSuccess = params.get('checkout') === 'success'
+    // Limpa o query string da URL sem recarregar a página
+    if (checkoutSuccess) {
+      const cleanUrl = window.location.pathname + (tab ? `?tab=${encodeURIComponent(tab)}` : '')
+      window.history.replaceState({}, '', cleanUrl)
+    }
   } catch {}
 
   await loadTenantSettings()
   await loadBillingData()
   await loadTelegramChannels()
+
+  if (checkoutSuccess) {
+    toast.success('🎉 Plano ativado com sucesso! Bem-vindo ao Pro.')
+    // Aguarda 3s e recarrega novamente para garantir que o webhook já foi processado
+    setTimeout(async () => {
+      await loadBillingData()
+    }, 3000)
+  }
 
   if (telegramChannels.value.length > 0) {
     telegramStep.value = 'list'

@@ -14,6 +14,8 @@ from app.db.models.flow_execution import FlowExecution
 from app.db.models.flow_execution_log import FlowExecutionLog
 from app.db.models.billing_snapshot import BillingSnapshot
 from app.db.models.stripe_webhook_event import StripeWebhookEvent
+from app.db.models.stripe_config import StripeConfig
+from app.db.models.subscription_history import SubscriptionHistory
 from app.db.models.limit_event import LimitEvent
 from app.db.models.password_reset_token import PasswordResetToken
 
@@ -36,6 +38,8 @@ __all__ = [
     'FlowExecutionLog',
     'BillingSnapshot',
     'StripeWebhookEvent',
+    'StripeConfig',
+    'SubscriptionHistory',
     'LimitEvent',
     'PasswordResetToken',
 ]

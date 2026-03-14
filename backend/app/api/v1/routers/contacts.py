@@ -204,8 +204,8 @@ def _normalize_int_list(values: Optional[List[int]]) -> List[int]:
     return dedup
 
 
-def _sqlite_json_path(key: str) -> str:
-    # json_extract usa path no formato $."key"; escapamos aspas
+def _mssql_json_path(key: str) -> str:
+    # JSON_VALUE/JSON_QUERY usa path no formato $."key"; escapamos aspas
     safe = (key or "").replace('"', '\\"')
     return f'$."{safe}"'
 
@@ -213,8 +213,7 @@ def _sqlite_json_path(key: str) -> str:
 def _build_field_condition_expr(cond: "FieldCondition", tenant: Tenant, db: Session):
     """Converte FieldCondition em expressão SQLAlchemy.
 
-    Suporte primário para SQLite (JSON_EXTRACT/json_type). Em outros bancos,
-    tentamos usar as mesmas funções (podem ou não existir).
+    Suporte exclusivo para SQL Server (JSON_VALUE/JSON_QUERY).
     """
     field = (cond.field or "").strip()
     if not field:
@@ -241,24 +240,45 @@ def _build_field_condition_expr(cond: "FieldCondition", tenant: Tenant, db: Sess
         return _apply_op_to_expr(col, op=op, value=value, value_type=value_type)
 
     # Campo personalizado (JSON)
-    path = _sqlite_json_path(field)
+    path = _mssql_json_path(field)
 
     # Normaliza custom_fields para lidar com registros onde o JSON foi salvo como string (dupla serialização).
     # Ex: custom_fields = '"{\"cidade\":\"Belo Horizonte\"}"'
-    # Nesse caso, precisamos extrair o payload interno antes de consultar a chave.
+    # SQL Server: quando raiz é string, JSON_VALUE(cf,'$') retorna o conteúdo interno.
+    dialect = None
+    try:
+        dialect = (db.get_bind().dialect.name or "").lower()
+    except Exception:
+        dialect = None
+    if dialect != "mssql":
+        raise HTTPException(status_code=500, detail="Somente SQL Server é suportado para filtros por campos.")
+
     custom_json = case(
-        (func.json_type(Contact.custom_fields) == "object", Contact.custom_fields),
+        # JSON objeto normal
         (
-            (func.json_type(Contact.custom_fields) == "text")
-            & (func.json_valid(func.json_extract(Contact.custom_fields, "$")) == 1)
-            & (func.json_type(func.json_extract(Contact.custom_fields, "$")) == "object"),
-            func.json_extract(Contact.custom_fields, "$"),
+            (func.ISJSON(Contact.custom_fields) == 1)
+            & (func.JSON_QUERY(Contact.custom_fields, "$").isnot(None)),
+            Contact.custom_fields,
         ),
-        else_=Contact.custom_fields,
+        # JSON duplamente serializado (raiz string contendo JSON)
+        (
+            (func.ISJSON(Contact.custom_fields) == 1)
+            & (func.JSON_VALUE(Contact.custom_fields, "$").isnot(None))
+            & (func.ISJSON(func.JSON_VALUE(Contact.custom_fields, "$")) == 1),
+            func.JSON_VALUE(Contact.custom_fields, "$"),
+        ),
+        else_=None,
     )
 
-    extracted = func.json_extract(custom_json, path)
-    exists_expr = func.json_type(custom_json, path).isnot(None)
+    extracted_value = func.JSON_VALUE(custom_json, path)
+    extracted_query = func.JSON_QUERY(custom_json, path)
+    extracted = case(
+        (extracted_value.isnot(None), extracted_value),
+        (extracted_query.isnot(None), extracted_query),
+        else_=None,
+    )
+
+    exists_expr = or_(extracted_value.isnot(None), extracted_query.isnot(None))
 
     if op == "exists":
         return exists_expr
@@ -308,7 +328,7 @@ def _apply_op_to_expr(expr, op: str, value: Optional[str], value_type: str, is_j
             dt = _parse_iso_date_or_datetime(value)
         except Exception:
             raise HTTPException(status_code=400, detail="Condição de campo inválida: value date.")
-        # Para JSON, comparar como string ISO (SQLite não tem tipo date nativo)
+        # Para JSON, comparar como string ISO (armazenado como texto no JSON)
         left = cast(expr, String) if is_json else expr
         iso = dt.date().isoformat()
         if op == "eq":
@@ -334,7 +354,7 @@ def _apply_op_to_expr(expr, op: str, value: Optional[str], value_type: str, is_j
         else:
             raise HTTPException(status_code=400, detail="Condição de campo inválida: value boolean.")
         left = cast(expr, String) if is_json else expr
-        # JSON booleans em SQLite podem virar 0/1 ou 'true'/'false'
+        # JSON booleans normalmente aparecem como 'true'/'false' no JSON_VALUE
         if op == "eq":
             return or_(left == ("true" if b else "false"), left == ("1" if b else "0"), left == (1 if b else 0))
         if op == "neq":
@@ -544,10 +564,7 @@ def get_contacts_field_stats(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
-    """Retorna agregação simples de campos personalizados (key:value) para a sidebar.
-
-    Suporta SQLite (JSON1: json_each) e SQL Server (OPENJSON).
-    """
+    """Retorna agregação simples de campos personalizados (key:value) para a sidebar (SQL Server)."""
     limit = max(1, min(int(limit or 60), 200))
 
     dialect = None
@@ -560,7 +577,10 @@ def get_contacts_field_stats(
         logger.warning("field-stats: não foi possível determinar o dialeto do banco; retornando vazio")
         return []
 
-    if dialect == "mssql":
+        if dialect != "mssql":
+                logger.warning("field-stats: dialeto não suportado (somente mssql); retornando vazio")
+                return []
+
         # SQL Server: usar JSON nativo. Também lida com custom_fields duplamente serializado,
         # ex: '"{\"cidade\":\"BH\"}"' — nesse caso JSON_VALUE(custom_fields,'$') retorna o JSON interno.
         sql = text(
@@ -609,87 +629,26 @@ def get_contacts_field_stats(
         )
 
         try:
-            rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
+                rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
         except Exception as e:
-            logger.warning(
-                f"field-stats: falha ao executar JSON no SQL Server, retornando vazio: {e}"
-            )
-            rows = []
+                logger.warning(
+                        f"field-stats: falha ao executar JSON no SQL Server, retornando vazio: {e}"
+                )
+                rows = []
 
         out: List[FieldPairCountOut] = []
         for row in rows:
-            try:
-                out.append(
-                    FieldPairCountOut(
-                        field=str(row.field),
-                        value=str(row.value),
-                        count=int(row.count or 0),
-                    )
-                )
-            except Exception:
-                continue
+                try:
+                        out.append(
+                                FieldPairCountOut(
+                                        field=str(row.field),
+                                        value=str(row.value),
+                                        count=int(row.count or 0),
+                                )
+                        )
+                except Exception:
+                        continue
         return out
-
-    # Alguns registros antigos podem ter custom_fields como JSON string (duplamente serializado),
-    # ex: '"{\"cidade\":\"BH\"}"'. Nesse caso json_each(custom_fields) pode gerar key=NULL.
-    # Normalizamos para sempre iterar sobre um JSON object.
-        sql = text(
-        """
-        WITH cf AS (
-          SELECT
-            CASE
-              WHEN json_type(c.custom_fields) = 'object' THEN c.custom_fields
-              WHEN json_type(c.custom_fields) = 'text'
-                   AND json_valid(json_extract(c.custom_fields, '$')) = 1
-                   AND json_type(json_extract(c.custom_fields, '$')) = 'object'
-                THEN json_extract(c.custom_fields, '$')
-              ELSE NULL
-            END AS cf_json
-          FROM contacts c
-          WHERE c.tenant_id = :tenant_id
-            AND c.custom_fields IS NOT NULL
-            AND c.custom_fields != ''
-            AND json_valid(c.custom_fields) = 1
-        )
-        SELECT
-          je.key AS field,
-          CASE
-            WHEN je.type = 'text' THEN je.value
-            WHEN je.type IN ('integer','real') THEN CAST(je.value AS TEXT)
-            WHEN je.type = 'true' THEN 'true'
-            WHEN je.type = 'false' THEN 'false'
-            ELSE NULL
-          END AS value,
-          COUNT(*) AS count
-        FROM cf
-        JOIN json_each(cf.cf_json) je
-        WHERE cf.cf_json IS NOT NULL
-          AND je.key IS NOT NULL
-        GROUP BY je.key, value
-        HAVING value IS NOT NULL AND value != ''
-        ORDER BY count DESC
-        LIMIT :limit
-        """
-    )
-
-    try:
-        rows = db.execute(sql, {"tenant_id": tenant.id, "limit": limit}).fetchall()
-    except Exception as e:
-        logger.warning(f"field-stats: falha ao executar JSON (sqlite), retornando vazio: {e}")
-        rows = []
-    out: List[FieldPairCountOut] = []
-    for row in rows:
-        try:
-            out.append(
-                FieldPairCountOut(
-                    field=str(row.field),
-                    value=str(row.value),
-                    count=int(row.count or 0),
-                )
-            )
-        except Exception:
-            continue
-    return out
 
 
 @router.get("/", response_model=ContactListOut)

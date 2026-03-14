@@ -14,5 +14,6 @@ class StripeWebhookEvent(Base):
     received_at = Column(DateTime(timezone=True), server_default=func.now())
     processed_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), default="received")    # received | processed | error
+    stripe_mode = Column(String(10), nullable=True)       # "test" | "live"
     payload_json = Column(Text, nullable=True)         # Payload completo para debug/reprocessamento
     error_message = Column(Text, nullable=True)        # Mensagem de erro se falhou
