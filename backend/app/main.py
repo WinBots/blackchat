@@ -68,3 +68,15 @@ app.include_router(dev_tools.router, prefix="/api/v1", tags=["dev-tools"])
 @app.get("/")
 def read_root():
     return {"message": "API Blackchat Pro rodando v0.2.0"}
+
+
+@app.get("/api/health")
+def health_check():
+    """Healthcheck geral — útil para monitoramento externo (UptimeRobot, etc)."""
+    from app.cache.redis_client import cache_health
+    redis_status = cache_health()
+    return {
+        "status": "ok",
+        "version": "0.2.0",
+        "redis": redis_status,
+    }

@@ -18,6 +18,7 @@ from app.db.models.stripe_config import StripeConfig
 from app.services.stripe_service import mask_key
 from app.api.v1.routers.admin import get_super_admin_user
 from app.db.models.user import User
+from app.cache.service import invalidate_stripe_config
 
 router = APIRouter()
 
@@ -154,6 +155,7 @@ def update_stripe_config(
 
     db.commit()
     db.refresh(cfg)
+    invalidate_stripe_config()
     return _to_out(cfg)
 
 
@@ -181,4 +183,5 @@ def set_stripe_mode(
     cfg.mode_active = mode
     db.commit()
     db.refresh(cfg)
+    invalidate_stripe_config()
     return _to_out(cfg)

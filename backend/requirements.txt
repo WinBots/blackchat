@@ -11,5 +11,6 @@ python-multipart
 httpx
 stripe
 aiosmtplib
+redis>=5.0.0
 # SQL Server (requer ODBC Driver 17/18 for SQL Server instalado no SO)
 pyodbc

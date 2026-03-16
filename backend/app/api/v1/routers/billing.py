@@ -30,6 +30,7 @@ from app.services.email_sender import (
     send_plan_upgraded_email,
     send_subscription_canceled_email,
 )
+from app.cache.service import invalidate_subscription, invalidate_stripe_config
 
 router = APIRouter()
 
@@ -558,6 +559,8 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                     sub.stripe_product_id = ent_product_id
                 # Ativa a assinatura independente do status anterior
                 sub.status = SubscriptionStatus.ACTIVE
+                # Invalida cache da subscription deste tenant
+                invalidate_subscription(tenant_id)
                 # E-mail de plano ativado
                 email, full_name = _get_tenant_owner(db, tenant_id)
                 logger.info("[webhook] notificando owner: email=%s plan=%s", email, plan.name if plan else None)
@@ -577,6 +580,12 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
     # ── customer.subscription.created / updated ───────────────────────────────
     elif event_type in ("customer.subscription.created", "customer.subscription.updated"):
         _sync_subscription_status(data_object, db, bg, event_mode)
+        # Invalidar cache após sync
+        customer_id_sync = data_object.get("customer")
+        if customer_id_sync:
+            t = db.query(Tenant).filter(Tenant.stripe_customer_id == str(customer_id_sync)).first()
+            if t:
+                invalidate_subscription(t.id)
 
     # ── customer.subscription.deleted ────────────────────────────────────────
     elif event_type == "customer.subscription.deleted":
@@ -598,6 +607,9 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 free_plan = db.query(Plan).filter(Plan.name == "free").first()
                 if free_plan:
                     sub.plan_id = free_plan.id
+
+                # Invalida cache da subscription
+                invalidate_subscription(sub.tenant_id)
 
                 # Histórico de cancelamento
                 db.add(SubscriptionHistory(
@@ -635,6 +647,7 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 sub = _get_latest_sub(db, tenant.id)
                 if sub and sub.status in (SubscriptionStatus.PAST_DUE, SubscriptionStatus.UNPAID):
                     sub.status = SubscriptionStatus.ACTIVE
+                    invalidate_subscription(tenant.id)
 
     # ── invoice.payment_failed ────────────────────────────────────────────────
     elif event_type == "invoice.payment_failed":

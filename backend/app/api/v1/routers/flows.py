@@ -11,6 +11,7 @@ from app.db.models.flow_step import FlowStep
 from app.db.models import User, Tenant
 from app.core.auth import get_current_user, get_current_tenant
 from app.services.billing_service import LimitExceededError, check_flow_limit, get_plan_for_tenant
+from app.cache.service import invalidate_flow, invalidate_tenant_flows
 
 router = APIRouter()
 
@@ -220,6 +221,7 @@ def update_flow(
         print("update_flow commit error", exc)
         raise
     db.refresh(flow)
+    invalidate_flow(flow_id)
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
@@ -238,9 +240,11 @@ def delete_flow(flow_id: int, db: Session = Depends(get_db)):
     flow = db.query(Flow).filter(Flow.id == flow_id).first()
     if not flow:
         raise HTTPException(status_code=404, detail="Flow não encontrado")
+    tenant_id = flow.tenant_id
     db.query(FlowStep).filter(FlowStep.flow_id == flow_id).delete()
     db.delete(flow)
     db.commit()
+    invalidate_flow(flow_id)
     return {"ok": True}
 
 
@@ -278,6 +282,7 @@ def create_step(flow_id: int, data: FlowStepCreate, db: Session = Depends(get_db
     db.add(step)
     db.commit()
     db.refresh(step)
+    invalidate_flow(flow_id)
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -306,6 +311,7 @@ def update_step(flow_id: int, step_id: int, data: FlowStepUpdate, db: Session = 
 
     db.commit()
     db.refresh(step)
+    invalidate_flow(flow_id)
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -326,6 +332,7 @@ def delete_step(flow_id: int, step_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Step não encontrado")
     db.delete(step)
     db.commit()
+    invalidate_flow(flow_id)
     return {"ok": True}
 
 

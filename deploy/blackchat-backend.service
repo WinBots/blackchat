@@ -1,0 +1,28 @@
+[Unit]
+Description=BlackChat Backend API
+After=network.target
+Wants=redis-server.service
+
+[Service]
+Type=exec
+User=winbots
+Group=winbots
+WorkingDirectory=/home/winbots/projetos/blackchat/backend
+Environment="PATH=/home/winbots/projetos/blackchat/backend/venv/bin:/usr/bin"
+EnvironmentFile=-/home/winbots/projetos/blackchat/backend/.env
+ExecStart=/home/winbots/projetos/blackchat/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8061 --workers 4 --limit-concurrency 200 --timeout-keep-alive 30
+Restart=always
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Logs
+StandardOutput=append:/home/winbots/projetos/blackchat/logs/backend.log
+StandardError=append:/home/winbots/projetos/blackchat/logs/backend-error.log
+
+# Limites razoáveis para 16GB/6 cores
+LimitNOFILE=65535
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target
