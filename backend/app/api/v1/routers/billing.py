@@ -147,6 +147,43 @@ def _resolve_billing_email(tenant: Tenant, user: User, db: Session) -> str:
     return (tenant.email or "").strip() or None
 
 
+def _ensure_customer(stripe, tenant: Tenant, billing_email: str, db: Session) -> str:
+    """
+    Garante que o tenant tem um stripe_customer_id válido no modo atual.
+    Se o customer_id existente pertence a outro modo (test vs live) ou é inválido,
+    cria um novo customer e atualiza o tenant.
+    """
+    customer_id = getattr(tenant, "stripe_customer_id", None) or None
+
+    if customer_id:
+        # Validar se o customer existe no modo atual
+        try:
+            stripe.Customer.retrieve(customer_id)
+            return customer_id  # OK, existe no modo correto
+        except stripe.error.InvalidRequestError as exc:
+            # "No such customer" — customer de outro modo (test/live)
+            logger.warning(
+                "stripe_customer_id '%s' inválido no modo atual: %s. Criando novo customer.",
+                customer_id, exc,
+            )
+            customer_id = None  # forçar recriação
+        except Exception as exc:
+            logger.warning("Erro ao validar customer '%s': %s. Tentando recriar.", customer_id, exc)
+            customer_id = None
+
+    # Criar novo customer
+    customer = stripe.Customer.create(
+        name=tenant.name,
+        email=billing_email,
+        metadata={"tenant_id": str(tenant.id)},
+    )
+    customer_id = customer["id"]
+    tenant.stripe_customer_id = customer_id
+    db.commit()
+    logger.info("Novo Stripe Customer criado: %s (tenant=%s)", customer_id, tenant.id)
+    return customer_id
+
+
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 
 class CheckoutSessionIn(BaseModel):
@@ -275,20 +312,11 @@ def create_checkout_session(
 
     billing_email = _resolve_billing_email(tenant, user, db)
 
-    customer_id = getattr(tenant, "stripe_customer_id", None)
-    if not customer_id:
-        try:
-            customer = stripe.Customer.create(
-                name=tenant.name,
-                email=billing_email,
-                metadata={"tenant_id": str(tenant.id)},
-            )
-            customer_id = customer["id"]
-            tenant.stripe_customer_id = customer_id
-            db.commit()
-        except Exception as exc:
-            logger.error("Stripe Customer.create falhou: %s", exc)
-            raise HTTPException(status_code=502, detail=f"Erro ao criar cliente no Stripe: {exc}")
+    try:
+        customer_id = _ensure_customer(stripe, tenant, billing_email, db)
+    except Exception as exc:
+        logger.error("Stripe Customer (Pro) falhou: %s", exc)
+        raise HTTPException(status_code=502, detail="Erro ao criar/validar cliente no Stripe. Verifique as credenciais no painel Super Admin.")
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
     success_url = f"{frontend_url}/thank-you?plan={plan.display_name}&checkout=success"
@@ -322,7 +350,7 @@ def create_checkout_session(
         logger.error("Stripe checkout.Session.create (Pro) falhou [mode=%s]: %s", creds.mode, exc)
         raise HTTPException(
             status_code=502,
-            detail=f"Erro ao criar sessão de checkout no Stripe ({creds.mode}): {exc}",
+            detail="Erro ao criar sessão de checkout. Verifique as configurações Stripe no painel Super Admin.",
         )
 
     return BillingUrlOut(url=session["url"])
@@ -360,20 +388,11 @@ def create_enterprise_checkout(
         creds.enterprise_product_id, billing_email,
     )
 
-    customer_id = getattr(tenant, "stripe_customer_id", None)
-    if not customer_id:
-        try:
-            customer = stripe.Customer.create(
-                name=tenant.name,
-                email=billing_email,
-                metadata={"tenant_id": str(tenant.id)},
-            )
-            customer_id = customer["id"]
-            tenant.stripe_customer_id = customer_id
-            db.commit()
-        except Exception as exc:
-            logger.error("Stripe Customer.create falhou: %s", exc)
-            raise HTTPException(status_code=502, detail=f"Erro ao criar cliente no Stripe: {exc}")
+    try:
+        customer_id = _ensure_customer(stripe, tenant, billing_email, db)
+    except Exception as exc:
+        logger.error("Stripe Customer (Enterprise) falhou: %s", exc)
+        raise HTTPException(status_code=502, detail="Erro ao criar/validar cliente no Stripe. Verifique as credenciais no painel Super Admin.")
 
     # Busca o plano Enterprise no banco para gravar plan_id nos metadados
     ent_plan = db.query(Plan).filter(Plan.name == "unlimited", Plan.is_active == True).first()  # noqa: E712
@@ -427,7 +446,7 @@ def create_enterprise_checkout(
         logger.error("Stripe checkout.Session.create (Enterprise) falhou [mode=%s]: %s", creds.mode, exc)
         raise HTTPException(
             status_code=502,
-            detail=f"Erro ao criar sessão de checkout no Stripe ({creds.mode}): {exc}",
+            detail="Erro ao criar sessão de checkout Enterprise. Verifique as configurações Stripe no painel Super Admin.",
         )
 
     return BillingUrlOut(url=session["url"])
@@ -450,9 +469,24 @@ def create_portal_session(
     if not customer_id:
         raise HTTPException(status_code=400, detail="Nenhum customer Stripe associado ao tenant.")
 
+    # Validar se o customer existe no modo atual (test/live)
+    try:
+        stripe.Customer.retrieve(customer_id)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer Stripe não encontrado no modo atual. "
+                   "Provavelmente foi criado em outro modo (test/live). "
+                   "Faça uma nova assinatura para criar um Customer no modo correto.",
+        )
+
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
     return_url = f"{frontend_url}/settings?tab=Cobran%C3%A7a"
-    session = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
+    try:
+        session = stripe.billing_portal.Session.create(customer=customer_id, return_url=return_url)
+    except Exception as exc:
+        logger.error("Stripe portal session falhou: %s", exc)
+        raise HTTPException(status_code=502, detail="Erro ao abrir portal Stripe. Tente novamente.")
     return BillingUrlOut(url=session["url"])
 
 
