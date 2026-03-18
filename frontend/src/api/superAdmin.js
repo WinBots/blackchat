@@ -34,3 +34,13 @@ export async function adminUpdatePlan(planId, payload) {
   const res = await api.put(`/api/v1/admin/plans/${planId}`, payload)
   return res.data
 }
+
+export async function adminListSubscriptions(params = {}) {
+  const res = await api.get('/api/v1/admin/subscriptions', { params })
+  return res.data
+}
+
+export async function adminListEventLog(params = {}) {
+  const res = await api.get('/api/v1/admin/event-log', { params })
+  return res.data
+}

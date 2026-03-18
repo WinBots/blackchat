@@ -214,6 +214,11 @@
 
               <!-- ── Real content ───────────────────────────────────── -->
               <template v-else>
+              <!-- Logo -->
+              <div class="plans-logo">
+                <img src="@/imagens/bcp-standard.png" alt="Blackchat Pro" />
+              </div>
+
               <!-- Header: título + toggle + link -->
               <div class="settings-subs-header">
                 <div class="settings-subs-header-left">
@@ -981,6 +986,239 @@
                 </div>
               </div>
             </div>
+
+            <!-- ──── Workspaces Tab ──────────────────────────────────────── -->
+            <div v-else-if="activeTab === 'Workspaces'" class="ws-tab">
+
+              <!-- Criar novo workspace -->
+              <div class="ws-create-card" v-if="auth.isWorkspaceOwner.value">
+                <h3 class="ws-section-title">
+                  <i class="fa-solid fa-plus"></i>
+                  Novo Workspace
+                </h3>
+                <div class="ws-create-form">
+                  <input
+                    v-model="wsNewName"
+                    type="text"
+                    class="input ws-input"
+                    placeholder="Nome do novo workspace..."
+                    @keyup.enter="handleCreateWorkspace"
+                  />
+                  <button
+                    class="btn btn-primary"
+                    :disabled="wsCreating || !wsNewName.trim()"
+                    @click="handleCreateWorkspace"
+                  >
+                    {{ wsCreating ? 'Criando...' : 'Criar' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Lista de Workspaces -->
+              <div class="ws-list-section">
+                <h3 class="ws-section-title">
+                  <i class="fa-solid fa-building"></i>
+                  Meus Workspaces
+                </h3>
+
+                <div v-if="wsLoading" class="ws-loading">
+                  <i class="fa-solid fa-spinner fa-spin"></i>
+                  Carregando...
+                </div>
+
+                <div v-else-if="wsList.length === 0" class="ws-empty">
+                  Nenhum workspace encontrado.
+                </div>
+
+                <div v-else class="ws-card-list">
+                  <div v-for="ws in wsList" :key="ws.id" class="ws-card" :class="{ active: ws.id === auth.activeWorkspaceId.value }">
+                    <div class="ws-card-header">
+                      <div class="ws-card-icon">{{ ws.name.charAt(0).toUpperCase() }}</div>
+                      <div class="ws-card-info">
+                        <!-- Modo edição -->
+                        <div v-if="wsEditId === ws.id" class="ws-edit-inline">
+                          <input
+                            v-model="wsEditName"
+                            class="input ws-input ws-edit-input"
+                            @keyup.enter="handleSaveWorkspaceName"
+                            @keyup.escape="handleCancelEdit"
+                          />
+                          <button class="btn btn-primary btn-sm" :disabled="wsSaving" @click="handleSaveWorkspaceName">
+                            <i class="fa-solid fa-check"></i>
+                          </button>
+                          <button class="btn btn-ghost btn-sm" @click="handleCancelEdit">
+                            <i class="fa-solid fa-xmark"></i>
+                          </button>
+                        </div>
+                        <!-- Modo leitura -->
+                        <template v-else>
+                          <span class="ws-card-name">{{ ws.name }}</span>
+                          <span class="ws-card-meta">
+                            <span class="ws-card-role">{{ wsRoleLabelMap[ws.role] || ws.role }}</span>
+                            <span v-if="ws.plan_name" class="ws-card-plan">{{ ws.plan_name }}</span>
+                            <span v-if="ws.id === auth.activeWorkspaceId.value" class="ws-card-active-badge">Ativo</span>
+                          </span>
+                        </template>
+                      </div>
+                      <div class="ws-card-actions">
+                        <button
+                          v-if="ws.id !== auth.activeWorkspaceId.value"
+                          class="btn btn-secondary btn-sm"
+                          @click="auth.switchWorkspace(ws.id)"
+                          title="Trocar para este workspace"
+                        >
+                          <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                          Trocar
+                        </button>
+                        <button
+                          v-if="ws.role === 'owner' && wsEditId !== ws.id"
+                          class="btn btn-ghost btn-sm"
+                          @click="handleEditWorkspace(ws)"
+                          title="Editar nome"
+                        >
+                          <i class="fa-solid fa-pen"></i>
+                        </button>
+                        <button
+                          class="btn btn-ghost btn-sm"
+                          :class="{ 'btn-active': wsActivePanel === ws.id }"
+                          @click="handleToggleMembers(ws)"
+                          title="Membros"
+                        >
+                          <i class="fa-solid fa-users"></i>
+                          Membros
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Painel de Membros -->
+                    <Transition name="slide-down">
+                      <div v-if="wsActivePanel === ws.id" class="ws-members-panel">
+                        <!-- Convidar membro (somente owner) -->
+                        <div v-if="ws.role === 'owner'" class="ws-invite-section">
+                          <div class="ws-invite-bar">
+                            <input
+                              v-model="wsInviteEmail"
+                              type="email"
+                              class="input ws-input ws-invite-input"
+                              placeholder="Email do usuário..."
+                              @keyup.enter="handleInviteMember"
+                            />
+                            <select v-model="wsInviteRole" class="input ws-input ws-invite-role">
+                              <option value="member">Membro</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                            <button
+                              class="btn btn-primary btn-sm"
+                              :disabled="wsInviting || !wsInviteEmail.trim()"
+                              @click="handleInviteMember"
+                            >
+                              {{ wsInviting ? '...' : 'Convidar' }}
+                            </button>
+                          </div>
+                          <!-- Permissões para o convite -->
+                          <div class="ws-perms-grid ws-perms-invite">
+                            <span class="ws-perms-label">Permissões:</span>
+                            <label
+                              v-for="perm in wsAvailablePermissions"
+                              :key="perm.key"
+                              class="ws-perm-chip"
+                              :class="{ active: wsInvitePermissions.includes(perm.key) }"
+                            >
+                              <input
+                                type="checkbox"
+                                :checked="wsInvitePermissions.includes(perm.key)"
+                                @change="toggleInvitePerm(perm.key)"
+                              />
+                              {{ perm.label }}
+                            </label>
+                          </div>
+                        </div>
+
+                        <div v-if="wsMembersLoading" class="ws-members-loading">
+                          <i class="fa-solid fa-spinner fa-spin"></i> Carregando membros...
+                        </div>
+
+                        <div v-else-if="wsMembers.length === 0" class="ws-members-empty">
+                          Nenhum membro encontrado.
+                        </div>
+
+                        <div v-else class="ws-members-list">
+                          <div v-for="m in wsMembers" :key="m.user_id" class="ws-member-item">
+                            <div class="ws-member-row">
+                              <div class="ws-member-avatar">{{ (m.full_name || m.email || '?').charAt(0).toUpperCase() }}</div>
+                              <div class="ws-member-info">
+                                <span class="ws-member-name">{{ m.full_name || '(sem nome)' }}</span>
+                                <span class="ws-member-email">{{ m.email }}</span>
+                              </div>
+                              <div class="ws-member-actions">
+                                <select
+                                  v-if="ws.role === 'owner' && m.role !== 'owner'"
+                                  :value="m.role"
+                                  class="input ws-input ws-role-select"
+                                  @change="handleChangeMemberRole(m, $event.target.value)"
+                                >
+                                  <option value="admin">Admin</option>
+                                  <option value="member">Membro</option>
+                                </select>
+                                <span v-else class="ws-role-badge" :class="'ws-role-' + m.role">
+                                  {{ wsRoleLabelMap[m.role] || m.role }}
+                                </span>
+                                <button
+                                  v-if="ws.role === 'owner' && m.role !== 'owner'"
+                                  class="btn btn-ghost btn-sm ws-perms-btn"
+                                  :class="{ 'btn-active': wsEditingPermsUserId === m.user_id }"
+                                  @click="handleEditPermissions(m)"
+                                  title="Editar permissões"
+                                >
+                                  <i class="fa-solid fa-key"></i>
+                                </button>
+                                <button
+                                  v-if="ws.role === 'owner' && m.role !== 'owner'"
+                                  class="btn btn-ghost btn-sm ws-remove-btn"
+                                  @click="handleRemoveMember(m)"
+                                  title="Remover membro"
+                                >
+                                  <i class="fa-solid fa-trash"></i>
+                                </button>
+                              </div>
+                            </div>
+                            <!-- Painel de permissões do membro -->
+                            <Transition name="slide-down">
+                              <div v-if="wsEditingPermsUserId === m.user_id" class="ws-perms-edit-panel">
+                                <div class="ws-perms-grid">
+                                  <label
+                                    v-for="perm in wsAvailablePermissions"
+                                    :key="perm.key"
+                                    class="ws-perm-chip"
+                                    :class="{ active: wsEditPerms.includes(perm.key) }"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      :checked="wsEditPerms.includes(perm.key)"
+                                      @change="toggleEditPerm(perm.key)"
+                                    />
+                                    {{ perm.label }}
+                                  </label>
+                                </div>
+                                <div class="ws-perms-edit-actions">
+                                  <button class="btn btn-primary btn-sm" @click="handleSavePermissions(m)">
+                                    <i class="fa-solid fa-check"></i> Salvar
+                                  </button>
+                                  <button class="btn btn-ghost btn-sm" @click="wsEditingPermsUserId = null">
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            </Transition>
+                          </div>
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
       </div>
@@ -998,6 +1236,7 @@ import { listPlans } from '@/api/plans'
 import { getMySubscription } from '@/api/subscription'
 import { createCheckoutSession, createEnterpriseCheckoutSession, createPortalSession, getBillingStatus, getVpmEstimate } from '@/api/billing'
 import { getTenantMe, updateTenantMe } from '@/api/tenants'
+import { listWorkspaces, createWorkspace, updateWorkspace, listMembers, inviteMember, updateMemberRole, updateMemberPermissions, removeMember, getAvailablePermissions } from '@/api/workspaces'
 
 const timezoneOptions = [
   '(UTC-12:00) International Date Line West',
@@ -1124,11 +1363,203 @@ const billingItems = [
 const telegramItems = [
   { label: 'Telegram', iconClass: 'fa-brands fa-telegram fa-lg' }
 ]
+const workspaceItems = [
+  { label: 'Workspaces', iconClass: 'fa-solid fa-building fa-lg' }
+]
 const menuSections = [
   { title: 'Conta', items: principalItems },
   { title: 'Financeiro', items: billingItems },
-  { title: 'Canais', items: telegramItems }
+  { title: 'Canais', items: telegramItems },
+  { title: 'Workspaces', items: workspaceItems }
 ]
+
+// ─── Workspaces state ─────────────────────────────────────────────────────────
+const wsLoaded = ref(false)
+const wsLoading = ref(true)
+const wsList = ref([])
+const wsMembers = ref([])
+const wsMembersLoading = ref(false)
+const wsNewName = ref('')
+const wsCreating = ref(false)
+const wsEditId = ref(null)
+const wsEditName = ref('')
+const wsSaving = ref(false)
+const wsInviteEmail = ref('')
+const wsInviteRole = ref('member')
+const wsInviting = ref(false)
+const wsActivePanel = ref(null) // workspace id that has members panel open
+const wsRoleLabelMap = { owner: 'Dono', admin: 'Admin', member: 'Membro' }
+
+// ─── Permissions state ─────────────────────────────────────────────────────────
+const wsAvailablePermissions = ref([]) // [{ key, label }]
+const wsInvitePermissions = ref([])    // selected permission keys for invite
+const wsEditingPermsUserId = ref(null) // user_id being edited
+const wsEditPerms = ref([])            // temp permissions while editing
+
+const loadWorkspaces = async (force = false) => {
+  if (wsLoaded.value && !force) return
+  wsLoading.value = true
+  try {
+    const [wl, perms] = await Promise.all([
+      listWorkspaces(),
+      getAvailablePermissions()
+    ])
+    wsList.value = wl
+    wsAvailablePermissions.value = perms
+    // Pre-select all permissions for new invites
+    wsInvitePermissions.value = perms.map(p => p.key)
+    wsLoaded.value = true
+  } catch (e) {
+    console.error('Erro ao listar workspaces:', e)
+  } finally {
+    wsLoading.value = false
+  }
+}
+
+const handleCreateWorkspace = async () => {
+  if (!wsNewName.value.trim()) return
+  wsCreating.value = true
+  try {
+    const data = await createWorkspace(wsNewName.value.trim())
+    wsNewName.value = ''
+    toast.success('Workspace criado com sucesso!')
+    // Atualizar token com novo workspace
+    if (data.access_token) {
+      localStorage.setItem('token', data.access_token)
+    }
+    await loadWorkspaces(true)
+    await auth.refreshWorkspaces()
+  } catch (e) {
+    const detail = e.response?.data?.detail || 'Erro ao criar workspace'
+    toast.error(detail)
+  } finally {
+    wsCreating.value = false
+  }
+}
+
+const handleEditWorkspace = (ws) => {
+  wsEditId.value = ws.id
+  wsEditName.value = ws.name
+}
+
+const handleSaveWorkspaceName = async () => {
+  if (!wsEditName.value.trim() || !wsEditId.value) return
+  wsSaving.value = true
+  try {
+    await updateWorkspace(wsEditId.value, wsEditName.value.trim())
+    toast.success('Nome atualizado!')
+    wsEditId.value = null
+    await loadWorkspaces(true)
+    await auth.refreshWorkspaces()
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Erro ao salvar')
+  } finally {
+    wsSaving.value = false
+  }
+}
+
+const handleCancelEdit = () => {
+  wsEditId.value = null
+  wsEditName.value = ''
+}
+
+const handleToggleMembers = async (ws) => {
+  if (wsActivePanel.value === ws.id) {
+    wsActivePanel.value = null
+    wsMembers.value = []
+    wsEditingPermsUserId.value = null
+    wsEditPerms.value = []
+    return
+  }
+  wsActivePanel.value = ws.id
+  wsMembersLoading.value = true
+  try {
+    wsMembers.value = await listMembers(ws.id)
+  } catch (e) {
+    console.error('Erro ao listar membros:', e)
+    wsMembers.value = []
+  } finally {
+    wsMembersLoading.value = false
+  }
+}
+
+const handleInviteMember = async () => {
+  if (!wsInviteEmail.value.trim() || !wsActivePanel.value) return
+  wsInviting.value = true
+  try {
+    await inviteMember(wsActivePanel.value, wsInviteEmail.value.trim(), wsInviteRole.value, wsInvitePermissions.value)
+    toast.success('Membro convidado!')
+    wsInviteEmail.value = ''
+    wsInviteRole.value = 'member'
+    wsInvitePermissions.value = wsAvailablePermissions.value.map(p => p.key)
+    wsMembers.value = await listMembers(wsActivePanel.value)
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Erro ao convidar')
+  } finally {
+    wsInviting.value = false
+  }
+}
+
+const handleChangeMemberRole = async (member, newRole) => {
+  try {
+    await updateMemberRole(wsActivePanel.value, member.user_id, newRole)
+    toast.success('Papel atualizado!')
+    wsMembers.value = await listMembers(wsActivePanel.value)
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Erro ao alterar papel')
+  }
+}
+
+const handleRemoveMember = async (member) => {
+  if (!confirm(`Remover ${member.full_name || member.email} deste workspace?`)) return
+  try {
+    await removeMember(wsActivePanel.value, member.user_id)
+    toast.success('Membro removido!')
+    wsMembers.value = await listMembers(wsActivePanel.value)
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Erro ao remover')
+  }
+}
+
+const handleEditPermissions = (member) => {
+  if (wsEditingPermsUserId.value === member.user_id) {
+    wsEditingPermsUserId.value = null
+    wsEditPerms.value = []
+    return
+  }
+  wsEditingPermsUserId.value = member.user_id
+  wsEditPerms.value = [...(member.permissions || [])]
+}
+
+const toggleEditPerm = (key) => {
+  const idx = wsEditPerms.value.indexOf(key)
+  if (idx >= 0) {
+    wsEditPerms.value.splice(idx, 1)
+  } else {
+    wsEditPerms.value.push(key)
+  }
+}
+
+const handleSavePermissions = async (member) => {
+  try {
+    await updateMemberPermissions(wsActivePanel.value, member.user_id, wsEditPerms.value)
+    toast.success('Permissões atualizadas!')
+    wsEditingPermsUserId.value = null
+    wsEditPerms.value = []
+    wsMembers.value = await listMembers(wsActivePanel.value)
+  } catch (e) {
+    toast.error(e.response?.data?.detail || 'Erro ao atualizar permissões')
+  }
+}
+
+const toggleInvitePerm = (key) => {
+  const idx = wsInvitePermissions.value.indexOf(key)
+  if (idx >= 0) {
+    wsInvitePermissions.value.splice(idx, 1)
+  } else {
+    wsInvitePermissions.value.push(key)
+  }
+}
 
 // Telegram Functions
 const loadTelegramChannels = async () => {
@@ -1900,6 +2331,21 @@ const selectTab = (label) => {
       telegramStep.value = 'intro'
     }
   }
+
+  // Recarregar workspaces ao abrir a aba
+  if (label === 'Workspaces') {
+    loadWorkspaces()
+  }
+}
+
+// Mapa para normalizar o tab param da URL para o label exato da aba
+const tabMap = {
+  geral: 'Geral',
+  cobrança: 'Cobrança',
+  cobranca: 'Cobrança',
+  planos: 'Planos',
+  telegram: 'Telegram',
+  workspaces: 'Workspaces'
 }
 
 // Carregar canais ao montar o componente
@@ -1908,7 +2354,7 @@ onMounted(async () => {
   try {
     const params = new URLSearchParams(window.location.search || '')
     const tab = params.get('tab')
-    if (tab) activeTab.value = tab
+    if (tab) activeTab.value = tabMap[tab.toLowerCase()] || tab
     checkoutSuccess = params.get('checkout') === 'success'
     // Limpa o query string da URL sem recarregar a página
     if (checkoutSuccess) {
@@ -1920,6 +2366,9 @@ onMounted(async () => {
   await loadTenantSettings()
   await loadBillingData()
   await loadTelegramChannels()
+  if (activeTab.value === 'Workspaces') {
+    await loadWorkspaces()
+  }
 
   if (checkoutSuccess) {
     toast.success('🎉 Plano ativado com sucesso! Bem-vindo ao Pro.')
@@ -3426,6 +3875,541 @@ onMounted(async () => {
 .modal-warning-box strong {
   color: var(--text-primary);
   font-weight: 700;
+}
+
+/* ─── Logo do topo da aba Planos ─── */
+.plans-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.plans-logo img {
+  max-width: 200px;
+  height: auto;
+}
+
+/* ─── Responsivo: Planos mobile ─── */
+@media (max-width: 900px) {
+  .plans-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .plan-card {
+    padding: 24px 20px 20px;
+  }
+  .plan-card-name {
+    font-size: 1.1rem;
+  }
+  .plan-card-price-main {
+    font-size: 1.5rem;
+  }
+  .plan-card-features {
+    gap: 7px;
+  }
+  .plan-card-features li {
+    font-size: 0.82rem;
+  }
+  .plan-card-btn {
+    font-size: 0.88rem;
+    padding: 10px 0;
+  }
+  .settings-subs-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .settings-subs-header-right {
+    align-self: flex-end;
+  }
+  .enterprise-picker-input {
+    width: 90px;
+  }
+  .subs-usage-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .plans-logo img {
+    max-width: 160px;
+  }
+  .plan-card {
+    padding: 20px 16px 18px;
+  }
+  .plan-card-price-main {
+    font-size: 1.35rem;
+  }
+  .plan-card-btn {
+    font-size: 0.85rem;
+    padding: 9px 0;
+  }
+  .enterprise-picker-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .enterprise-picker-input {
+    width: 100%;
+  }
+}
+
+/* ─── Workspaces Tab ──────────────────────────────────────────────────────── */
+.ws-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ws-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.ws-section-title i {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.ws-create-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.ws-create-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ws-input {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: border-color var(--transition-fast);
+}
+
+.ws-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.ws-create-form .ws-input {
+  flex: 1;
+}
+
+.ws-loading,
+.ws-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.ws-loading i {
+  margin-right: 8px;
+}
+
+.ws-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ws-card {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast);
+  overflow: hidden;
+}
+
+.ws-card.active {
+  border-color: rgba(0, 255, 102, 0.25);
+}
+
+.ws-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+}
+
+.ws-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: rgba(148, 163, 184, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.ws-card.active .ws-card-icon {
+  background: linear-gradient(135deg, #00FF66, #00cc52);
+  color: #000;
+}
+
+.ws-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-card-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ws-card-role {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.ws-card-plan {
+  font-size: 0.6875rem;
+  color: var(--accent);
+  background: rgba(0, 255, 102, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.ws-card-active-badge {
+  font-size: 0.6875rem;
+  color: #00FF66;
+  background: rgba(0, 255, 102, 0.1);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.ws-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.btn-active {
+  background: rgba(0, 255, 102, 0.1) !important;
+  color: var(--accent) !important;
+}
+
+.ws-edit-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-edit-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Members Panel */
+.ws-members-panel {
+  border-top: 1px solid var(--border);
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.ws-invite-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.ws-invite-input {
+  flex: 1;
+}
+
+.ws-invite-role {
+  width: 120px;
+}
+
+.ws-members-loading,
+.ws-members-empty {
+  padding: 12px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.ws-members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.ws-member-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.ws-member-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ws-member-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-member-email {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-member-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ws-role-select {
+  width: 110px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.ws-role-badge {
+  font-size: 0.6875rem;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.ws-role-owner {
+  color: #00FF66;
+  background: rgba(0, 255, 102, 0.1);
+}
+
+.ws-role-admin {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.ws-role-member {
+  color: var(--muted);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.ws-remove-btn {
+  color: #ef4444 !important;
+}
+
+.ws-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+/* Permissions UI */
+.ws-invite-section {
+  margin-bottom: 14px;
+}
+
+.ws-invite-section .ws-invite-bar {
+  margin-bottom: 8px;
+}
+
+.ws-perms-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.ws-perms-label {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-right: 4px;
+}
+
+.ws-perm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--muted);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  user-select: none;
+}
+
+.ws-perm-chip input[type="checkbox"] {
+  display: none;
+}
+
+.ws-perm-chip.active {
+  background: rgba(0, 255, 102, 0.1);
+  color: #00FF66;
+  border-color: rgba(0, 255, 102, 0.25);
+}
+
+.ws-perm-chip:hover {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.ws-perm-chip.active:hover {
+  background: rgba(0, 255, 102, 0.15);
+  border-color: rgba(0, 255, 102, 0.35);
+}
+
+.ws-perms-btn {
+  color: var(--muted) !important;
+}
+
+.ws-perms-btn:hover,
+.ws-perms-btn.btn-active {
+  color: #facc15 !important;
+  background: rgba(250, 204, 21, 0.1) !important;
+}
+
+.ws-member-item {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ws-perms-edit-panel {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.ws-perms-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+/* Slide animation for members panel */
+.slide-down-enter-active {
+  transition: all 0.2s ease-out;
+}
+
+.slide-down-leave-active {
+  transition: all 0.15s ease-in;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.slide-down-enter-to,
+.slide-down-leave-from {
+  max-height: 500px;
+}
+
+/* Workspaces responsive */
+@media (max-width: 768px) {
+  .ws-card-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .ws-card-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .ws-invite-bar {
+    flex-direction: column;
+  }
+  .ws-invite-role {
+    width: 100%;
+  }
+  .ws-member-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ws-member-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .ws-perms-grid {
+    gap: 4px;
+  }
+  .ws-perm-chip {
+    font-size: 0.625rem;
+    padding: 3px 8px;
+  }
 }
 </style>
 

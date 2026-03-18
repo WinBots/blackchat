@@ -95,6 +95,14 @@ _COLUMNS = [
     # ── stripe_webhook_events — modo do evento ─────────────────────────
     ("stripe_webhook_events", "stripe_mode",
         "stripe_mode NVARCHAR(10)"),
+
+    # ── tenant_users — multi-workspace ─────────────────────────────────
+    ("tenant_users", "is_default",
+        "is_default BIT DEFAULT 0"),
+    ("tenant_users", "created_at",
+        "created_at DATETIME2 DEFAULT GETUTCDATE()"),
+    ("tenant_users", "permissions",
+        "permissions NVARCHAR(MAX)"),
 ]
 
 # Tabelas que o auto_migrate garante existem (criadas via SQLAlchemy create_all, mas
@@ -161,4 +169,56 @@ def run_auto_migrations(engine) -> None:
         for table, column, ddl_mssql in _COLUMNS:
             if _mssql_has_table(conn, table) and not _mssql_has_column(conn, table, column):
                 _mssql_add_column(conn, table, ddl_mssql)
+
+        # ── Multi-workspace: remover UNIQUE constraint de tenants.email ──
+        # Permite que múltiplos workspaces usem o mesmo email do owner.
+        if _mssql_has_table(conn, "tenants"):
+            try:
+                # Encontra o nome da constraint UNIQUE no email
+                row = conn.execute(text("""
+                    SELECT tc.CONSTRAINT_NAME
+                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                    JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
+                      ON tc.CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+                    WHERE tc.TABLE_NAME = 'tenants'
+                      AND ccu.COLUMN_NAME = 'email'
+                      AND tc.CONSTRAINT_TYPE = 'UNIQUE'
+                """)).fetchone()
+                if row:
+                    conn.execute(text(f"ALTER TABLE tenants DROP CONSTRAINT {row[0]}"))
+            except Exception:
+                pass  # já foi removida ou não existia
+
+        # ── Multi-workspace: backfill tenant_users ─────────────────────
+        # Para cada user existente que ainda NÃO tem registro em tenant_users,
+        # cria um vínculo como "owner" + is_default=1.
+        # Isto garante compatibilidade total: usuários existentes continuam
+        # acessando seu workspace normalmente.
+        if _mssql_has_table(conn, "tenant_users") and _mssql_has_table(conn, "users"):
+            try:
+                conn.execute(text("""
+                    INSERT INTO tenant_users (tenant_id, user_id, role, is_default)
+                    SELECT u.tenant_id, u.id, 'owner', 1
+                    FROM users u
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM tenant_users tu
+                        WHERE tu.user_id = u.id AND tu.tenant_id = u.tenant_id
+                    )
+                """))
+            except Exception:
+                pass  # constraint violation ou duplicata — seguro ignorar
+
+        # ── Corrigir emails @workspace.internal → email do owner ───────
+        if _mssql_has_table(conn, "tenants") and _mssql_has_table(conn, "tenant_users") and _mssql_has_table(conn, "users"):
+            try:
+                conn.execute(text("""
+                    UPDATE t
+                    SET t.email = u.email
+                    FROM tenants t
+                    JOIN tenant_users tu ON tu.tenant_id = t.id AND tu.role = 'owner'
+                    JOIN users u ON u.id = tu.user_id
+                    WHERE t.email LIKE '%@workspace.internal'
+                """))
+            except Exception:
+                pass
 

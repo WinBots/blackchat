@@ -17,7 +17,8 @@ from . import (
     instagram_connect,
     media,
     admin,
-    public
+    public,
+    workspaces
 )
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "instagram_connect",
     "media",
     "admin",
-    "public"
+    "public",
+    "workspaces"
 ]

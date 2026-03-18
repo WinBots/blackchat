@@ -11,7 +11,7 @@ class Tenant(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
     is_active = Column(Boolean, default=True)
 
     # Configurações gerais
@@ -23,7 +23,8 @@ class Tenant(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relacionamentos
-    users = relationship("User", back_populates="tenant")
+    users = relationship("User", back_populates="tenant", foreign_keys="[User.tenant_id]")
     subscriptions = relationship("Subscription", back_populates="tenant")
     channels = relationship("Channel", back_populates="tenant")
     flows = relationship("Flow", back_populates="tenant")
+    workspace_members = relationship("TenantUser", back_populates="tenant", lazy="selectin")

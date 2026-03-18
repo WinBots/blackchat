@@ -4929,7 +4929,7 @@ onBeforeUnmount(() => {
 
 /* Left nav */
 .abm-nav {
-  width: 168px;
+  width: 210px;
   flex-shrink: 0;
   border-right: 1px solid rgba(255, 255, 255, 0.07);
   padding: 12px 10px;
@@ -4937,6 +4937,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 3px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .abm-nav-item {
@@ -4953,7 +4954,6 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: all 0.16s;
   text-align: left;
-  white-space: nowrap;
   width: 100%;
 }
 
@@ -5200,7 +5200,7 @@ onBeforeUnmount(() => {
     max-width: 100%;
   }
   .abm-nav {
-    width: 110px;
+    width: 140px;
     padding: 10px 6px;
   }
   .abm-nav-count {

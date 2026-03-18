@@ -51,10 +51,11 @@ class SubscriptionMeOut(BaseModel):
 
 
 def _iso(dt) -> Optional[str]:
+    """Formata datetime como yyyy-mm-dd hh:mm:ss (sem fuso)."""
     if not dt:
         return None
     try:
-        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         try:
             return dt.isoformat()

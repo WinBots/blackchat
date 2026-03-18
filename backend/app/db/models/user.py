@@ -22,4 +22,5 @@ class User(Base):
     last_login = Column(DateTime(timezone=True), nullable=True)
 
     # Relacionamentos
-    tenant = relationship("Tenant", back_populates="users")
+    tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
+    workspaces = relationship("TenantUser", back_populates="user", lazy="selectin")

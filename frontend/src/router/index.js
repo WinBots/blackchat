@@ -18,12 +18,12 @@ const routes = [
   { path: '/login', name: 'login', component: LoginView },
   { path: '/register', name: 'register', component: RegisterView },
   { path: '/thank-you', name: 'thank-you', component: ThankYouView },
-  { path: '/dashboard', name: 'dashboard', component: DashboardView },
-  { path: '/contacts', name: 'contacts', component: ContactsView },
-  { path: '/flows', name: 'flows', component: FlowsView },
-  { path: '/flows/:id', name: 'flow-edit', component: FlowEditView, props: true },
-  { path: '/broadcasts', name: 'broadcasts', component: BroadcastsView },
-  { path: '/settings', name: 'settings', component: SettingsView },
+  { path: '/dashboard', name: 'dashboard', component: DashboardView, meta: { permission: 'dashboard' } },
+  { path: '/contacts', name: 'contacts', component: ContactsView, meta: { permission: 'contacts' } },
+  { path: '/flows', name: 'flows', component: FlowsView, meta: { permission: 'flows' } },
+  { path: '/flows/:id', name: 'flow-edit', component: FlowEditView, props: true, meta: { permission: 'flows' } },
+  { path: '/broadcasts', name: 'broadcasts', component: BroadcastsView, meta: { permission: 'broadcasts' } },
+  { path: '/settings', name: 'settings', component: SettingsView, meta: { permission: 'settings' } },
   { path: '/admin', name: 'super-admin', component: SuperAdminView },
   { path: '/forgot-password', name: 'forgot-password', component: ForgotPasswordView },
   { path: '/reset-password', name: 'reset-password', component: ResetPasswordView },
@@ -61,6 +61,25 @@ router.beforeEach((to, from, next) => {
   if (to.path === '/admin') {
     if (!token) return next('/login')
     if (!currentUser?.is_super_admin) return next('/dashboard')
+  }
+
+  // Verifica permissão granular do workspace
+  if (to.meta?.permission && token) {
+    try {
+      const storedWorkspaces = localStorage.getItem('workspaces')
+      const workspaces = storedWorkspaces ? JSON.parse(storedWorkspaces) : []
+      const storedTenant = localStorage.getItem('tenant')
+      const activeTenant = storedTenant ? JSON.parse(storedTenant) : null
+      const activeWs = workspaces.find(w => w.id === activeTenant?.id)
+      const role = activeWs?.role || 'owner'
+      const perms = activeWs?.permissions || []
+      // Owner sempre tem acesso total
+      if (role !== 'owner' && !perms.includes(to.meta.permission)) {
+        // Redireciona para o primeiro item permitido, ou dashboard como fallback
+        const firstAllowed = ['dashboard', 'contacts', 'flows', 'broadcasts', 'settings'].find(p => perms.includes(p))
+        return next(firstAllowed ? `/${firstAllowed}` : '/dashboard')
+      }
+    } catch {}
   }
 
   next()

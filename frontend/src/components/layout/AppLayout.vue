@@ -28,8 +28,51 @@
           <img src="@/imagens/bcp-standard.png" alt="Blackchat Pro" class="sidebar-brand-img" />
         </div>
 
+        <!-- Workspace Selector -->
+        <div class="ws-selector" v-if="auth.workspaces.value.length > 0">
+          <button class="ws-current" @click="wsDropdownOpen = !wsDropdownOpen">
+            <div class="ws-current-icon">
+              {{ (auth.tenant.value?.name || 'W').charAt(0).toUpperCase() }}
+            </div>
+            <div class="ws-current-info">
+              <span class="ws-current-name">{{ auth.tenant.value?.name || 'Workspace' }}</span>
+              <span class="ws-current-role">
+                {{ roleLabelMap[currentRole] || 'Dono' }}
+                <span v-if="currentPlan" class="ws-plan-tag ws-plan-tag--sm">{{ currentPlan }}</span>
+              </span>
+            </div>
+            <svg class="ws-chevron" :class="{ rotated: wsDropdownOpen }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+
+          <Transition name="ws-drop">
+            <div v-if="wsDropdownOpen" class="ws-dropdown">
+              <div class="ws-dropdown-label">Meus Workspaces</div>
+              <button
+                v-for="ws in auth.workspaces.value"
+                :key="ws.id"
+                class="ws-dropdown-item"
+                :class="{ active: ws.id === auth.tenant.value?.id }"
+                @click="handleSwitchWorkspace(ws.id)"
+              >
+                <div class="ws-item-icon">{{ ws.name.charAt(0).toUpperCase() }}</div>
+                <div class="ws-item-info">
+                  <span class="ws-item-name">{{ ws.name }}</span>
+                  <span class="ws-item-role">{{ roleLabelMap[ws.role] || ws.role }}</span>
+                </div>
+                <span v-if="ws.plan_name" class="ws-plan-tag">{{ ws.plan_name }}</span>
+                <svg v-if="ws.id === auth.tenant.value?.id" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <div class="ws-dropdown-divider"></div>
+              <RouterLink to="/settings?tab=Workspaces" class="ws-dropdown-action" @click="closeSidebar(); wsDropdownOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Gerenciar Workspaces
+              </RouterLink>
+            </div>
+          </Transition>
+        </div>
+
         <nav class="sidebar-nav">
-          <RouterLink to="/dashboard" @click="closeSidebar">
+          <RouterLink v-if="auth.hasPermission('dashboard')" to="/dashboard" @click="closeSidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7" rx="1"/>
               <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -38,7 +81,7 @@
             </svg>
             Dashboard
           </RouterLink>
-          <RouterLink to="/contacts" @click="closeSidebar">
+          <RouterLink v-if="auth.hasPermission('contacts')" to="/contacts" @click="closeSidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
@@ -47,13 +90,13 @@
             </svg>
             Contatos
           </RouterLink>
-          <RouterLink to="/flows" @click="closeSidebar">
+          <RouterLink v-if="auth.hasPermission('flows')" to="/flows" @click="closeSidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
             </svg>
             Automações
           </RouterLink>
-          <RouterLink to="/broadcasts" @click="closeSidebar">
+          <RouterLink v-if="auth.hasPermission('broadcasts')" to="/broadcasts" @click="closeSidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M4 4h16v4H4z"/>
               <path d="M4 10h10v4H4z"/>
@@ -62,7 +105,7 @@
             </svg>
             Mensagens em massa
           </RouterLink>
-          <RouterLink to="/settings" @click="closeSidebar">
+          <RouterLink v-if="auth.hasPermission('settings')" to="/settings" @click="closeSidebar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="9"/>
               <path d="M12 8v4l3 1"/>
@@ -88,7 +131,6 @@
         </div>
 
         <div class="sidebar-footer">
-          <div>Tenant: <strong>{{ tenantName }}</strong></div>
           <div>Beta • v0.2</div>
 
           <button type="button" class="sidebar-logout" @click="handleLogout">
@@ -122,7 +164,7 @@
           <span>Painel</span>
         </RouterLink>
         
-        <RouterLink to="/contacts" class="mobile-nav-item" @click="closeSidebar">
+        <RouterLink v-if="auth.hasPermission('contacts')" to="/contacts" class="mobile-nav-item" @click="closeSidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
             <circle cx="9" cy="7" r="4"/>
@@ -132,13 +174,13 @@
           <span>Contatos</span>
         </RouterLink>
         
-        <RouterLink to="/flows" class="mobile-nav-item" @click="closeSidebar">
+        <RouterLink v-if="auth.hasPermission('flows')" to="/flows" class="mobile-nav-item" @click="closeSidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
           <span>Automações</span>
         </RouterLink>
-        <RouterLink to="/broadcasts" class="mobile-nav-item" @click="closeSidebar">
+        <RouterLink v-if="auth.hasPermission('broadcasts')" to="/broadcasts" class="mobile-nav-item" @click="closeSidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 4h16v4H4z"/>
             <path d="M4 10h10v4H4z"/>
@@ -147,7 +189,7 @@
           </svg>
           <span>Mensagens</span>
         </RouterLink>
-        <RouterLink to="/settings" class="mobile-nav-item" @click="closeSidebar">
+        <RouterLink v-if="auth.hasPermission('settings')" to="/settings" class="mobile-nav-item" @click="closeSidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="9"/>
             <path d="M12 8v4l3 1"/>
@@ -167,18 +209,57 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
 const route = useRoute()
 const sidebarOpen = ref(false)
+const wsDropdownOpen = ref(false)
 const auth = useAuth()
+
+// Fechar dropdown ao clicar fora
+const handleClickOutside = (e) => {
+  if (wsDropdownOpen.value && !e.target.closest('.ws-selector')) {
+    wsDropdownOpen.value = false
+  }
+}
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  // Manter lista de workspaces sempre atualizada (inclui workspaces convidados)
+  auth.refreshWorkspaces()
+})
+onUnmounted(() => document.removeEventListener('click', handleClickOutside))
+
+const roleLabelMap = {
+  owner: 'Dono',
+  admin: 'Admin',
+  member: 'Membro',
+}
+
+const currentRole = computed(() => {
+  const ws = auth.workspaces.value.find(w => w.id === auth.tenant.value?.id)
+  return ws?.role || 'owner'
+})
+
+const currentPlan = computed(() => {
+  const ws = auth.workspaces.value.find(w => w.id === auth.tenant.value?.id)
+  return ws?.plan_name || null
+})
 
 const userName = computed(() => auth.user.value?.full_name || auth.user.value?.email || 'Usuário')
 const userEmail = computed(() => auth.user.value?.email || '')
 const tenantName = computed(() => auth.tenant.value?.name || String(auth.user.value?.tenant_id || '—'))
 const isSuperAdmin = computed(() => !!auth.user.value?.is_super_admin)
+
+const handleSwitchWorkspace = async (wsId) => {
+  if (wsId === auth.tenant.value?.id) {
+    wsDropdownOpen.value = false
+    return
+  }
+  wsDropdownOpen.value = false
+  await auth.switchWorkspace(wsId)
+}
 
 const toggleSidebar = () => {
   sidebarOpen.value = !sidebarOpen.value

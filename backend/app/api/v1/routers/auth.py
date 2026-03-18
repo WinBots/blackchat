@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.session import get_db
-from app.db.models import User, Tenant, Subscription, Plan
+from app.db.models import User, Tenant, Subscription, Plan, TenantUser
+from app.db.models.tenant_user import AVAILABLE_PERMISSIONS
 from app.db.models.password_reset_token import PasswordResetToken
 from app.core.auth import (
     create_access_token,
@@ -82,14 +83,6 @@ def register(
             detail="E-mail já cadastrado"
         )
     
-    # Verificar se o email do tenant já existe
-    existing_tenant = db.query(Tenant).filter(func.lower(Tenant.email) == email).first()
-    if existing_tenant:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Empresa já cadastrada com este email"
-        )
-    
     # Criar tenant
     tenant = Tenant(
         name=data.company_name,
@@ -118,6 +111,15 @@ def register(
     )
     db.add(user)
     db.flush()
+
+    # Criar vínculo workspace (multi-workspace)
+    tenant_user = TenantUser(
+        tenant_id=tenant.id,
+        user_id=user.id,
+        role="owner",
+        is_default=True,
+    )
+    db.add(tenant_user)
     
     # Criar assinatura trial (14 dias)
     free_plan = db.query(Plan).filter(Plan.name == "free").first()
@@ -150,8 +152,8 @@ def register(
         company_name=tenant.name,
     )
     
-    # Criar token
-    access_token = create_access_token(data={"sub": user.id})
+    # Criar token (com tenant_id para multi-workspace)
+    access_token = create_access_token(data={"sub": user.id, "tid": tenant.id})
     
     return {
         "access_token": access_token,
@@ -168,7 +170,10 @@ def register(
             "id": tenant.id,
             "name": tenant.name,
             "email": tenant.email
-        }
+        },
+        "workspaces": [
+            {"id": tenant.id, "name": tenant.name, "role": "owner", "is_default": True, "permissions": list(AVAILABLE_PERMISSIONS)}
+        ]
     }
 
 
@@ -275,9 +280,27 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuário inativo"
         )
-    
-    # Buscar tenant
-    tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+
+    # Buscar workspaces do usuário
+    memberships = (
+        db.query(TenantUser)
+        .filter(TenantUser.user_id == user.id)
+        .all()
+    )
+
+    # Se o usuário não tem registros em tenant_users (dados pré-migração),
+    # usa o tenant_id original como fallback
+    if not memberships:
+        active_tenant_id = user.tenant_id
+        workspaces_list = []
+    else:
+        # Pegar o workspace default, ou o primeiro
+        default_ws = next((m for m in memberships if m.is_default), memberships[0])
+        active_tenant_id = default_ws.tenant_id
+        workspaces_list = memberships
+
+    # Buscar tenant ativo
+    tenant = db.query(Tenant).filter(Tenant.id == active_tenant_id).first()
     
     if not tenant or not tenant.is_active:
         raise HTTPException(
@@ -289,8 +312,44 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     user.last_login = datetime.utcnow()
     db.commit()
     
-    # Criar token
-    access_token = create_access_token(data={"sub": user.id})
+    # Criar token (com tenant_id para multi-workspace)
+    access_token = create_access_token(data={"sub": user.id, "tid": tenant.id})
+
+    # Montar lista de workspaces para o frontend
+    ws_data = []
+    if workspaces_list:
+        tenant_ids = [m.tenant_id for m in workspaces_list]
+        tenants = db.query(Tenant).filter(Tenant.id.in_(tenant_ids), Tenant.is_active == True).all()
+        tenant_map = {t.id: t for t in tenants}
+        # Buscar subscriptions para incluir plano
+        subs = db.query(Subscription).filter(
+            Subscription.tenant_id.in_(tenant_ids)
+        ).order_by(Subscription.id.desc()).all()
+        sub_map = {}
+        for s in subs:
+            if s.tenant_id not in sub_map:
+                sub_map[s.tenant_id] = s
+        for m in workspaces_list:
+            t = tenant_map.get(m.tenant_id)
+            if t:
+                sub = sub_map.get(t.id)
+                ws_data.append({
+                    "id": t.id,
+                    "name": t.name,
+                    "role": m.role,
+                    "is_default": m.is_default,
+                    "plan_name": sub.plan.display_name if sub and sub.plan else None,
+                    "permissions": m.get_permissions(),
+                })
+    else:
+        ws_data.append({
+            "id": tenant.id,
+            "name": tenant.name,
+            "role": "owner",
+            "is_default": True,
+            "plan_name": None,
+            "permissions": list(AVAILABLE_PERMISSIONS),
+        })
     
     return {
         "access_token": access_token,
@@ -301,13 +360,14 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             "full_name": user.full_name,
             "is_admin": user.is_admin,
             "is_super_admin": bool(getattr(user, "is_super_admin", False)),
-            "tenant_id": user.tenant_id
+            "tenant_id": active_tenant_id
         },
         "tenant": {
             "id": tenant.id,
             "name": tenant.name,
             "email": tenant.email
-        }
+        },
+        "workspaces": ws_data
     }
 
 
@@ -326,6 +386,43 @@ def get_me(
         .order_by(Subscription.id.desc())
         .first()
     )
+
+    # Buscar workspaces do usuário
+    memberships = db.query(TenantUser).filter(TenantUser.user_id == user.id).all()
+    ws_data = []
+    if memberships:
+        tenant_ids = [m.tenant_id for m in memberships]
+        tenants = db.query(Tenant).filter(Tenant.id.in_(tenant_ids), Tenant.is_active == True).all()
+        tenant_map = {t.id: t for t in tenants}
+        # Buscar subscriptions para incluir plano
+        subs = db.query(Subscription).filter(
+            Subscription.tenant_id.in_(tenant_ids)
+        ).order_by(Subscription.id.desc()).all()
+        sub_map = {}
+        for s in subs:
+            if s.tenant_id not in sub_map:
+                sub_map[s.tenant_id] = s
+        for m in memberships:
+            t = tenant_map.get(m.tenant_id)
+            if t:
+                sub = sub_map.get(t.id)
+                ws_data.append({
+                    "id": t.id,
+                    "name": t.name,
+                    "role": m.role,
+                    "is_default": m.is_default,
+                    "plan_name": sub.plan.display_name if sub and sub.plan else None,
+                    "permissions": m.get_permissions(),
+                })
+    else:
+        ws_data.append({
+            "id": tenant.id,
+            "name": tenant.name,
+            "role": "owner",
+            "is_default": True,
+            "plan_name": None,
+            "permissions": list(AVAILABLE_PERMISSIONS),
+        })
     
     return {
         "user": {
@@ -334,18 +431,19 @@ def get_me(
             "full_name": user.full_name,
             "is_admin": user.is_admin,
             "is_super_admin": bool(getattr(user, "is_super_admin", False)),
-            "tenant_id": user.tenant_id
+            "tenant_id": getattr(user, "_active_tenant_id", user.tenant_id)
         },
         "tenant": {
             "id": tenant.id,
             "name": tenant.name,
             "email": tenant.email
         },
+        "workspaces": ws_data,
         "subscription": {
             "id": subscription.id if subscription else None,
             "plan_name": subscription.plan.display_name if subscription else None,
             "status": subscription.status if subscription else None,
-            "trial_ends_at": subscription.trial_ends_at.isoformat() if subscription and subscription.trial_ends_at else None,
-            "current_period_end": subscription.current_period_end.isoformat() if subscription and subscription.current_period_end else None
+            "trial_ends_at": subscription.trial_ends_at.strftime("%Y-%m-%d %H:%M:%S") if subscription and subscription.trial_ends_at else None,
+            "current_period_end": subscription.current_period_end.strftime("%Y-%m-%d %H:%M:%S") if subscription and subscription.current_period_end else None
         } if subscription else None
     }

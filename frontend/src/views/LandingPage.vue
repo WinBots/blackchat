@@ -15,8 +15,8 @@
           <span class="lp-logo-text">Blackchat Pro</span>
         </div>
         <nav class="lp-nav-links">
-          <a href="#recursos">Recursos</a>
-          <a href="#planos">Planos</a>
+          <a href="#recursos" @click.prevent="scrollTo('recursos')">Recursos</a>
+          <a href="#planos" @click.prevent="scrollTo('planos')">Planos</a>
         </nav>
         <div class="lp-nav-actions">
           <router-link to="/login" class="lp-btn lp-btn-ghost">Entrar</router-link>
@@ -24,8 +24,24 @@
             <i class="fas fa-rocket"></i> Começar Grátis
           </router-link>
         </div>
+        <button class="lp-menu-toggle" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="Menu">
+          <i :class="mobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'"></i>
+        </button>
       </div>
     </header>
+
+    <!-- Mobile Menu -->
+    <Transition name="lp-slide">
+      <div v-if="mobileMenuOpen" class="lp-mobile-menu">
+        <a href="#recursos" @click.prevent="scrollTo('recursos')">Recursos</a>
+        <a href="#planos" @click.prevent="scrollTo('planos')">Planos</a>
+        <div class="lp-mobile-menu-divider"></div>
+        <router-link to="/login" @click="mobileMenuOpen = false">Entrar</router-link>
+        <router-link to="/register" class="lp-btn lp-btn-primary lp-mobile-cta" @click="mobileMenuOpen = false">
+          <i class="fas fa-rocket"></i> Começar Grátis
+        </router-link>
+      </div>
+    </Transition>
 
     <!-- Hero Section -->
     <section class="lp-hero">
@@ -114,20 +130,20 @@
               <p class="lp-pricing-desc">{{ planDescription(plan.name) }}</p>
 
               <!-- Plano Grátis -->
-              <div v-if="plan.name === 'free'" class="pricing-price pricing-inline mb-8">
-                <span class="price-value text-green-500">Grátis</span>
+              <div v-if="plan.name === 'free'" class="pricing-price pricing-inline lp-price-block">
+                <span class="price-value lp-free-label">Grátis</span>
               </div>
 
               <!-- Plano Pro (preço fixo) -->
-              <div v-else-if="plan.name === 'pro'" class="pricing-price pricing-inline mb-8">
-                <span class="price-currency p-xs">R$</span>
+              <div v-else-if="plan.name === 'pro'" class="pricing-price pricing-inline lp-price-block">
+                <span class="price-currency">R$</span>
                 <span class="price-value">99</span>
-                <span class="price-period p-xs">/mês</span>
+                <span class="price-period">/mês</span>
                 <div class="pricing-pro-contacts">até 2.500 contatos</div>
               </div>
 
               <!-- Plano Enterprise (personalizado) -->
-              <div v-else-if="plan.name === 'unlimited'" class="pricing-price pricing-vpm mb-8">
+              <div v-else-if="plan.name === 'unlimited'" class="pricing-price pricing-vpm lp-price-block">
                 <div class="pricing-vpm-from">personalizado</div>
                 <div class="pricing-ent-main">Enterprise</div>
                 <div class="pricing-vpm-unit">cobrado por volume de contatos</div>
@@ -140,10 +156,10 @@
               </div>
 
               <!-- Outros planos VPM -->
-              <div v-else-if="plan.vpm_price" class="pricing-price pricing-vpm mb-8">
+              <div v-else-if="plan.vpm_price" class="pricing-price pricing-vpm lp-price-block">
                 <div class="pricing-vpm-from">a partir de</div>
                 <div class="pricing-vpm-main">
-                  <span class="price-currency p-xs">R$</span>
+                  <span class="price-currency">R$</span>
                   <span class="price-value">{{ formatPriceNumber(plan.vpm_price) }}</span>
                 </div>
                 <div class="pricing-vpm-unit">por 1.000 contatos ativos</div>
@@ -202,6 +218,7 @@
             <a
               v-else
               href="#lp-enterprise-calc"
+              @click.prevent="scrollTo('lp-enterprise-calc')"
               class="lp-btn-plan lp-btn-plan--enterprise"
             >
               Ver Preços
@@ -326,6 +343,12 @@ import api from '@/api/http.js'
 
 const plans = ref([])
 const loading = ref(true)
+const mobileMenuOpen = ref(false)
+
+const scrollTo = (id) => {
+  mobileMenuOpen.value = false
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+}
 
 // Calculadora VPM – tabela oficial de preços com interpolação linear
 const calcSlider = ref(30) // ~5.000 contatos por padrão
@@ -498,13 +521,6 @@ const loadPlans = async () => {
   }
 }
 
-const formatNumber = (num) => {
-  if (!num) return 'Ilimitados'
-  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
-  if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
-  return num.toString()
-}
-
 const formatPriceNumber = (value) => {
   const n = Number(value)
   if (!Number.isFinite(n)) return ''
@@ -514,8 +530,6 @@ const formatPriceNumber = (value) => {
     maximumFractionDigits: isInt ? 0 : 2
   })
 }
-
-const minChargeValue = (plan) => plan?.min_monthly ?? null
 
 onMounted(() => {
   loadPlans()
@@ -926,90 +940,6 @@ onMounted(() => {
   margin-bottom: 60px;
 }
 
-/* === Billing Toggle === */
-.lp-billing-toggle-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 60px;
-}
-
-.lp-billing-toggle {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 4px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.lp-toggle-thumb {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  height: calc(100% - 8px);
-  width: calc(50% - 4px);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  transform: translateX(0);
-  transition: transform 0.25s cubic-bezier(0.4, 0.0, 0.2, 1);
-}
-
-.lp-toggle-thumb.is-yearly {
-  transform: translateX(100%);
-}
-
-.lp-toggle-option {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 14px;
-  min-width: 112px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #94a3b8;
-}
-
-.lp-toggle-option.active {
-  color: #f8fafc;
-}
-
-.lp-discount-badge {
-  background: rgba(0, 255, 102, 0.15);
-  color: #00FF66;
-  border: 1px solid rgba(0, 255, 102, 0.3);
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-/* Acessibilidade: foco visível */
-.lp-toggle-option:focus-visible {
-  outline: 2px solid rgba(0, 255, 102, 0.45);
-  outline-offset: 2px;
-}
-
-@media (max-width: 420px) {
-  .lp-toggle-option {
-    min-width: 96px;
-    padding: 10px 12px;
-    font-size: 0.9rem;
-  }
-}
-
 /* === Pricing Price helpers === */
 .pricing-inline {
   display: flex;
@@ -1388,7 +1318,7 @@ onMounted(() => {
   color: #475569;
 }
 
-/* === Responsive === */
+/* === Responsive (tablet) === */
 @media (max-width: 900px) {
   .lp-features-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1397,10 +1327,6 @@ onMounted(() => {
   .lp-stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 24px;
-  }
-
-  .lp-nav-links {
-    display: none;
   }
 }
 
@@ -1705,6 +1631,88 @@ onMounted(() => {
   font-size: 0.82rem;
 }
 
+/* === Utility replacements (ex-Tailwind) === */
+.lp-price-block {
+  margin-bottom: 8px;
+}
+
+.lp-free-label {
+  color: #00FF66 !important;
+}
+
+/* === Mobile hamburger === */
+.lp-menu-toggle {
+  display: none;
+  background: none;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #e5e7eb;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  transition: all 0.15s ease;
+  margin-left: auto;
+}
+
+.lp-menu-toggle:hover {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.lp-mobile-menu {
+  position: sticky;
+  top: 59px;
+  z-index: 99;
+  background: rgba(10, 10, 10, 0.97);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  gap: 4px;
+}
+
+.lp-mobile-menu a {
+  padding: 12px 16px;
+  border-radius: 10px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.lp-mobile-menu a:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #e5e7eb;
+}
+
+.lp-mobile-menu-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.1);
+  margin: 8px 0;
+}
+
+.lp-mobile-cta {
+  margin-top: 4px;
+  justify-content: center;
+}
+
+/* Mobile menu transition */
+.lp-slide-enter-active,
+.lp-slide-leave-active {
+  transition: all 0.25s ease;
+}
+
+.lp-slide-enter-from,
+.lp-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
 @media (max-width: 640px) {
   .lp-hero-title {
     font-size: 2.4rem;
@@ -1742,6 +1750,51 @@ onMounted(() => {
   .lp-footer-content {
     flex-direction: column;
     text-align: center;
+  }
+
+  /* VPM Calculator mobile */
+  .lp-vpm-calc-card {
+    padding: 24px 16px;
+  }
+
+  .lp-vpm-calc-body {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .lp-vpm-calc-equals {
+    display: none;
+  }
+
+  .lp-vpm-calc-left {
+    text-align: center;
+  }
+
+  .lp-vpm-calc-number {
+    font-size: 1.8rem;
+  }
+
+  .lp-vpm-calc-price {
+    font-size: 2.2rem;
+  }
+
+  .lp-vpm-calc-title {
+    font-size: 1.5rem;
+  }
+
+  .lp-vpm-calc-cta {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .lp-menu-toggle {
+    display: flex;
+  }
+
+  .lp-nav-links,
+  .lp-nav-actions {
+    display: none;
   }
 }
 </style>

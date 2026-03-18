@@ -68,6 +68,28 @@
                 {{ stripeConfig.mode_active === 'live' ? 'LIVE' : 'TEST' }}
               </span>
             </button>
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'subscriptions' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'subscriptions'"
+              @click="activeTab = 'subscriptions'; loadSubscriptions()"
+            >
+              Assinaturas
+              <span v-if="subsData.total" class="super-admin-tab-count">{{ subsData.total }}</span>
+            </button>
+            <button
+              type="button"
+              class="super-admin-tab"
+              :class="activeTab === 'eventlog' ? 'super-admin-tab--active' : ''"
+              role="tab"
+              :aria-selected="activeTab === 'eventlog'"
+              @click="activeTab = 'eventlog'; loadEventLog()"
+            >
+              Log de Eventos
+              <span v-if="eventsData.total" class="super-admin-tab-count">{{ eventsData.total }}</span>
+            </button>
           </div>
 
           <div v-if="error" class="super-admin-error">
@@ -216,16 +238,16 @@
                       </select>
                     </div>
                     <div class="input-group">
-                      <label class="input-label">Period start (ISO)</label>
-                      <input class="input" type="text" v-model="subDraft.current_period_start" placeholder="2026-02-27T02:23:21Z" />
+                      <label class="input-label">Period start</label>
+                      <input class="input" type="text" v-model="subDraft.current_period_start" placeholder="2026-03-17 06:15:41" />
                     </div>
                     <div class="input-group">
-                      <label class="input-label">Trial ends (ISO)</label>
-                      <input class="input" type="text" v-model="subDraft.trial_ends_at" placeholder="2026-03-13T02:23:21Z" />
+                      <label class="input-label">Trial ends</label>
+                      <input class="input" type="text" v-model="subDraft.trial_ends_at" placeholder="2026-04-18 06:15:41" />
                     </div>
                     <div class="input-group">
-                      <label class="input-label">Period end (ISO)</label>
-                      <input class="input" type="text" v-model="subDraft.current_period_end" placeholder="2026-03-13T02:23:21Z" />
+                      <label class="input-label">Period end</label>
+                      <input class="input" type="text" v-model="subDraft.current_period_end" placeholder="2026-04-18 06:15:41" />
                     </div>
                   </div>
                   <div class="super-admin-actions">
@@ -513,6 +535,214 @@
             </div>
           </div>
         </div>
+
+        <!-- ═══ Assinaturas ════════════════════════════════════════════════ -->
+        <div v-else-if="activeTab === 'subscriptions'" class="super-admin-tab-panel" role="tabpanel">
+          <div class="card super-admin-section super-admin-section--full">
+            <div class="super-admin-section-header">
+              <div>
+                <h3 class="super-admin-section-title">Todas as Assinaturas</h3>
+                <div class="super-admin-section-subtitle">Listagem completa com filtros</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" @click="loadSubscriptions" :disabled="subsLoading">
+                {{ subsLoading ? 'Carregando…' : 'Atualizar' }}
+              </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="sa-filters">
+              <div class="sa-filter-row">
+                <input class="input sa-filter-input" type="text" v-model="subsFilters.search" placeholder="Buscar por nome ou email…" @keyup.enter="subsPage = 1; loadSubscriptions()" />
+                <select class="input sa-filter-select" v-model="subsFilters.status" @change="subsPage = 1; loadSubscriptions()">
+                  <option value="">Todos os status</option>
+                  <option value="trial">Trial</option>
+                  <option value="active">Active</option>
+                  <option value="past_due">Past Due</option>
+                  <option value="unpaid">Unpaid</option>
+                  <option value="canceled">Canceled</option>
+                  <option value="expired">Expired</option>
+                </select>
+                <select class="input sa-filter-select" v-model="subsFilters.plan_id" @change="subsPage = 1; loadSubscriptions()">
+                  <option value="">Todos os planos</option>
+                  <option v-for="p in plans" :key="p.id" :value="p.id">{{ p.display_name }}</option>
+                </select>
+                <select class="input sa-filter-select" v-model="subsFilters.stripe_mode" @change="subsPage = 1; loadSubscriptions()">
+                  <option value="">Modo Stripe</option>
+                  <option value="test">Test</option>
+                  <option value="live">Live</option>
+                </select>
+              </div>
+              <div class="sa-filter-row">
+                <div class="sa-filter-date-group">
+                  <label class="sa-filter-date-label">De:</label>
+                  <input class="input sa-filter-date" type="date" v-model="subsFilters.date_from" @change="subsPage = 1; loadSubscriptions()" />
+                </div>
+                <div class="sa-filter-date-group">
+                  <label class="sa-filter-date-label">Até:</label>
+                  <input class="input sa-filter-date" type="date" v-model="subsFilters.date_to" @change="subsPage = 1; loadSubscriptions()" />
+                </div>
+                <button class="btn btn-ghost btn-sm" type="button" @click="clearSubsFilters">Limpar filtros</button>
+                <button class="btn btn-primary btn-sm" type="button" @click="subsPage = 1; loadSubscriptions()">Buscar</button>
+              </div>
+            </div>
+
+            <!-- Paginação -->
+            <div class="super-admin-pagination">
+              <span class="super-admin-pagination-range">{{ subsRangeLabel }}</span>
+              <select class="input super-admin-page-size" v-model.number="subsPageSize" @change="subsPage = 1; loadSubscriptions()">
+                <option :value="10">10</option>
+                <option :value="25">25</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" @click="subsPage--; loadSubscriptions()" :disabled="subsLoading || subsPage <= 1">Anterior</button>
+              <button class="btn btn-ghost btn-sm" type="button" @click="subsPage++; loadSubscriptions()" :disabled="subsLoading || subsPage >= subsData.total_pages">Próximo</button>
+            </div>
+
+            <!-- Tabela -->
+            <div class="table-wrapper super-admin-table">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Tenant</th>
+                    <th>Owner</th>
+                    <th>Plano</th>
+                    <th>Status</th>
+                    <th>Modo</th>
+                    <th>Valor/mês</th>
+                    <th>Início</th>
+                    <th>Período fim</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="subsLoading">
+                    <td colspan="9" class="super-admin-muted">Carregando…</td>
+                  </tr>
+                  <tr v-else-if="subsData.items.length === 0">
+                    <td colspan="9" class="super-admin-muted">Nenhuma assinatura encontrada.</td>
+                  </tr>
+                  <tr v-else v-for="s in subsData.items" :key="s.id">
+                    <td>{{ s.id }}</td>
+                    <td>
+                      <div class="sa-cell-tenant">
+                        <span class="sa-cell-name">{{ s.tenant_name || '—' }}</span>
+                        <span class="sa-cell-email">{{ s.tenant_email || '' }}</span>
+                      </div>
+                    </td>
+                    <td>{{ s.owner_name || '—' }}</td>
+                    <td>
+                      <span class="sa-pill sa-pill--plan">{{ s.plan_name || '—' }}</span>
+                    </td>
+                    <td>
+                      <span class="sa-pill" :class="'sa-status--' + s.status">{{ s.status }}</span>
+                    </td>
+                    <td>
+                      <span v-if="s.stripe_mode" class="super-admin-tab-badge" :class="s.stripe_mode === 'live' ? 'badge-live' : 'badge-test'">{{ s.stripe_mode?.toUpperCase() }}</span>
+                      <span v-else class="super-admin-muted">—</span>
+                    </td>
+                    <td>{{ s.monthly_amount_cents ? fmtCents(s.monthly_amount_cents) : '—' }}</td>
+                    <td>{{ s.started_at || '—' }}</td>
+                    <td>{{ s.current_period_end || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Log de Eventos ═════════════════════════════════════════════ -->
+        <div v-else-if="activeTab === 'eventlog'" class="super-admin-tab-panel" role="tabpanel">
+          <div class="card super-admin-section super-admin-section--full">
+            <div class="super-admin-section-header">
+              <div>
+                <h3 class="super-admin-section-title">Log de Eventos</h3>
+                <div class="super-admin-section-subtitle">Histórico de assinaturas, webhooks Stripe e limites</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" @click="loadEventLog" :disabled="eventsLoading">
+                {{ eventsLoading ? 'Carregando…' : 'Atualizar' }}
+              </button>
+            </div>
+
+            <!-- Filtros -->
+            <div class="sa-filters">
+              <div class="sa-filter-row">
+                <input class="input sa-filter-input" type="text" v-model="eventsFilters.search" placeholder="Buscar evento…" @keyup.enter="eventsPage = 1; loadEventLog()" />
+                <select class="input sa-filter-select" v-model="eventsFilters.source" @change="eventsPage = 1; loadEventLog()">
+                  <option value="">Todas as fontes</option>
+                  <option value="subscription">Assinatura</option>
+                  <option value="stripe">Stripe Webhook</option>
+                  <option value="limit">Limite</option>
+                </select>
+                <div class="sa-filter-date-group">
+                  <label class="sa-filter-date-label">De:</label>
+                  <input class="input sa-filter-date" type="date" v-model="eventsFilters.date_from" @change="eventsPage = 1; loadEventLog()" />
+                </div>
+                <div class="sa-filter-date-group">
+                  <label class="sa-filter-date-label">Até:</label>
+                  <input class="input sa-filter-date" type="date" v-model="eventsFilters.date_to" @change="eventsPage = 1; loadEventLog()" />
+                </div>
+                <button class="btn btn-ghost btn-sm" type="button" @click="clearEventsFilters">Limpar</button>
+                <button class="btn btn-primary btn-sm" type="button" @click="eventsPage = 1; loadEventLog()">Buscar</button>
+              </div>
+            </div>
+
+            <!-- Paginação -->
+            <div class="super-admin-pagination">
+              <span class="super-admin-pagination-range">{{ eventsRangeLabel }}</span>
+              <select class="input super-admin-page-size" v-model.number="eventsPageSize" @change="eventsPage = 1; loadEventLog()">
+                <option :value="10">10</option>
+                <option :value="25">25</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" @click="eventsPage--; loadEventLog()" :disabled="eventsLoading || eventsPage <= 1">Anterior</button>
+              <button class="btn btn-ghost btn-sm" type="button" @click="eventsPage++; loadEventLog()" :disabled="eventsLoading || eventsPage >= eventsData.total_pages">Próximo</button>
+            </div>
+
+            <!-- Tabela Eventos -->
+            <div class="table-wrapper super-admin-table">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Fonte</th>
+                    <th>Tipo</th>
+                    <th>Tenant</th>
+                    <th>Descrição</th>
+                    <th>Modo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="eventsLoading">
+                    <td colspan="6" class="super-admin-muted">Carregando…</td>
+                  </tr>
+                  <tr v-else-if="eventsData.items.length === 0">
+                    <td colspan="6" class="super-admin-muted">Nenhum evento encontrado.</td>
+                  </tr>
+                  <tr v-else v-for="(ev, idx) in eventsData.items" :key="idx" class="sa-event-row" :class="'sa-event--' + ev.source">
+                    <td class="sa-cell-mono">{{ ev.created_at || '—' }}</td>
+                    <td>
+                      <span class="sa-pill" :class="'sa-source--' + ev.source">{{ sourceLabel(ev.source) }}</span>
+                    </td>
+                    <td class="sa-cell-mono">{{ ev.event_type }}</td>
+                    <td>
+                      <span v-if="ev.tenant_name">{{ ev.tenant_name }}</span>
+                      <span v-else-if="ev.tenant_id" class="super-admin-muted">ID {{ ev.tenant_id }}</span>
+                      <span v-else class="super-admin-muted">—</span>
+                    </td>
+                    <td class="sa-cell-desc">{{ ev.description }}</td>
+                    <td>
+                      <span v-if="ev.stripe_mode" class="super-admin-tab-badge" :class="ev.stripe_mode === 'live' ? 'badge-live' : 'badge-test'">{{ ev.stripe_mode?.toUpperCase() }}</span>
+                      <span v-else class="super-admin-muted">—</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         </template>
       </div>
     </div>
@@ -531,7 +761,9 @@ import {
   adminListUsers,
   adminUpdateUser,
   adminListPlans,
-  adminUpdatePlan
+  adminUpdatePlan,
+  adminListSubscriptions,
+  adminListEventLog
 } from '@/api/superAdmin'
 import { getStripeConfig, updateStripeConfig, setStripeMode } from '@/api/stripeConfig'
 
@@ -835,6 +1067,86 @@ const toggleStripeMode = async (mode) => {
   } finally {
     stripeSaving.value = false
   }
+}
+
+// ── Assinaturas (aba) ─────────────────────────────────────────────────────
+const subsLoading = ref(false)
+const subsPage = ref(1)
+const subsPageSize = ref(25)
+const subsFilters = ref({ search: '', status: '', plan_id: '', stripe_mode: '', date_from: '', date_to: '' })
+const subsData = ref({ items: [], total: 0, page: 1, page_size: 25, total_pages: 1 })
+
+const subsRangeLabel = computed(() => makeRangeLabel(subsData.value.total, subsPage.value, subsPageSize.value))
+
+const loadSubscriptions = async () => {
+  subsLoading.value = true
+  try {
+    const params = { page: subsPage.value, page_size: subsPageSize.value }
+    if (subsFilters.value.search) params.search = subsFilters.value.search
+    if (subsFilters.value.status) params.status = subsFilters.value.status
+    if (subsFilters.value.plan_id) params.plan_id = subsFilters.value.plan_id
+    if (subsFilters.value.stripe_mode) params.stripe_mode = subsFilters.value.stripe_mode
+    if (subsFilters.value.date_from) params.date_from = subsFilters.value.date_from
+    if (subsFilters.value.date_to) params.date_to = subsFilters.value.date_to
+    subsData.value = await adminListSubscriptions(params)
+  } catch (e) {
+    console.error(e)
+    toast.error(e?.response?.data?.detail || 'Erro ao carregar assinaturas')
+  } finally {
+    subsLoading.value = false
+  }
+}
+
+const clearSubsFilters = () => {
+  subsFilters.value = { search: '', status: '', plan_id: '', stripe_mode: '', date_from: '', date_to: '' }
+  subsPage.value = 1
+  loadSubscriptions()
+}
+
+const fmtCents = (cents) => {
+  const val = Number(cents || 0) / 100
+  try {
+    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  } catch {
+    return `R$ ${val.toFixed(2)}`
+  }
+}
+
+// ── Log de Eventos (aba) ──────────────────────────────────────────────────
+const eventsLoading = ref(false)
+const eventsPage = ref(1)
+const eventsPageSize = ref(25)
+const eventsFilters = ref({ search: '', source: '', date_from: '', date_to: '' })
+const eventsData = ref({ items: [], total: 0, page: 1, page_size: 25, total_pages: 1 })
+
+const eventsRangeLabel = computed(() => makeRangeLabel(eventsData.value.total, eventsPage.value, eventsPageSize.value))
+
+const loadEventLog = async () => {
+  eventsLoading.value = true
+  try {
+    const params = { page: eventsPage.value, page_size: eventsPageSize.value }
+    if (eventsFilters.value.search) params.search = eventsFilters.value.search
+    if (eventsFilters.value.source) params.source = eventsFilters.value.source
+    if (eventsFilters.value.date_from) params.date_from = eventsFilters.value.date_from
+    if (eventsFilters.value.date_to) params.date_to = eventsFilters.value.date_to
+    eventsData.value = await adminListEventLog(params)
+  } catch (e) {
+    console.error(e)
+    toast.error(e?.response?.data?.detail || 'Erro ao carregar log de eventos')
+  } finally {
+    eventsLoading.value = false
+  }
+}
+
+const clearEventsFilters = () => {
+  eventsFilters.value = { search: '', source: '', date_from: '', date_to: '' }
+  eventsPage.value = 1
+  loadEventLog()
+}
+
+const sourceLabel = (src) => {
+  const map = { subscription: 'Assinatura', stripe: 'Stripe', limit: 'Limite' }
+  return map[src] || src
 }
 
 onMounted(load)
@@ -1154,4 +1466,119 @@ onMounted(load)
   border-radius:4px; transition:color 0.15s;
 }
 .stripe-eye-btn:hover { color:var(--text-primary, #fff); }
+
+/* ── Filtros (Assinaturas & Eventos) ──────────────────── */
+.sa-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+
+.sa-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sa-filter-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.sa-filter-select {
+  flex: 0 1 180px;
+  min-width: 140px;
+}
+
+.sa-filter-date-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sa-filter-date-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.sa-filter-date {
+  width: 150px;
+}
+
+/* ── Pills ─────────────────────────────────────────────── */
+.sa-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sa-pill--plan {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+.sa-status--trial    { background: rgba(234, 179, 8, 0.12); color: #eab308; }
+.sa-status--active   { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+.sa-status--past_due { background: rgba(251, 146, 60, 0.15); color: #fb923c; }
+.sa-status--unpaid   { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+.sa-status--canceled { background: rgba(156, 163, 175, 0.15); color: #9ca3af; }
+.sa-status--expired  { background: rgba(156, 163, 175, 0.15); color: #6b7280; }
+
+.sa-source--subscription { background: rgba(99, 102, 241, 0.12); color: #818cf8; }
+.sa-source--stripe       { background: rgba(234, 179, 8, 0.12); color: #eab308; }
+.sa-source--limit        { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+
+/* ── Células especiais ─────────────────────────────────── */
+.sa-cell-tenant {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sa-cell-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sa-cell-email {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.sa-cell-mono {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.82rem;
+}
+
+.sa-cell-desc {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sa-event-row:hover .sa-cell-desc {
+  white-space: normal;
+  overflow: visible;
+}
+
+@media (max-width: 820px) {
+  .sa-filter-input,
+  .sa-filter-select {
+    flex: 1 1 100%;
+  }
+  .sa-filter-date {
+    width: 100%;
+  }
+}
 </style>

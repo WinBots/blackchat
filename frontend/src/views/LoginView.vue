@@ -121,7 +121,7 @@ const onSubmit = async () => {
       email: email.value,
       password: password.value
     })
-    auth.login(response.data.user, response.data.tenant, response.data.access_token)
+    auth.login(response.data.user, response.data.tenant, response.data.access_token, response.data.workspaces || [])
     toast.success('Login realizado com sucesso!')
     router.push('/dashboard')
   } catch (err) {

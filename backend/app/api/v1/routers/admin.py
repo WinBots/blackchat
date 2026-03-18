@@ -2,13 +2,17 @@
 Router de administração (gerenciar planos, etc)
 """
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import or_, func as sa_func
+from typing import List, Optional
 
 from app.db.session import get_db
-from app.db.models import Plan, User, Tenant, Subscription
+from app.db.models import (
+    Plan, User, Tenant, Subscription,
+    SubscriptionHistory, StripeWebhookEvent, LimitEvent,
+)
 from app.db.models.subscription import SubscriptionStatus
 from app.core.auth import get_current_user
 
@@ -263,11 +267,11 @@ def admin_list_tenants(
                         tenant_id=sub.tenant_id,
                         plan_id=sub.plan_id,
                         status=str(getattr(sub.status, "value", sub.status)),
-                        started_at=sub.started_at.isoformat() if sub.started_at else None,
-                        trial_ends_at=sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
-                        current_period_start=sub.current_period_start.isoformat() if sub.current_period_start else None,
-                        current_period_end=sub.current_period_end.isoformat() if sub.current_period_end else None,
-                        canceled_at=sub.canceled_at.isoformat() if sub.canceled_at else None,
+                        started_at=sub.started_at.strftime("%Y-%m-%d %H:%M:%S") if sub.started_at else None,
+                        trial_ends_at=sub.trial_ends_at.strftime("%Y-%m-%d %H:%M:%S") if sub.trial_ends_at else None,
+                        current_period_start=sub.current_period_start.strftime("%Y-%m-%d %H:%M:%S") if sub.current_period_start else None,
+                        current_period_end=sub.current_period_end.strftime("%Y-%m-%d %H:%M:%S") if sub.current_period_end else None,
+                        canceled_at=sub.canceled_at.strftime("%Y-%m-%d %H:%M:%S") if sub.canceled_at else None,
                         stripe_subscription_id=getattr(sub, "stripe_subscription_id", None),
                         stripe_price_id=getattr(sub, "stripe_price_id", None),
                     )
@@ -433,4 +437,258 @@ def admin_update_user(
         is_admin=bool(u.is_admin),
         is_super_admin=bool(getattr(u, "is_super_admin", False)),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Assinaturas — listagem paginada com filtros
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/subscriptions")
+def admin_list_subscriptions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Busca por nome ou email do tenant"),
+    status_filter: Optional[str] = Query(None, alias="status", description="Filtrar por status"),
+    plan_id: Optional[int] = Query(None, description="Filtrar por plano"),
+    stripe_mode: Optional[str] = Query(None, description="Filtrar por modo stripe (test/live)"),
+    date_from: Optional[str] = Query(None, description="Data início (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="Data fim (YYYY-MM-DD)"),
+    user: User = Depends(get_super_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Lista todas as assinaturas com dados do tenant, plano e owner. Paginação server-side."""
+    q = (
+        db.query(Subscription, Tenant, Plan)
+        .join(Tenant, Subscription.tenant_id == Tenant.id)
+        .outerjoin(Plan, Subscription.plan_id == Plan.id)
+    )
+
+    # Filtros
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(or_(Tenant.name.ilike(pattern), Tenant.email.ilike(pattern)))
+
+    if status_filter:
+        try:
+            q = q.filter(Subscription.status == SubscriptionStatus(status_filter))
+        except ValueError:
+            pass
+
+    if plan_id:
+        q = q.filter(Subscription.plan_id == plan_id)
+
+    if stripe_mode:
+        q = q.filter(Subscription.stripe_mode == stripe_mode)
+
+    if date_from:
+        try:
+            dt = datetime.fromisoformat(date_from)
+            q = q.filter(Subscription.started_at >= dt)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to + "T23:59:59")
+            q = q.filter(Subscription.started_at <= dt)
+        except ValueError:
+            pass
+
+    total = q.count()
+    rows = (
+        q.order_by(Subscription.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    def _fmt(dt_val):
+        return dt_val.strftime("%Y-%m-%d %H:%M:%S") if dt_val else None
+
+    # Owner de cada tenant
+    owner_cache: dict[int, str | None] = {}
+
+    def _get_owner(tid: int) -> str | None:
+        if tid not in owner_cache:
+            owner = db.query(User).filter(User.tenant_id == tid).order_by(User.id.asc()).first()
+            owner_cache[tid] = (owner.full_name or owner.email) if owner else None
+        return owner_cache[tid]
+
+    items = []
+    for sub, t, p in rows:
+        items.append({
+            "id": sub.id,
+            "tenant_id": sub.tenant_id,
+            "tenant_name": t.name if t else None,
+            "tenant_email": t.email if t else None,
+            "owner_name": _get_owner(sub.tenant_id),
+            "plan_id": sub.plan_id,
+            "plan_name": p.display_name if p else (p.name if p else None),
+            "status": str(getattr(sub.status, "value", sub.status)),
+            "started_at": _fmt(sub.started_at),
+            "trial_ends_at": _fmt(sub.trial_ends_at),
+            "current_period_start": _fmt(sub.current_period_start),
+            "current_period_end": _fmt(sub.current_period_end),
+            "canceled_at": _fmt(sub.canceled_at),
+            "stripe_subscription_id": getattr(sub, "stripe_subscription_id", None),
+            "stripe_mode": getattr(sub, "stripe_mode", None),
+            "monthly_amount_cents": getattr(sub, "monthly_amount_cents", None),
+            "contracted_contacts": getattr(sub, "contracted_contacts", None),
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Log de Eventos — combina subscription_history, stripe_webhook_events, limit_events
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/event-log")
+def admin_event_log(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    source: Optional[str] = Query(None, description="Filtrar por fonte: subscription, stripe, limit"),
+    search: Optional[str] = Query(None, description="Busca texto livre"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    user: User = Depends(get_super_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Log de eventos unificado (subscription_history + stripe_webhook_events + limit_events)."""
+
+    dt_from = None
+    dt_to = None
+    if date_from:
+        try:
+            dt_from = datetime.fromisoformat(date_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to + "T23:59:59")
+        except ValueError:
+            pass
+
+    events: list[dict] = []
+
+    # ── subscription_history ──────────────────────────────────────────────
+    if not source or source == "subscription":
+        q = db.query(SubscriptionHistory)
+        if dt_from:
+            q = q.filter(SubscriptionHistory.created_at >= dt_from)
+        if dt_to:
+            q = q.filter(SubscriptionHistory.created_at <= dt_to)
+        if search:
+            pat = f"%{search}%"
+            q = q.filter(
+                or_(
+                    SubscriptionHistory.event_type.ilike(pat),
+                    SubscriptionHistory.old_plan_name.ilike(pat),
+                    SubscriptionHistory.new_plan_name.ilike(pat),
+                    SubscriptionHistory.note.ilike(pat),
+                )
+            )
+        for h in q.all():
+            tenant = db.query(Tenant).filter(Tenant.id == h.tenant_id).first() if h.tenant_id else None
+            desc_parts = []
+            if h.old_plan_name or h.new_plan_name:
+                desc_parts.append(f"{h.old_plan_name or '—'} → {h.new_plan_name or '—'}")
+            if h.old_status or h.new_status:
+                desc_parts.append(f"status: {h.old_status or '—'} → {h.new_status or '—'}")
+            if h.note:
+                desc_parts.append(h.note)
+
+            events.append({
+                "source": "subscription",
+                "event_type": h.event_type,
+                "description": " | ".join(desc_parts) if desc_parts else h.event_type,
+                "tenant_id": h.tenant_id,
+                "tenant_name": tenant.name if tenant else None,
+                "stripe_mode": h.stripe_mode,
+                "created_at": h.created_at.strftime("%Y-%m-%d %H:%M:%S") if h.created_at else None,
+                "extra": None,
+            })
+
+    # ── stripe_webhook_events ─────────────────────────────────────────────
+    if not source or source == "stripe":
+        q = db.query(StripeWebhookEvent)
+        if dt_from:
+            q = q.filter(StripeWebhookEvent.received_at >= dt_from)
+        if dt_to:
+            q = q.filter(StripeWebhookEvent.received_at <= dt_to)
+        if search:
+            pat = f"%{search}%"
+            q = q.filter(
+                or_(
+                    StripeWebhookEvent.event_type.ilike(pat),
+                    StripeWebhookEvent.stripe_event_id.ilike(pat),
+                    StripeWebhookEvent.error_message.ilike(pat),
+                )
+            )
+        for ev in q.all():
+            events.append({
+                "source": "stripe",
+                "event_type": ev.event_type,
+                "description": f"{ev.stripe_event_id} — {ev.status}" + (f" | {ev.error_message}" if ev.error_message else ""),
+                "tenant_id": None,
+                "tenant_name": None,
+                "stripe_mode": ev.stripe_mode,
+                "created_at": ev.received_at.strftime("%Y-%m-%d %H:%M:%S") if ev.received_at else None,
+                "extra": {
+                    "status": ev.status,
+                    "processed_at": ev.processed_at.strftime("%Y-%m-%d %H:%M:%S") if ev.processed_at else None,
+                },
+            })
+
+    # ── limit_events ──────────────────────────────────────────────────────
+    if not source or source == "limit":
+        q = db.query(LimitEvent)
+        if dt_from:
+            q = q.filter(LimitEvent.detected_at >= dt_from)
+        if dt_to:
+            q = q.filter(LimitEvent.detected_at <= dt_to)
+        if search:
+            pat = f"%{search}%"
+            q = q.filter(
+                or_(
+                    LimitEvent.limit_type.ilike(pat),
+                    LimitEvent.status.ilike(pat),
+                )
+            )
+        for le in q.all():
+            tenant = db.query(Tenant).filter(Tenant.id == le.tenant_id).first() if le.tenant_id else None
+            events.append({
+                "source": "limit",
+                "event_type": f"limit_{le.limit_type}",
+                "description": f"{le.limit_type}: {le.current_value}/{le.limit_value} — {le.status}",
+                "tenant_id": le.tenant_id,
+                "tenant_name": tenant.name if tenant else None,
+                "stripe_mode": None,
+                "created_at": le.detected_at.strftime("%Y-%m-%d %H:%M:%S") if le.detected_at else None,
+                "extra": {
+                    "status": le.status,
+                    "resolved_at": le.resolved_at.strftime("%Y-%m-%d %H:%M:%S") if le.resolved_at else None,
+                },
+            })
+
+    # Ordenar por data desc
+    events.sort(key=lambda e: e["created_at"] or "", reverse=True)
+
+    total = len(events)
+    start = (page - 1) * page_size
+    paged = events[start : start + page_size]
+
+    return {
+        "items": paged,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
 

@@ -1,11 +1,10 @@
 <template>
   <div class="auth-page">
     <div class="card auth-card register-card">
-      <div class="auth-logo" style="margin-bottom: 18px;">
-        <div class="auth-logo-mark">
+      <div class="auth-logo register-logo" style="margin-bottom: 18px;">
+        <div class="auth-logo-mark register-logo-mark">
           <img src="@/imagens/icon-std.png" alt="Blackchat Pro" />
         </div>
-        <div class="auth-logo-text">Blackchat Pro</div>
       </div>
 
       <div class="auth-header" style="margin-bottom: 18px;">
@@ -145,7 +144,7 @@ const handleRegister = async () => {
       company_name: form.value.company_name
     })
 
-    auth.login(response.data.user, response.data.tenant, response.data.access_token)
+    auth.login(response.data.user, response.data.tenant, response.data.access_token, response.data.workspaces || [])
     router.push('/dashboard')
   } catch (err) {
     console.error('Erro no registro:', err)
@@ -207,9 +206,19 @@ const handleRegister = async () => {
   font-size: 0.875rem;
 }
 
+.register-logo {
+  justify-content: center;
+}
+.register-logo-mark {
+  max-width: 180px;
+}
+
 @media (max-width: 720px) {
   .register-card {
     max-width: 460px;
+  }
+  .register-logo-mark {
+    max-width: 150px;
   }
 }
 
