@@ -14,10 +14,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.core.auth import get_current_tenant
+from app.core.auth import get_current_tenant, get_current_user
 from app.db.session import get_db
 from app.db.models import Tenant
 from app.db.models.user import User
+from app.db.models.tenant_user import TenantUser
 from app.db.models.plan import Plan
 from app.db.models.subscription import Subscription, SubscriptionStatus
 from app.db.models.stripe_webhook_event import StripeWebhookEvent
@@ -102,6 +103,48 @@ def _get_stripe():
         return stripe
     except Exception:
         return None
+
+
+def _resolve_billing_email(tenant: Tenant, user: User, db: Session) -> str:
+    """
+    Retorna o melhor email para usar no Stripe Customer.
+    Prioridade:
+      1. Email do usuário logado (quem está fazendo checkout)
+      2. Email do owner do workspace (via tenant_users)
+      3. tenant.email (fallback)
+    Corrige tenant.email se ainda for @workspace.internal.
+    """
+    # Preferir email do usuário logado
+    email = (user.email or "").strip()
+    if email and "@workspace.internal" not in email:
+        # Corrigir tenant.email se estiver com placeholder
+        if tenant.email and "@workspace.internal" in tenant.email:
+            tenant.email = email
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+        return email
+
+    # Fallback: email do owner do workspace
+    owner_link = (
+        db.query(TenantUser)
+        .filter(TenantUser.tenant_id == tenant.id, TenantUser.role == "owner")
+        .first()
+    )
+    if owner_link:
+        owner = db.query(User).filter(User.id == owner_link.user_id).first()
+        if owner and owner.email and "@workspace.internal" not in owner.email:
+            if tenant.email and "@workspace.internal" in tenant.email:
+                tenant.email = owner.email
+                try:
+                    db.commit()
+                except Exception:
+                    db.rollback()
+            return owner.email.strip()
+
+    # Último fallback
+    return (tenant.email or "").strip() or None
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -203,6 +246,7 @@ def vpm_estimate(
 @router.post("/checkout-session", response_model=BillingUrlOut)
 def create_checkout_session(
     body: CheckoutSessionIn,
+    user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -229,44 +273,57 @@ def create_checkout_session(
 
     stripe.api_key = creds.secret_key
 
+    billing_email = _resolve_billing_email(tenant, user, db)
+
     customer_id = getattr(tenant, "stripe_customer_id", None)
     if not customer_id:
-        customer = stripe.Customer.create(
-            name=tenant.name,
-            email=tenant.email,
-            metadata={"tenant_id": str(tenant.id)},
-        )
-        customer_id = customer["id"]
-        tenant.stripe_customer_id = customer_id
-        db.commit()
+        try:
+            customer = stripe.Customer.create(
+                name=tenant.name,
+                email=billing_email,
+                metadata={"tenant_id": str(tenant.id)},
+            )
+            customer_id = customer["id"]
+            tenant.stripe_customer_id = customer_id
+            db.commit()
+        except Exception as exc:
+            logger.error("Stripe Customer.create falhou: %s", exc)
+            raise HTTPException(status_code=502, detail=f"Erro ao criar cliente no Stripe: {exc}")
 
     frontend_url = getattr(settings, "FRONTEND_URL", settings.PUBLIC_BASE_URL).rstrip("/")
     success_url = f"{frontend_url}/thank-you?plan={plan.display_name}&checkout=success"
     cancel_url  = f"{frontend_url}/settings?tab=Cobran%C3%A7a&billing=cancel"
 
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=customer_id,
-        line_items=[{"price": price_id, "quantity": 1}],
-        allow_promotion_codes=True,
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={
-            "app": "blackchatpro",
-            "tenant_id": str(tenant.id),
-            "plan_id": str(plan.id),
-            "interval": "monthly",
-            "stripe_mode": creds.mode,
-        },
-        subscription_data={
-            "metadata": {
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=customer_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            allow_promotion_codes=True,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
                 "app": "blackchatpro",
                 "tenant_id": str(tenant.id),
                 "plan_id": str(plan.id),
+                "interval": "monthly",
                 "stripe_mode": creds.mode,
-            }
-        },
-    )
+            },
+            subscription_data={
+                "metadata": {
+                    "app": "blackchatpro",
+                    "tenant_id": str(tenant.id),
+                    "plan_id": str(plan.id),
+                    "stripe_mode": creds.mode,
+                }
+            },
+        )
+    except Exception as exc:
+        logger.error("Stripe checkout.Session.create (Pro) falhou [mode=%s]: %s", creds.mode, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erro ao criar sessão de checkout no Stripe ({creds.mode}): {exc}",
+        )
 
     return BillingUrlOut(url=session["url"])
 
@@ -274,6 +331,7 @@ def create_checkout_session(
 @router.post("/enterprise-checkout", response_model=BillingUrlOut)
 def create_enterprise_checkout(
     body: EnterpriseCheckoutIn,
+    user: User = Depends(get_current_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ):
@@ -295,16 +353,27 @@ def create_enterprise_checkout(
 
     stripe.api_key = creds.secret_key
 
+    billing_email = _resolve_billing_email(tenant, user, db)
+    logger.info(
+        "Enterprise checkout: tenant=%s, mode=%s, contacts=%s, price=R$%.2f, product_id=%s, email=%s",
+        tenant.id, creds.mode, contact_count, monthly_price,
+        creds.enterprise_product_id, billing_email,
+    )
+
     customer_id = getattr(tenant, "stripe_customer_id", None)
     if not customer_id:
-        customer = stripe.Customer.create(
-            name=tenant.name,
-            email=tenant.email,
-            metadata={"tenant_id": str(tenant.id)},
-        )
-        customer_id = customer["id"]
-        tenant.stripe_customer_id = customer_id
-        db.commit()
+        try:
+            customer = stripe.Customer.create(
+                name=tenant.name,
+                email=billing_email,
+                metadata={"tenant_id": str(tenant.id)},
+            )
+            customer_id = customer["id"]
+            tenant.stripe_customer_id = customer_id
+            db.commit()
+        except Exception as exc:
+            logger.error("Stripe Customer.create falhou: %s", exc)
+            raise HTTPException(status_code=502, detail=f"Erro ao criar cliente no Stripe: {exc}")
 
     # Busca o plano Enterprise no banco para gravar plan_id nos metadados
     ent_plan = db.query(Plan).filter(Plan.name == "unlimited", Plan.is_active == True).first()  # noqa: E712
@@ -317,42 +386,49 @@ def create_enterprise_checkout(
 
     # Enterprise: inline/custom recurring monthly usando o product_id configurado.
     # O 'product' garante que a Stripe associa ao produto correto (sem criar novos produtos a cada checkout).
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=customer_id,
-        line_items=[{
-            "price_data": {
-                "currency": "brl",
-                "product": creds.enterprise_product_id,
-                "unit_amount": unit_amount_cents,
-                "recurring": {"interval": "month"},
-            },
-            "quantity": 1,
-        }],
-        allow_promotion_codes=True,
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={
-            "app": "blackchatpro",
-            "tenant_id": str(tenant.id),
-            "plan_id": plan_id_meta,
-            "interval": "monthly",
-            "stripe_mode": creds.mode,
-            "enterprise_contacts": str(contact_count),
-            "enterprise_price": str(monthly_price),
-            "enterprise_product_id": creds.enterprise_product_id,
-        },
-        subscription_data={
-            "metadata": {
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=customer_id,
+            line_items=[{
+                "price_data": {
+                    "currency": "brl",
+                    "product": creds.enterprise_product_id,
+                    "unit_amount": unit_amount_cents,
+                    "recurring": {"interval": "month"},
+                },
+                "quantity": 1,
+            }],
+            allow_promotion_codes=True,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
                 "app": "blackchatpro",
                 "tenant_id": str(tenant.id),
                 "plan_id": plan_id_meta,
+                "interval": "monthly",
                 "stripe_mode": creds.mode,
                 "enterprise_contacts": str(contact_count),
                 "enterprise_price": str(monthly_price),
-            }
-        },
-    )
+                "enterprise_product_id": creds.enterprise_product_id,
+            },
+            subscription_data={
+                "metadata": {
+                    "app": "blackchatpro",
+                    "tenant_id": str(tenant.id),
+                    "plan_id": plan_id_meta,
+                    "stripe_mode": creds.mode,
+                    "enterprise_contacts": str(contact_count),
+                    "enterprise_price": str(monthly_price),
+                }
+            },
+        )
+    except Exception as exc:
+        logger.error("Stripe checkout.Session.create (Enterprise) falhou [mode=%s]: %s", creds.mode, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erro ao criar sessão de checkout no Stripe ({creds.mode}): {exc}",
+        )
 
     return BillingUrlOut(url=session["url"])
 

@@ -2107,7 +2107,8 @@ const startCheckout = async (plan) => {
     if (url) window.location.href = url
   } catch (e) {
     console.error(e)
-    toast.error('Erro ao iniciar checkout')
+    const msg = e?.response?.data?.detail || 'Erro ao iniciar checkout'
+    toast.error(msg)
   } finally {
     billingLoading.value = false
   }
@@ -2125,7 +2126,8 @@ const startEnterpriseCheckout = async () => {
     if (url) window.location.href = url
   } catch (e) {
     console.error(e)
-    toast.error('Erro ao iniciar checkout Enterprise')
+    const msg = e?.response?.data?.detail || 'Erro ao iniciar checkout Enterprise'
+    toast.error(msg)
   } finally {
     billingLoading.value = false
   }
