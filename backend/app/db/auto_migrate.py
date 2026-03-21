@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from sqlalchemy import text
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -222,3 +225,116 @@ def run_auto_migrations(engine) -> None:
             except Exception:
                 pass
 
+    # ── Performance: criar índices (transação separada por índice) ─────
+    _create_performance_indexes(engine)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Índices de performance (idempotente — só cria se não existir)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# (index_name, table, columns)
+_PERF_INDEXES = [
+    # ── Contatos (tabela mais consultada) ──────────────────────────────
+    ("ix_contacts_tenant_id",           "contacts",          "tenant_id"),
+    ("ix_contacts_tenant_channel",      "contacts",          "tenant_id, default_channel_id"),
+    ("ix_contacts_last_interaction",    "contacts",          "tenant_id, last_interaction_at"),
+
+    # ── Mensagens ──────────────────────────────────────────────────────
+    ("ix_messages_tenant_id",           "messages",          "tenant_id"),
+    ("ix_messages_contact_id",          "messages",          "contact_id"),
+    ("ix_messages_tenant_created",      "messages",          "tenant_id, created_at"),
+    ("ix_messages_contact_created",     "messages",          "contact_id, created_at"),
+
+    # ── Canais ─────────────────────────────────────────────────────────
+    ("ix_channels_tenant_id",           "channels",          "tenant_id"),
+
+    # ── Fluxos ─────────────────────────────────────────────────────────
+    ("ix_flows_tenant_id",              "flows",             "tenant_id"),
+    ("ix_flow_steps_flow_id",           "flow_steps",        "flow_id"),
+
+    # ── Execuções de fluxo ─────────────────────────────────────────────
+    ("ix_flow_exec_tenant_id",          "flow_executions",   "tenant_id"),
+    ("ix_flow_exec_contact_id",         "flow_executions",   "contact_id"),
+    ("ix_flow_exec_flow_id",            "flow_executions",   "flow_id"),
+    ("ix_flow_exec_tenant_status",      "flow_executions",   "tenant_id, status"),
+
+    # ── Logs de execução ───────────────────────────────────────────────
+    ("ix_flow_exec_logs_exec_id",       "flow_execution_logs", "flow_execution_id"),
+
+    # ── Contact Tags ───────────────────────────────────────────────────
+    ("ix_contact_tags_tenant_id",       "contact_tags",      "tenant_id"),
+    ("ix_contact_tags_contact_id",      "contact_tags",      "contact_id"),
+    ("ix_contact_tags_tenant_tag",      "contact_tags",      "tenant_id, tag_name"),
+
+    # ── Sequences ──────────────────────────────────────────────────────
+    ("ix_sequences_tenant_id",          "sequences",         "tenant_id"),
+    ("ix_contact_seq_tenant_id",        "contact_sequences", "tenant_id"),
+    ("ix_contact_seq_contact_id",       "contact_sequences", "contact_id"),
+    ("ix_contact_seq_sequence_id",      "contact_sequences", "sequence_id"),
+
+    # ── Subscriptions ──────────────────────────────────────────────────
+    ("ix_subscriptions_tenant_id",      "subscriptions",     "tenant_id"),
+
+    # ── Subscription History ───────────────────────────────────────────
+    ("ix_sub_history_tenant_id",        "subscription_history", "tenant_id"),
+    ("ix_sub_history_created",          "subscription_history", "created_at"),
+
+    # ── Billing Snapshots ──────────────────────────────────────────────
+    ("ix_billing_snap_tenant_id",       "billing_snapshots", "tenant_id"),
+
+    # ── Limit Events ──────────────────────────────────────────────────
+    ("ix_limit_events_tenant_id",       "limit_events",      "tenant_id"),
+    ("ix_limit_events_detected",        "limit_events",      "detected_at"),
+
+    # ── Stripe Webhook Events ──────────────────────────────────────────
+    ("ix_stripe_wh_events_received",    "stripe_webhook_events", "received_at"),
+
+    # ── Tenant Users (multi-workspace) ─────────────────────────────────
+    ("ix_tenant_users_user_id",         "tenant_users",      "user_id"),
+    ("ix_tenant_users_tenant_id",       "tenant_users",      "tenant_id"),
+
+    # ── Password Reset Tokens ──────────────────────────────────────────
+    ("ix_pw_reset_user_id",             "password_reset_tokens", "user_id"),
+]
+
+
+def _mssql_has_index(conn, index_name: str) -> bool:
+    """Verifica se um índice já existe no SQL Server."""
+    result = conn.execute(
+        text("SELECT COUNT(*) FROM sys.indexes WHERE name = :n"),
+        {"n": index_name},
+    ).scalar()
+    return int(result or 0) > 0
+
+
+def _create_performance_indexes(engine) -> None:
+    """Cria índices de performance. Cada índice em sua própria transação para
+    evitar que uma falha cancele todos os outros."""
+    created = 0
+    skipped = 0
+    errors = 0
+
+    for idx_name, table, columns in _PERF_INDEXES:
+        try:
+            with engine.begin() as conn:
+                if not _mssql_has_table(conn, table):
+                    skipped += 1
+                    continue
+                if _mssql_has_index(conn, idx_name):
+                    skipped += 1
+                    continue
+                conn.execute(text(
+                    f"CREATE NONCLUSTERED INDEX {idx_name} ON {table} ({columns})"
+                ))
+                created += 1
+                logger.info("Índice criado: %s ON %s(%s)", idx_name, table, columns)
+        except Exception as exc:
+            errors += 1
+            logger.warning("Falha ao criar índice %s: %s", idx_name, exc)
+
+    if created or errors:
+        logger.info(
+            "Performance indexes: %d criados, %d já existiam, %d erros",
+            created, skipped, errors,
+        )

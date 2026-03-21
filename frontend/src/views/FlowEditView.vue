@@ -137,13 +137,15 @@
           class="flow-editor-sidebar"
           v-if="selectedStep"
           ref="sidebarRootRef"
-          :style="{ width: `${sidebarWidth}px` }"
-          :class="{ 'is-resizing': isResizingSidebar }"
+          :style="sidebarCollapsed ? { width: '44px' } : { width: `${sidebarWidth}px` }"
+          :class="{ 'is-resizing': isResizingSidebar, 'is-collapsed': sidebarCollapsed }"
           @focusin="handleSidebarFocusIn"
           @focusout="handleSidebarFocusOut"
           @mousedown="handleSidebarMouseDown"
         >
+          <!-- Resizer só aparece quando expandido -->
           <div
+            v-if="!sidebarCollapsed"
             class="sidebar-resizer"
             role="separator"
             aria-orientation="vertical"
@@ -155,22 +157,30 @@
             @mousedown.stop.prevent="startSidebarResize"
           ></div>
 
-          <div class="sidebar-header">
-            <div class="sidebar-header-icon">
-              <i class="fa-solid fa-message"></i>
-            </div>
-            <input 
-              v-model="selectedStep.name" 
-              class="sidebar-title-input"
-              placeholder="Nome do Passo"
-              @blur="autoSave"
-            />
-            <button class="sidebar-close-btn" @click="selectedStep = null">
-              <i class="fa-solid fa-times"></i>
-            </button>
+          <!-- Sidebar colapsado: só o botão de reabrir -->
+          <div v-if="sidebarCollapsed" class="sidebar-collapsed-btn" @click.stop="sidebarCollapsed = false" title="Expandir painel">
+            <i class="fa-solid fa-chevron-right"></i>
           </div>
 
-          <div class="sidebar-body" v-if="selectedStep">
+          <!-- Sidebar expandido: conteúdo normal -->
+          <template v-else>
+            <div class="sidebar-header">
+              <div class="sidebar-header-icon">
+                <i class="fa-solid fa-message"></i>
+              </div>
+              <input
+                v-model="selectedStep.name"
+                class="sidebar-title-input"
+                placeholder="Nome do Passo"
+                @blur="autoSave"
+              />
+              <button class="sidebar-close-btn" @click.stop="sidebarCollapsed = true" title="Recolher painel">
+                <i class="fa-solid fa-chevron-left"></i>
+              </button>
+            </div>
+          </template>
+
+          <div class="sidebar-body" v-if="selectedStep && !sidebarCollapsed">
             <!-- SE for Gatilho -->
             <div class="sidebar-section" v-if="isTriggerStep(selectedStep)">
               <template v-if="selectedStep.type === 'trigger' && selectedStep.config.triggerType === 'message'">
@@ -254,10 +264,6 @@
                         Copiar
                       </button>
                     </div>
-                    <p class="sidebar-tip success-tip">
-                      <i class="fa-solid fa-circle-check"></i>
-                      Link pronto! Compartilhe em redes sociais, anúncios ou emails. Quando alguém clicar, este fluxo será executado automaticamente.
-                    </p>
                   </div>
 
                   <div v-else class="ref-warning">
@@ -1056,33 +1062,40 @@
               <template v-if="selectedBlock && selectedBlock.stepId === selectedStep.id">
                 <div v-if="currentBlock && currentBlock.type === 'text'" class="sidebar-section">
                   <label class="sidebar-label">Texto</label>
-                  <div class="tag-dropdown tag-dropdown-inline">
-                    <button type="button" class="tag-dropdown-toggle" @click="toggleTagDropdown('text')">
-                      Campos personalizados
-                      <span class="tag-dropdown-arrow" :class="{ open: textTagDropdownOpen }">▾</span>
-                    </button>
-                    <div v-show="textTagDropdownOpen" class="tag-dropdown-panel">
-                      <div class="tag-list">
-                        <button
-                          v-for="tag in personalizationTags"
-                          :key="tag.value"
-                          type="button"
-                          class="tag-chip"
-                          @click="insertTag(tag.value)"
-                        >
-                          {{ tag.label }}
-                        </button>
+                  <div class="text-editor-unified">
+                    <div class="tag-chips-bar">
+                      <button
+                        v-for="tag in personalizationTags"
+                        :key="tag.value"
+                        type="button"
+                        class="tag-chip-inline"
+                        @click="insertTag(tag.value)"
+                        :title="tag.value"
+                      >
+                        {{ tag.label }}
+                      </button>
+                    </div>
+                    <textarea
+                      v-model="currentBlock.text"
+                      class="sidebar-textarea"
+                      placeholder="Digite o texto..."
+                      rows="4"
+                      @input="autoSave"
+                      ref="contentTextareaRef"
+                    ></textarea>
+                    <div class="text-toolbar-embedded">
+                      <button class="text-toolbar-btn" type="button" title="Negrito" @mousedown.prevent @click="wrapActiveSelection('*', '*')"><i class="fa-solid fa-bold"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Itálico" @mousedown.prevent @click="wrapActiveSelection('_', '_')"><i class="fa-solid fa-italic"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Sublinhado" @mousedown.prevent @click="wrapActiveSelection('__', '__')"><i class="fa-solid fa-underline"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Riscado" @mousedown.prevent @click="wrapActiveSelection('~', '~')"><i class="fa-solid fa-strikethrough"></i></button>
+                      <div class="text-toolbar-sep"></div>
+                      <button class="text-toolbar-btn" type="button" title="Emojis" @mousedown.prevent @click="toggleEmojiPicker"><i class="fa-regular fa-face-smile"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Link" @mousedown.prevent @click="createLinkOnActiveSelection"><i class="fa-solid fa-link"></i></button>
+                      <div v-if="emojiPickerOpen" class="emoji-popover">
+                        <button v-for="e in emojiList" :key="e" type="button" class="emoji-btn" @mousedown.prevent @click="insertIntoActiveText(e); emojiPickerOpen = false">{{ e }}</button>
                       </div>
                     </div>
                   </div>
-                  <textarea
-                    v-model="currentBlock.text"
-                    class="sidebar-textarea"
-                    placeholder="Digite o texto..."
-                    rows="3"
-                    @input="autoSave"
-                    ref="contentTextareaRef"
-                  ></textarea>
                 </div>
 
                 <div v-else-if="currentBlock && currentBlock.type === 'delay'" class="sidebar-section">
@@ -1101,33 +1114,37 @@
                   <div class="sidebar-hint">
                     Essa mensagem aparece acima dos botões. Se deixar vazio, o sistema envia apenas os botões (o Telegram exige um texto e nós enviamos um texto invisível automaticamente).
                   </div>
-                  <div class="tag-dropdown tag-dropdown-inline">
-                    <button type="button" class="tag-dropdown-toggle" @click="toggleTagDropdown('button')">
-                      Campos personalizados
-                      <span class="tag-dropdown-arrow" :class="{ open: buttonTagDropdownOpen }">▾</span>
-                    </button>
-                    <div v-show="buttonTagDropdownOpen" class="tag-dropdown-panel">
-                      <div class="tag-list">
-                        <button
-                          v-for="tag in personalizationTags"
-                          :key="`btn-${tag.value}`"
-                          type="button"
-                          class="tag-chip"
-                          @click="insertTag(tag.value)"
-                        >
-                          {{ tag.label }}
-                        </button>
-                      </div>
+                  <div class="text-editor-unified">
+                    <div class="tag-chips-bar">
+                      <button
+                        v-for="tag in personalizationTags"
+                        :key="`btn-${tag.value}`"
+                        type="button"
+                        class="tag-chip-inline"
+                        @click="insertTag(tag.value)"
+                        :title="tag.value"
+                      >
+                        {{ tag.label }}
+                      </button>
+                    </div>
+                    <textarea
+                      v-model="currentBlock.text"
+                      class="sidebar-textarea"
+                      placeholder="Mensagem acima dos botões (opcional)..."
+                      rows="3"
+                      @input="autoSave"
+                      ref="contentTextareaRef"
+                    ></textarea>
+                    <div class="text-toolbar-embedded">
+                      <button class="text-toolbar-btn" type="button" title="Negrito" @mousedown.prevent @click="wrapActiveSelection('*', '*')"><i class="fa-solid fa-bold"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Itálico" @mousedown.prevent @click="wrapActiveSelection('_', '_')"><i class="fa-solid fa-italic"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Sublinhado" @mousedown.prevent @click="wrapActiveSelection('__', '__')"><i class="fa-solid fa-underline"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Riscado" @mousedown.prevent @click="wrapActiveSelection('~', '~')"><i class="fa-solid fa-strikethrough"></i></button>
+                      <div class="text-toolbar-sep"></div>
+                      <button class="text-toolbar-btn" type="button" title="Emojis" @mousedown.prevent @click="toggleEmojiPicker"><i class="fa-regular fa-face-smile"></i></button>
+                      <button class="text-toolbar-btn" type="button" title="Link" @mousedown.prevent @click="createLinkOnActiveSelection"><i class="fa-solid fa-link"></i></button>
                     </div>
                   </div>
-                  <textarea
-                    v-model="currentBlock.text"
-                    class="sidebar-textarea"
-                    placeholder="Mensagem acima dos botões (opcional). Deixe vazio para enviar apenas os botões..."
-                    rows="2"
-                    @input="autoSave"
-                    ref="contentTextareaRef"
-                  ></textarea>
                   
                   <div style="margin-top: 16px;">
                     <label class="sidebar-label">Botões</label>
@@ -1430,7 +1447,6 @@
                   <div class="content-block-info">
                     <h4>Coleta de Dados</h4>
                     <p>Capture e-mails, telefones e mais</p>
-                    <span class="pro-badge">PRO</span>
                   </div>
                 </button>
 
@@ -1455,42 +1471,6 @@
           </div>
 
           <!-- Toolbar fixo (não sobe com scroll) -->
-          <div class="sidebar-footer-toolbar">
-            <div class="text-toolbar" :class="{ disabled: !canEditActiveText }">
-              <button class="text-toolbar-btn" type="button" title="Negrito" :disabled="!canEditActiveText" @mousedown.prevent @click="wrapActiveSelection('*', '*')">
-                <i class="fa-solid fa-bold"></i>
-              </button>
-              <button class="text-toolbar-btn" type="button" title="Itálico" :disabled="!canEditActiveText" @mousedown.prevent @click="wrapActiveSelection('_', '_')">
-                <i class="fa-solid fa-italic"></i>
-              </button>
-              <button class="text-toolbar-btn" type="button" title="Sublinhado" :disabled="!canEditActiveText" @mousedown.prevent @click="wrapActiveSelection('__', '__')">
-                <i class="fa-solid fa-underline"></i>
-              </button>
-              <button class="text-toolbar-btn" type="button" title="Riscado" :disabled="!canEditActiveText" @mousedown.prevent @click="wrapActiveSelection('~', '~')">
-                <i class="fa-solid fa-strikethrough"></i>
-              </button>
-              <div class="text-toolbar-sep"></div>
-              <button class="text-toolbar-btn" type="button" title="Pacote de Emojis" :disabled="!canEditActiveText" @mousedown.prevent @click="toggleEmojiPicker">
-                <i class="fa-regular fa-face-smile"></i>
-              </button>
-              <button class="text-toolbar-btn" type="button" title="Criador de Links" :disabled="!canEditActiveText" @mousedown.prevent @click="createLinkOnActiveSelection">
-                <i class="fa-solid fa-link"></i>
-              </button>
-
-              <div v-if="emojiPickerOpen" class="emoji-popover">
-                <button
-                  v-for="e in emojiList"
-                  :key="e"
-                  type="button"
-                  class="emoji-btn"
-                  @mousedown.prevent
-                  @click="insertIntoActiveText(e); emojiPickerOpen = false"
-                >
-                  {{ e }}
-                </button>
-              </div>
-            </div>
-          </div>
         </aside>
 
         <!-- Canvas de Fluxo -->
@@ -1615,12 +1595,9 @@
                 <span class="flow-node-icon">
                   <i :class="getStepIcon(step.type)"></i>
                 </span>
-                <div style="flex:1; min-width:0;" v-if="step.type !== 'message'">
+                <div style="flex:1; min-width:0;">
                   <div class="flow-node-title">{{ renderStepTitle(step) }}</div>
                   <div class="flow-node-subtitle" v-html="renderStepSubtitle(step)"></div>
-                </div>
-                <div style="flex:1; min-width:0;" v-else>
-                  <div class="flow-node-title">Mensagem</div>
                 </div>
                 <button
                   class="btn-node-duplicate"
@@ -2067,6 +2044,7 @@ const SIDEBAR_MIN_W = 280
 const SIDEBAR_MAX_W = 720
 const sidebarWidth = ref(280)
 const isResizingSidebar = ref(false)
+const sidebarCollapsed = ref(false)
 let _sidebarResizeStartX = 0
 let _sidebarResizeStartW = 280
 let _sidebarResizeMoveHandler = null
@@ -2190,7 +2168,7 @@ const blockCategories = computed(() => [
         label: 'Condição',
         desc: 'Ramifica o fluxo com base em regras e campos do contato',
         icon: 'fa-solid fa-filter',
-        color: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+        color: 'linear-gradient(135deg, #00FF66, #16a34a)',
         pro: true,
       },
       {
@@ -2418,9 +2396,8 @@ const handleDocumentClickCloseSidebar = (event) => {
   const clickedOnNode = target?.closest?.('.flow-node')
   if (clickedOnNode) return
 
-  // Clique em qualquer outro lugar (canvas vazio, linhas, etc) fecha o menu
-  selectedStep.value = null
-  selectedBlock.value = null
+  // Clique em qualquer outro lugar (canvas vazio, linhas, etc) colapsa o menu
+  sidebarCollapsed.value = true
 }
 
 onMounted(() => {
@@ -3064,9 +3041,8 @@ const handleAddBlock = async (type) => {
         return
       
       case 'start':
-        stepType = 'message'
-        stepConfig = { text: 'Iniciar automação', blocks: [{ id: uid(), type: 'text', text: 'Bem-vindo!' }] }
-        break
+        showTriggerModal.value = true
+        return
       
       case 'ai':
         stepType = 'ai'
@@ -3388,11 +3364,13 @@ const commentColors = [
 const selectStep = (step) => {
   selectedStep.value = step
   selectedBlock.value = null
+  sidebarCollapsed.value = false
 }
 
 const selectBlock = (step, block) => {
   selectedStep.value = step
   selectedBlock.value = { stepId: step.id, blockId: block.id }
+  sidebarCollapsed.value = false
 }
 
 const removeBlock = (blockId) => {
@@ -4119,7 +4097,8 @@ const renderStepTitle = (step) => {
     }
     return `${actions.length} Ações`
   }
-  return step.config?.text || step.name || 'Sem título'
+  if (step.type === 'message') return step.name || 'Mensagem'
+  return step.name || step.config?.text || 'Sem título'
 }
 
 const getStepLabelById = (targetStepId) => {
@@ -4434,12 +4413,61 @@ onBeforeUnmount(() => {
 /* ===================== SIDEBAR RESIZER ===================== */
 .flow-editor-sidebar {
   position: relative;
+  background: #0d0d0d !important;
+  transition: width 0.2s ease;
+}
+
+/* Estado colapsado */
+.flow-editor-sidebar.is-collapsed {
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.sidebar-collapsed-btn {
+  flex: 1;
+  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #4ade80;
+  font-size: 1rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-collapsed-btn:hover {
+  background: rgba(0, 255, 102, 0.08);
+  color: #00FF66;
 }
 
 .flow-editor-sidebar .sidebar-header {
   position: relative;
   z-index: 10;
   padding-right: 18px;
+  background: #0a0f0a !important;
+}
+
+.sidebar-title-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #f1f5f9;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  padding: 7px 11px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.sidebar-title-input::placeholder {
+  color: rgba(148, 163, 184, 0.5);
+  font-weight: 400;
+}
+
+.sidebar-title-input:focus {
+  border-color: #00FF66;
+  box-shadow: 0 0 0 3px rgba(0, 255, 102, 0.12);
 }
 
 .flow-editor-sidebar .sidebar-close-btn {
@@ -5257,7 +5285,7 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--muted);
   font-size: 0.875rem;
-  background: rgba(15, 23, 42, 0.3);
+  background: rgba(5, 10, 5, 0.5);
   border-radius: 8px;
   border: 1px dashed rgba(148, 163, 184, 0.2);
 }
@@ -5269,7 +5297,7 @@ onBeforeUnmount(() => {
 }
 
 .action-item {
-  background: rgba(15, 23, 42, 0.4);
+  background: rgba(5, 10, 5, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 10px;
   padding: 14px;
@@ -5281,7 +5309,7 @@ onBeforeUnmount(() => {
 
 .action-item:hover {
   border-color: rgba(148, 163, 184, 0.3);
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(5, 10, 5, 0.7);
 }
 
 .action-header {
@@ -5296,7 +5324,7 @@ onBeforeUnmount(() => {
 .action-type-select {
   flex: 1;
   padding: 6px 10px;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(5, 10, 5, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 6px;
   color: var(--text-primary);
@@ -5312,7 +5340,7 @@ onBeforeUnmount(() => {
 .action-type-select:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(5, 10, 5, 0.92);
 }
 
 .btn-remove-action {
@@ -5371,11 +5399,7 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-footer-toolbar {
-  flex-shrink: 0;
-  padding: 10px;
-  border-top: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.92);
-  position: relative;
+  display: none;
 }
 
 .text-toolbar {
@@ -5398,7 +5422,7 @@ onBeforeUnmount(() => {
   height: 34px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(59, 130, 246, 0.06);
+  background: rgba(255, 255, 255, 0.04);
   color: rgba(226, 232, 240, 0.92);
   cursor: pointer;
   display: inline-flex;
@@ -5412,8 +5436,8 @@ onBeforeUnmount(() => {
 }
 
 .text-toolbar-btn:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(0, 255, 102, 0.08);
+  border-color: rgba(0, 255, 102, 0.3);
   transform: translateY(-1px);
 }
 
@@ -5444,14 +5468,14 @@ onBeforeUnmount(() => {
   height: 28px;
   border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(59, 130, 246, 0.06);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
   font-size: 16px;
 }
 
 .emoji-btn:hover {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(0, 255, 102, 0.08);
+  border-color: rgba(0, 255, 102, 0.3);
 }
 
 .info-icon {
@@ -5461,18 +5485,18 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 18px;
   height: 18px;
-  color: rgba(59, 130, 246, 0.8);
+  color: rgba(74, 222, 128, 0.8);
   cursor: help;
   transition: all 0.2s;
   flex-shrink: 0;
   border-radius: 50%;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 255, 102, 0.08);
   z-index: 10001;
 }
 
 .info-icon:hover {
   color: var(--accent);
-  background: rgba(59, 130, 246, 0.2);
+  background: rgba(0, 255, 102, 0.18);
   transform: scale(1.1);
 }
 
@@ -5487,7 +5511,7 @@ onBeforeUnmount(() => {
   left: 50%;
   transform: translateX(-50%);
   padding: 12px 16px;
-  background: rgba(15, 23, 42, 0.98);
+  background: rgba(5, 10, 5, 0.99);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(148, 163, 184, 0.4);
   border-radius: 8px;
@@ -5515,16 +5539,16 @@ onBeforeUnmount(() => {
 }
 
 .tooltip-text strong {
-  color: rgba(59, 130, 246, 1);
+  color: #00FF66;
   display: block;
   margin-bottom: 4px;
 }
 
 .tooltip-text code {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 255, 102, 0.08);
   padding: 2px 6px;
   border-radius: 4px;
-  color: rgba(96, 165, 250, 1);
+  color: #4ade80;
   font-family: 'Courier New', monospace;
   font-size: 0.75rem;
 }
@@ -5550,11 +5574,11 @@ onBeforeUnmount(() => {
   left: 50%;
   transform: translateX(-50%);
   border: 8px solid transparent;
-  border-top-color: rgba(15, 23, 42, 0.98);
+  border-top-color: rgba(5, 10, 5, 0.99);
 }
 
 .info-icon.tooltip-active {
-  background: rgba(59, 130, 246, 0.3);
+  background: rgba(0, 255, 102, 0.2);
   color: var(--accent);
   z-index: 10002;
 }
@@ -5579,7 +5603,7 @@ onBeforeUnmount(() => {
 .action-config select {
   padding: 6px 10px;
   height: 32px;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(5, 10, 5, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 6px;
   color: var(--text-primary);
@@ -5593,7 +5617,7 @@ onBeforeUnmount(() => {
 .action-config select:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(5, 10, 5, 0.92);
 }
 
 .flow-empty-state {
@@ -5648,13 +5672,13 @@ onBeforeUnmount(() => {
 }
 
 .flow-node.node-type-message {
-  border-color: #3b82f6;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
+  border-color: #00FF66;
+  background: linear-gradient(135deg, rgba(0, 255, 102, 0.10) 0%, rgba(74, 222, 128, 0.06) 100%);
 }
 
 .flow-node.node-type-message:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
+  border-color: #4ade80;
+  box-shadow: 0 8px 30px rgba(0, 255, 102, 0.2);
 }
 
 .flow-node.node-type-action {
@@ -5753,7 +5777,7 @@ onBeforeUnmount(() => {
 .msg-block.drag-over {
   border-top: 3px solid var(--primary);
   padding-top: 15px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 255, 102, 0.06);
   animation: dragOverPulse 0.5s ease-in-out;
 }
 
@@ -5773,7 +5797,7 @@ onBeforeUnmount(() => {
 .msg-block-ghost {
   opacity: 0.9;
   transform: rotate(3deg) scale(1.05);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 255, 102, 0.3);
   cursor: grabbing;
   animation: ghostFloat 0.3s ease-in-out infinite alternate;
   border: 2px solid var(--primary);
@@ -5789,13 +5813,13 @@ onBeforeUnmount(() => {
 }
 
 .msg-block-text {
-  border-left-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.08);
+  border-left-color: #00FF66;
+  background: rgba(0, 255, 102, 0.06);
 }
 
 .msg-block-text:hover {
-  background: rgba(59, 130, 246, 0.12);
-  border-left-color: #2563eb;
+  background: rgba(0, 255, 102, 0.1);
+  border-left-color: #4ade80;
 }
 
 .msg-block-delay {
@@ -5924,11 +5948,11 @@ onBeforeUnmount(() => {
 .modal-content {
   position: relative;
   width: min(960px, 92vw);
-  background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 45%),
-    #0b1224;
+  background: radial-gradient(circle at top right, rgba(0, 255, 102, 0.08), transparent 45%),
+    #0a0a0a;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 28px;
-  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.8);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
   padding: 40px;
   overflow: hidden;
 }
@@ -5992,7 +6016,7 @@ onBeforeUnmount(() => {
 }
 
 .trigger-sidebar {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(5, 10, 5, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 18px;
   padding: 18px;
@@ -6015,9 +6039,9 @@ onBeforeUnmount(() => {
 }
 
 .trigger-nav-item.active {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.6);
-  color: #bfdbfe;
+  background: rgba(0, 255, 102, 0.10);
+  border-color: rgba(0, 255, 102, 0.5);
+  color: #4ade80;
 }
 
 .trigger-nav-item.disabled {
@@ -6025,7 +6049,7 @@ onBeforeUnmount(() => {
 }
 
 .trigger-main {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(5, 10, 5, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 22px;
   padding: 24px;
@@ -6039,7 +6063,7 @@ onBeforeUnmount(() => {
   font-size: 14px;
   text-transform: uppercase;
   letter-spacing: 0.2em;
-  color: #a5b4fc;
+  color: #4ade80;
 }
 
 .trigger-header p {
@@ -6071,11 +6095,11 @@ onBeforeUnmount(() => {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: rgba(14, 165, 233, 0.15);
+  background: rgba(0, 255, 102, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #38bdf8;
+  color: #4ade80;
   font-size: 1.3rem;
 }
 
@@ -6088,7 +6112,7 @@ onBeforeUnmount(() => {
 .trigger-card-kicker {
   margin: 0;
   font-size: 0.75rem;
-  color: #a5b4fc;
+  color: #4ade80;
   text-transform: uppercase;
   letter-spacing: 0.2em;
 }
@@ -6119,9 +6143,9 @@ onBeforeUnmount(() => {
 }
 
 .modal-footer .btn {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #a5b4fc;
+  background: rgba(0, 255, 102, 0.08);
+  border-color: rgba(0, 255, 102, 0.35);
+  color: #4ade80;
 }
 
 .tag-dropdown {
@@ -6136,7 +6160,7 @@ onBeforeUnmount(() => {
 .tag-dropdown-toggle {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.6);
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(5, 10, 5, 0.92);
   color: #e2e8f0;
   padding: 10px 12px;
   font-size: 0.8rem;
@@ -6150,7 +6174,7 @@ onBeforeUnmount(() => {
 
 .tag-dropdown-toggle:hover {
   border-color: rgba(34, 197, 94, 0.8);
-  background: rgba(15, 23, 42, 1);
+  background: rgba(5, 10, 5, 1);
 }
 
 .tag-dropdown-panel {
@@ -6158,8 +6182,8 @@ onBeforeUnmount(() => {
   padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: var(--radius-lg);
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.4);
+  background: rgba(5, 10, 5, 0.97);
+  box-shadow: 0 12px 24px rgba(5, 10, 5, 0.6);
 }
 
 .tag-dropdown-arrow {
@@ -6186,7 +6210,7 @@ onBeforeUnmount(() => {
 
 .tag-chip {
   border: 1px solid rgba(148, 163, 184, 0.7);
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(5, 10, 5, 0.8);
   color: #e2e8f0;
   padding: 6px 10px;
   font-size: 0.75rem;
@@ -6336,7 +6360,7 @@ onBeforeUnmount(() => {
 .btn-action-toggle {
   display: flex;
   gap: 2px;
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(5, 10, 5, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 6px;
   padding: 2px;
@@ -6361,17 +6385,17 @@ onBeforeUnmount(() => {
 }
 
 .btn-toggle-opt.active {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(0, 255, 102, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(0, 255, 102, 0.25);
 }
 
 .btn-toggle-opt.active i {
-  color: #60a5fa;
+  color: #4ade80;
 }
 
 .btn-flow-hint {
-  background: rgba(15, 23, 42, 0.35);
+  background: rgba(5, 10, 5, 0.5);
   border: 1px dashed rgba(148, 163, 184, 0.25);
   border-radius: 6px;
   color: var(--text-secondary);
@@ -6418,7 +6442,7 @@ onBeforeUnmount(() => {
   position: absolute;
   bottom: 16px;
   right: 16px;
-  background: rgba(15, 23, 42, 0.95);
+  background: rgba(5, 10, 5, 0.98);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 8px;
@@ -6602,12 +6626,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, rgba(0, 136, 204, 0.1) 0%, rgba(34, 158, 217, 0.1) 100%);
-  border: 1px solid rgba(0, 136, 204, 0.3);
+  background: rgba(0, 255, 102, 0.06);
+  border: 1px solid rgba(0, 255, 102, 0.18);
   border-radius: 8px;
   margin-top: 12px;
   margin-bottom: 16px;
-  color: #0088cc;
+  color: #4ade80;
   font-size: 0.9375rem;
 }
 
@@ -6618,7 +6642,7 @@ onBeforeUnmount(() => {
 
 .bot-info-box strong {
   font-weight: 700;
-  color: #0068aa;
+  color: #00FF66;
 }
 
 .bot-warning-box {
@@ -6702,10 +6726,10 @@ onBeforeUnmount(() => {
   align-items: start;
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(0, 255, 102, 0.06);
+  border: 1px solid rgba(0, 255, 102, 0.18);
   border-radius: 8px;
-  color: #3b82f6;
+  color: #4ade80;
   font-size: 0.8125rem;
   margin-bottom: 16px;
 }
@@ -6718,7 +6742,7 @@ onBeforeUnmount(() => {
 
 .video-note-info strong {
   font-weight: 700;
-  color: #2563eb;
+  color: #00FF66;
 }
 
 .video-note-info ul {
@@ -6737,13 +6761,13 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   padding: 8px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(0, 255, 102, 0.06);
   border-radius: 8px;
   margin-top: 8px;
 }
 
 .condition-info i {
-  color: #3b82f6;
+  color: #4ade80;
   font-size: 1rem;
   flex-shrink: 0;
 }
@@ -7094,4 +7118,304 @@ onBeforeUnmount(() => {
 .start-automation-info li {
   margin: 2px 0;
 }
+
+/* ==================== BLOCK PICKER ==================== */
+
+.sidebar-section .sidebar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #64748b;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.sidebar-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(2, 8, 20, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  font-family: inherit;
+  line-height: 1.6;
+  padding: 12px 14px;
+  resize: vertical;
+  transition: border-color 0.2s;
+  outline: none;
+}
+
+.sidebar-textarea:focus {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.08);
+}
+
+.sidebar-textarea::placeholder { color: #475569; }
+
+/* Editor unificado: chips + textarea como um só controle */
+.text-editor-unified {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.text-editor-unified:focus-within {
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.07);
+}
+
+.tag-chips-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  background: rgba(2, 8, 20, 0.6);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.tag-chip-inline {
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  padding: 3px 9px;
+  font-size: 0.71rem;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.tag-chip-inline:hover {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #86efac;
+}
+
+.text-editor-unified .sidebar-textarea {
+  border: none;
+  border-radius: 0;
+  background: rgba(2, 8, 20, 0.45);
+  box-shadow: none;
+}
+
+.text-editor-unified .sidebar-textarea:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+/* Toolbar embutido no rodapé do editor */
+.text-toolbar-embedded {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  background: rgba(2, 8, 20, 0.6);
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  position: relative;
+}
+
+.text-toolbar-embedded .text-toolbar-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.text-toolbar-embedded .text-toolbar-btn:hover {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+}
+
+.text-toolbar-embedded .text-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(148, 163, 184, 0.15);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.text-toolbar-embedded .emoji-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 10px;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 220px;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Botões de adicionar bloco */
+.content-block-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: rgba(2, 8, 20, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+  margin-bottom: 6px;
+  color: inherit;
+}
+
+.content-block-btn:hover {
+  background: rgba(34, 197, 94, 0.07);
+  border-color: rgba(34, 197, 94, 0.25);
+  transform: translateX(2px);
+}
+
+.content-block-btn:last-child { margin-bottom: 0; }
+
+.content-block-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: background 0.18s, box-shadow 0.18s;
+}
+
+.content-block-btn:hover .content-block-icon {
+  background: rgba(34, 197, 94, 0.16);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
+}
+
+.content-block-info { flex: 1; min-width: 0; }
+
+.content-block-info h4 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0 0 2px;
+  line-height: 1.3;
+}
+
+.content-block-info p {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Grupo de mídias */
+.media-blocks-group {
+  margin-bottom: 6px;
+}
+
+.media-group-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #475569;
+  padding: 0 2px;
+  margin-bottom: 8px;
+}
+
+.media-group-label i { color: #4ade80; font-size: 0.75rem; }
+
+.media-blocks-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.media-block-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 8px;
+  background: rgba(2, 8, 20, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  color: inherit;
+}
+
+.media-block-btn:hover {
+  background: rgba(34, 197, 94, 0.07);
+  border-color: rgba(34, 197, 94, 0.25);
+  transform: translateY(-2px);
+}
+
+.media-block-icon-wrapper {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background 0.18s, box-shadow 0.18s;
+}
+
+.media-block-btn:hover .media-block-icon-wrapper {
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+}
+
+.media-block-image .media-block-icon-wrapper {
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.18);
+  color: #4ade80;
+}
+
+.media-block-audio .media-block-icon-wrapper {
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+}
+
+.media-block-video .media-block-icon-wrapper {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.media-block-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: center;
+  line-height: 1;
+}
+
+.media-block-btn:hover .media-block-label { color: #e2e8f0; }
 </style>

@@ -1,6 +1,5 @@
 <template>
   <div class="landing-page">
-    <!-- Background ambient glow effects -->
     <div class="bg-glow bg-glow-1"></div>
     <div class="bg-glow bg-glow-2"></div>
     <div class="grid-overlay"></div>
@@ -17,11 +16,12 @@
         <nav class="lp-nav-links">
           <a href="#recursos" @click.prevent="scrollTo('recursos')">Recursos</a>
           <a href="#planos" @click.prevent="scrollTo('planos')">Planos</a>
+          <a href="#faq" @click.prevent="scrollTo('faq')">FAQ</a>
+          <a href="#contato" @click.prevent="scrollTo('contato')">Contato</a>
         </nav>
         <div class="lp-nav-actions">
-          <router-link to="/login" class="lp-btn lp-btn-ghost">Entrar</router-link>
-          <router-link to="/register" class="lp-btn lp-btn-primary">
-            <i class="fas fa-rocket"></i> Começar Grátis
+          <router-link to="/login" class="lp-btn lp-btn-primary">
+            <i class="fas fa-sign-in-alt"></i> Entrar
           </router-link>
         </div>
         <button class="lp-menu-toggle" @click="mobileMenuOpen = !mobileMenuOpen" aria-label="Menu">
@@ -33,12 +33,13 @@
     <!-- Mobile Menu -->
     <Transition name="lp-slide">
       <div v-if="mobileMenuOpen" class="lp-mobile-menu">
-        <a href="#recursos" @click.prevent="scrollTo('recursos')">Recursos</a>
-        <a href="#planos" @click.prevent="scrollTo('planos')">Planos</a>
+        <a href="#recursos" @click.prevent="scrollTo('recursos')" class="lp-mobile-link">Recursos</a>
+        <a href="#planos" @click.prevent="scrollTo('planos')" class="lp-mobile-link">Planos</a>
+        <a href="#faq" @click.prevent="scrollTo('faq')" class="lp-mobile-link">FAQ</a>
+        <a href="#contato" @click.prevent="scrollTo('contato')" class="lp-mobile-link">Contato</a>
         <div class="lp-mobile-menu-divider"></div>
-        <router-link to="/login" @click="mobileMenuOpen = false">Entrar</router-link>
-        <router-link to="/register" class="lp-btn lp-btn-primary lp-mobile-cta" @click="mobileMenuOpen = false">
-          <i class="fas fa-rocket"></i> Começar Grátis
+        <router-link to="/login" class="lp-btn lp-btn-primary lp-mobile-cta" @click="mobileMenuOpen = false">
+          <i class="fas fa-sign-in-alt"></i> Entrar
         </router-link>
       </div>
     </Transition>
@@ -48,24 +49,26 @@
       <div class="lp-container">
         <div class="lp-badge">
           <span class="lp-badge-dot"></span>
-          14 dias grátis • Sem cartão de crédito
+          Automação no Telegram — o canal com mais engajamento do mundo
         </div>
         <h1 class="lp-hero-title">
-          Automatize suas conversas com
-          <span class="lp-highlight">Blackchat Pro</span>
+          Mais conversas.<br>
+          Mais clientes.<br>
+          <span class="lp-highlight">Com Blackchat Pro.</span>
         </h1>
         <p class="lp-hero-subtitle">
-          Crie fluxos inteligentes para Telegram.
-          Aumente o engajamento e converta mais clientes.
+          Crie fluxos inteligentes no Telegram, engaje sua base 24h por dia
+          e converta mais — sem esforço manual.
         </p>
         <div class="lp-hero-cta">
           <router-link to="/register" class="lp-btn lp-btn-primary lp-btn-lg">
-            <i class="fas fa-rocket"></i> Comece grátis agora mesmo
+            <i class="fas fa-rocket"></i> Comece agora mesmo
           </router-link>
           <router-link to="/login" class="lp-btn lp-btn-outline lp-btn-lg">
             <i class="fas fa-sign-in-alt"></i> Já tenho conta
           </router-link>
         </div>
+        <p class="lp-hero-footnote">14 dias gratuitos · Sem cartão de crédito · Cancele quando quiser</p>
       </div>
     </section>
 
@@ -73,29 +76,104 @@
     <section class="lp-features" id="recursos">
       <div class="lp-container">
         <div class="lp-section-label">Recursos</div>
-        <h2 class="lp-section-title">Tudo que você precisa para crescer</h2>
-        <p class="lp-section-subtitle">Uma plataforma completa para automação de conversas em múltiplos canais.</p>
+        <h2 class="lp-section-title">Tudo que você precisa para escalar</h2>
+        <p class="lp-section-subtitle">Uma plataforma focada em resultado — do primeiro contato à conversão.</p>
         <div class="lp-features-grid">
-          <div class="lp-feature-card" v-for="feature in features" :key="feature.title">
+          <div
+            class="lp-feature-card"
+            v-for="feature in features"
+            :key="feature.title"
+            :class="{ 'lp-feature-card--soon': feature.soon }"
+          >
+            <div v-if="feature.soon" class="lp-soon-badge">Em Breve</div>
             <div class="lp-feature-icon" :style="{ background: feature.iconBg }">
-              <i :class="feature.icon"></i>
+              <i :class="feature.icon" :style="{ color: feature.iconColor || 'inherit' }"></i>
             </div>
             <h3>{{ feature.title }}</h3>
             <p>{{ feature.description }}</p>
+            <a
+              v-if="feature.soon"
+              href="#contato"
+              @click.prevent="scrollTo('contato')"
+              class="lp-feature-soon-link"
+            >
+              Quero ser avisado <i class="fas fa-arrow-right"></i>
+            </a>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Stats Section -->
-    <section class="lp-stats">
+    <!-- Testimonial -->
+    <!-- Social Proof + Métricas -->
+    <section class="bc-proof-section" ref="proofSection">
       <div class="lp-container">
-        <div class="lp-stats-grid">
-          <div class="lp-stat-item" v-for="stat in stats" :key="stat.label">
-            <div class="lp-stat-value">{{ stat.value }}</div>
-            <div class="lp-stat-label">{{ stat.label }}</div>
+
+        <!-- Header -->
+        <div class="bc-proof-header">
+          <div class="lp-section-label">Resultados reais</div>
+          <h2 class="bc-proof-title">
+            Quem usa o Blackchat Pro<br>
+            <span class="lp-highlight">transforma o Telegram em máquina de conversão</span>
+          </h2>
+          <p class="bc-proof-subtitle">
+            Automação de fluxo, qualificação inteligente e atendimento X1 no momento certo —
+            tudo dentro do Telegram, com menos custo e mais escala.
+          </p>
+        </div>
+
+        <!-- Depoimentos -->
+        <div class="bc-proof-grid">
+          <div
+            v-for="(t, i) in testimonials"
+            :key="i"
+            class="bc-proof-quote"
+            :class="{ 'bc-proof-quote--visible': proofVisible }"
+            :style="{ transitionDelay: `${i * 120}ms` }"
+          >
+            <div class="bc-proof-quote-top">
+              <div class="bc-proof-stars">
+                <i class="fas fa-star" v-for="s in 5" :key="s"></i>
+              </div>
+              <span class="bc-proof-segment">{{ t.segment }}</span>
+            </div>
+            <p class="bc-proof-text">{{ t.quote }}</p>
+            <div class="bc-proof-author">
+              <div class="bc-proof-avatar">
+                <i :class="t.icon"></i>
+              </div>
+              <div>
+                <strong>{{ t.name }}</strong>
+                <span>{{ t.role }}</span>
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- Cards de Métricas -->
+        <div class="bc-proof-metrics">
+          <div
+            v-for="(m, i) in metrics"
+            :key="i"
+            class="bc-proof-metric"
+            :class="{ 'bc-proof-metric--visible': proofVisible }"
+            :style="{ transitionDelay: `${360 + i * 100}ms` }"
+          >
+            <div class="bc-proof-metric-icon" :style="{ color: m.color, background: m.bg }">
+              <i :class="m.icon"></i>
+            </div>
+            <h4 class="bc-proof-metric-title">{{ m.title }}</h4>
+            <p class="bc-proof-metric-desc">{{ m.desc }}</p>
+          </div>
+        </div>
+
+        <!-- Microcopy -->
+        <p class="bc-proof-microcopy">
+          <i class="fas fa-check-circle"></i> Menos custo operacional.
+          <i class="fas fa-check-circle"></i> Mais controle do funil.
+          <i class="fas fa-check-circle"></i> Mais velocidade para vender no Telegram.
+        </p>
+
       </div>
     </section>
 
@@ -104,7 +182,7 @@
       <div class="lp-container">
         <div class="lp-section-label">Planos</div>
         <h2 class="lp-section-title">Preços transparentes e flexíveis</h2>
-        <p class="lp-section-subtitle">Pague apenas pelos contatos que você engaja. Cobrança mensal, sem fidelidade.</p>
+        <p class="lp-section-subtitle">Pague pelos contatos que você engaja. Sem fidelidade, cancele quando quiser.</p>
 
         <div v-if="loading" class="lp-loading">
           <div class="lp-spinner"></div>
@@ -123,39 +201,40 @@
             </div>
 
             <div class="lp-pricing-header">
-              <div class="lp-pricing-plan-icon">
+              <div class="lp-pricing-plan-icon" :class="`lp-plan-icon--${plan.name}`">
                 <i :class="planIcon(plan.name)"></i>
               </div>
               <h3 class="lp-pricing-name">{{ plan.display_name }}</h3>
               <p class="lp-pricing-desc">{{ planDescription(plan.name) }}</p>
 
-              <!-- Plano Grátis -->
+              <!-- Gratuito -->
               <div v-if="plan.name === 'free'" class="pricing-price pricing-inline lp-price-block">
-                <span class="price-value lp-free-label">Grátis</span>
+                <span class="price-value lp-free-label">R$ 0</span>
+                <span class="price-period">/mês</span>
               </div>
 
-              <!-- Plano Pro (preço fixo) -->
+              <!-- Pro -->
               <div v-else-if="plan.name === 'pro'" class="pricing-price pricing-inline lp-price-block">
                 <span class="price-currency">R$</span>
-                <span class="price-value">99</span>
+                <span class="price-value">99<small class="price-cents">,90</small></span>
                 <span class="price-period">/mês</span>
-                <div class="pricing-pro-contacts">até 2.500 contatos</div>
+                <div class="pricing-pro-contacts">até 2.500 contatos ativos</div>
               </div>
 
-              <!-- Plano Enterprise (personalizado) -->
+              <!-- Enterprise -->
               <div v-else-if="plan.name === 'unlimited'" class="pricing-price pricing-vpm lp-price-block">
-                <div class="pricing-vpm-from">personalizado</div>
+                <div class="pricing-vpm-from">cobrado por volume</div>
                 <div class="pricing-ent-main">Enterprise</div>
-                <div class="pricing-vpm-unit">cobrado por volume de contatos</div>
+                <div class="pricing-vpm-unit">por 1.000 contatos ativos</div>
                 <div class="pricing-vpm-min">
-                  <span class="pricing-vpm-min-label">Mín.</span>
+                  <span class="pricing-vpm-min-label">A partir de</span>
                   <span class="pricing-vpm-min-currency">R$</span>
-                  <span class="pricing-vpm-min-value">999</span>
+                  <span class="pricing-vpm-min-value">999,90</span>
                   <span class="pricing-vpm-min-period">/mês</span>
                 </div>
               </div>
 
-              <!-- Outros planos VPM -->
+              <!-- VPM genérico -->
               <div v-else-if="plan.vpm_price" class="pricing-price pricing-vpm lp-price-block">
                 <div class="pricing-vpm-from">a partir de</div>
                 <div class="pricing-vpm-main">
@@ -164,7 +243,7 @@
                 </div>
                 <div class="pricing-vpm-unit">por 1.000 contatos ativos</div>
                 <div v-if="plan.min_monthly" class="pricing-vpm-min">
-                  <span class="pricing-vpm-min-label">Mín.</span>
+                  <span class="pricing-vpm-min-label">A partir de</span>
                   <span class="pricing-vpm-min-currency">R$</span>
                   <span class="pricing-vpm-min-value">{{ formatPriceNumber(plan.min_monthly) }}</span>
                   <span class="pricing-vpm-min-period">/mês</span>
@@ -176,44 +255,52 @@
 
             <ul class="lp-pricing-features">
               <template v-if="plan.name === 'free'">
-                <li><i class="fas fa-check lp-check"></i> <span>1 Bot no Telegram</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Até 100 contatos ativos</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Fluxo de automação</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Gatilho de entrada</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Sequência de mensagens</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Tag de segmentação</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>1 Usuário administrador</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>1 Bot no Telegram</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Até 100 contatos ativos</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>1 Fluxo de automação</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>1 Gatilho de entrada</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>1 Sequência de mensagens</span></li>
+                <li class="feat-no"><i class="fas fa-times lp-check lp-check--no"></i><span>Broadcast para lista</span></li>
+                <li class="feat-no"><i class="fas fa-times lp-check lp-check--no"></i><span>Analytics avançado</span></li>
+                <li class="feat-no"><i class="fas fa-times lp-check lp-check--no"></i><span>Colaboradores</span></li>
               </template>
               <template v-else-if="plan.name === 'pro'">
-                <li><i class="fas fa-check lp-check"></i> <span>3 Bots no Telegram</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Até <b>2.500 contatos ativos</b></span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Fluxos de automação ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Gatilhos de palavra-chave ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Sequências de mensagens ilimitadas</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Tags ilimitadas</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Campos do usuário ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>3 Colaboradores</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>3 Bots no Telegram</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Até <b>2.500 contatos ativos</b></span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Fluxos ilimitados</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Gatilhos ilimitados</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Sequências ilimitadas</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Broadcast para lista</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>Analytics avançado</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check"></i><span>3 Colaboradores</span></li>
               </template>
               <template v-else-if="plan.name === 'unlimited'">
-                <li><i class="fas fa-check lp-check"></i> <span><b>Bots ilimitados</b></span></li>
-                <li><i class="fas fa-check lp-check"></i> <span><b>Contatos ilimitados</b> (cobrado por volume)</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Fluxos ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Gatilhos ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Sequências ilimitadas</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span>Tags e campos ilimitados</span></li>
-                <li><i class="fas fa-check lp-check"></i> <span><b>Administradores ilimitados</b></span></li>
-                <li><i class="fas fa-check lp-check lp-check--gold"></i> <span>Suporte prioritário 24/7</span></li>
-                <li><i class="fas fa-check lp-check lp-check--gold"></i> <span>API + Webhooks</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span><b>Bots ilimitados</b></span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span><b>Contatos ilimitados</b></span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Fluxos ilimitados</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Gatilhos ilimitados</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Sequências ilimitadas</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Broadcast ilimitado</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Analytics avançado</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span><b>Administradores ilimitados</b></span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>Suporte prioritário 24/7</span></li>
+                <li class="feat-yes"><i class="fas fa-check lp-check lp-check--gold"></i><span>API + Webhooks</span></li>
               </template>
             </ul>
 
             <router-link
-              v-if="plan.name !== 'unlimited'"
+              v-if="plan.name === 'free'"
               :to="`/register?plan=${plan.name}`"
-              class="lp-btn-plan"
+              class="lp-btn-plan lp-btn-plan--free"
             >
-              {{ plan.name === 'free' ? 'Começar Grátis' : 'Assinar Agora' }}
-              <i class="fas fa-arrow-right"></i>
+              Começar Agora <i class="fas fa-arrow-right"></i>
+            </router-link>
+            <router-link
+              v-else-if="plan.name === 'pro'"
+              :to="`/register?plan=${plan.name}`"
+              class="lp-btn-plan lp-btn-plan--pro"
+            >
+              Assinar Pro <i class="fas fa-arrow-right"></i>
             </router-link>
             <a
               v-else
@@ -221,50 +308,137 @@
               @click.prevent="scrollTo('lp-enterprise-calc')"
               class="lp-btn-plan lp-btn-plan--enterprise"
             >
-              Ver Preços
-              <i class="fas fa-calculator"></i>
+              Ver Preços Enterprise <i class="fas fa-calculator"></i>
             </a>
           </div>
         </div>
 
-        <!-- Calculadora VPM -->
-        <div class="lp-vpm-calc" id="lp-enterprise-calc">
-          <div class="lp-vpm-calc-header">
-            <h3 class="lp-vpm-calc-title">Calcule o custo do seu plano mensal</h3>
-            <p class="lp-vpm-calc-sub">Os planos Pro e Enterprise são faturados mensalmente de acordo com o tamanho da sua lista de contatos</p>
-          </div>
-          <div class="lp-vpm-calc-card">
-            <div class="lp-vpm-calc-body">
-              <div class="lp-vpm-calc-left">
-                <label class="lp-vpm-calc-label">Quantos <b>contatos</b> espera engajar?</label>
-                <div class="lp-vpm-calc-number-wrap">
-                  <span class="lp-vpm-calc-number">{{ calcContacts.toLocaleString('pt-BR') }}</span>
+        <!-- Enterprise Destaque -->
+        <div class="lp-enterprise-highlight">
+          <div class="lp-enterprise-highlight-inner">
+            <div class="lp-enterprise-left">
+              <div class="lp-enterprise-icon">
+                <i class="fas fa-crown"></i>
+              </div>
+              <div>
+                <h3>Enterprise — Para grandes volumes</h3>
+                <p>Bots, contatos, fluxos e usuários ilimitados. Suporte 24/7 e acesso à API.</p>
+                <div class="lp-enterprise-features-row">
+                  <span><i class="fas fa-check"></i> Bots ilimitados</span>
+                  <span><i class="fas fa-check"></i> API + Webhooks</span>
+                  <span><i class="fas fa-check"></i> Suporte 24/7</span>
+                  <span><i class="fas fa-check"></i> Admins ilimitados</span>
+                  <span><i class="fas fa-times lp-x-no"></i> Limite de contatos</span>
+                  <span><i class="fas fa-times lp-x-no"></i> Limite de fluxos</span>
                 </div>
               </div>
-              <div class="lp-vpm-calc-equals">=</div>
-              <div class="lp-vpm-calc-right">
-                <span class="lp-vpm-calc-price">R$&nbsp;{{ formatPriceNumber(calcPrice) }}<small>/mês</small></span>
-                <span class="lp-vpm-calc-plan-label">{{ calcPlanLabel }}</span>
-                <span class="lp-vpm-calc-rate-badge">{{ calcRateLabel }}</span>
-              </div>
             </div>
-            <div class="lp-vpm-calc-slider-wrap">
-              <input type="range" class="lp-vpm-calc-range" min="0" max="100" step="1" v-model.number="calcSlider" />
+            <div class="lp-enterprise-right">
+              <div class="lp-enterprise-price">
+                <span class="lp-enterprise-from">A partir de</span>
+                <span class="lp-enterprise-value">R$ 999,90<small>/mês</small></span>
+              </div>
+              <a
+                href="#lp-enterprise-calc"
+                @click.prevent="scrollTo('lp-enterprise-calc')"
+                class="lp-btn-plan lp-btn-plan--enterprise lp-enterprise-cta"
+              >
+                Calcular meu plano <i class="fas fa-arrow-right"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Calculadora -->
+        <div class="lp-vpm-calc" id="lp-enterprise-calc">
+          <div class="lp-vpm-calc-header">
+            <h3 class="lp-vpm-calc-title">Calcule sua economia</h3>
+            <p class="lp-vpm-calc-sub">Arraste o slider e veja quanto você paga no Blackchat Pro — e quanto economiza em comparação com o mercado.</p>
+          </div>
+
+          <div class="lp-vpm-calc-card">
+
+            <!-- Slider -->
+            <div class="lp-calc-slider-section">
+              <label class="lp-calc-slider-label">
+                Volume de contatos por mês
+              </label>
+              <div class="lp-calc-contacts-display">
+                <span class="lp-calc-contacts-number">{{ calcContacts.toLocaleString('pt-BR') }}</span>
+                <span class="lp-calc-contacts-unit">contatos</span>
+              </div>
+              <input
+                type="range"
+                class="lp-vpm-calc-range"
+                min="0" max="100" step="1"
+                v-model.number="calcSlider"
+              />
               <div class="lp-vpm-calc-ticks">
                 <span>500</span><span>10k</span><span>100k</span><span>500k</span><span>2M</span>
               </div>
             </div>
-            <div class="lp-vpm-calc-footer">
+
+            <!-- Divider -->
+            <div class="lp-calc-divider"></div>
+
+            <!-- Comparativo de preço -->
+            <div class="lp-calc-result">
+
+              <div class="lp-calc-compare-row">
+                <!-- Mercado -->
+                <div class="lp-calc-compare-col lp-calc-compare-col--market">
+                  <span class="lp-calc-compare-label">Outros planos do mercado</span>
+                  <div class="lp-calc-compare-price lp-calc-compare-price--strike">
+                    <span class="lp-calc-compare-currency">R$</span>
+                    <span class="lp-calc-compare-value">{{ formatPriceNumber(calcCompetitorPrice) }}</span>
+                    <span class="lp-calc-compare-period">/mês</span>
+                  </div>
+                  <span class="lp-calc-compare-note">estimativa de mercado</span>
+                </div>
+
+                <!-- Seta -->
+                <div class="lp-calc-compare-arrow">
+                  <i class="fas fa-arrow-right"></i>
+                </div>
+
+                <!-- Blackchat Pro -->
+                <div class="lp-calc-compare-col lp-calc-compare-col--bcp">
+                  <span class="lp-calc-compare-label">Com o Blackchat Pro</span>
+                  <div class="lp-calc-compare-price lp-calc-compare-price--bcp">
+                    <span class="lp-calc-compare-currency">R$</span>
+                    <span class="lp-calc-compare-value">{{ formatPriceNumber(calcPrice) }}</span>
+                    <span class="lp-calc-compare-period">/mês</span>
+                  </div>
+                  <span class="lp-calc-compare-tag">Plano {{ calcPlanLabel }}</span>
+                </div>
+              </div>
+
+              <!-- Banner de economia -->
+              <div class="lp-calc-savings-banner">
+                <div class="lp-calc-savings-icon"><i class="fas fa-piggy-bank"></i></div>
+                <div class="lp-calc-savings-text">
+                  <span class="lp-calc-savings-headline">
+                    Você economiza <strong>R$&nbsp;{{ formatPriceNumber(calcSavings) }}/mês</strong>
+                  </span>
+                  <span class="lp-calc-savings-sub">40% mais barato que as alternativas do mercado</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="lp-calc-footer">
               <button class="lp-vpm-calc-link" @click="showPriceTable = true">
                 <i class="fas fa-table"></i> Ver tabela de preços completa
               </button>
               <router-link
-                :to="`/register?plan=unlimited&contacts=${calcContacts}`"
+                :to="`/register?plan=${calcPlanLabel === 'Enterprise' ? 'unlimited' : 'pro'}&contacts=${calcContacts}`"
                 class="lp-btn lp-btn-primary lp-vpm-calc-cta"
               >
-                <i class="fas fa-rocket"></i> Assinar Enterprise
+                <i class="fas fa-rocket"></i> Começar agora
               </router-link>
             </div>
+
           </div>
         </div>
 
@@ -302,20 +476,49 @@
             </div>
           </div>
         </Teleport>
-
       </div>
     </section>
 
-    <!-- CTA Final -->
-    <section class="lp-cta">
+    <!-- FAQ -->
+    <section class="lp-faq" id="faq">
+      <div class="lp-container">
+        <div class="lp-section-label">FAQ</div>
+        <h2 class="lp-section-title">Dúvidas frequentes</h2>
+        <div class="lp-faq-list">
+          <div
+            v-for="(item, i) in faqItems"
+            :key="i"
+            class="lp-faq-item"
+            :class="{ 'lp-faq-item--open': openFaq === i }"
+          >
+            <button class="lp-faq-question" @click="openFaq = openFaq === i ? null : i">
+              <span>{{ item.q }}</span>
+              <i :class="openFaq === i ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+            </button>
+            <Transition name="faq-expand">
+              <div v-if="openFaq === i" class="lp-faq-answer">{{ item.a }}</div>
+            </Transition>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contato / CTA Final -->
+    <section class="lp-cta" id="contato">
       <div class="lp-container">
         <div class="lp-cta-card">
           <div class="lp-cta-glow"></div>
+          <div class="lp-section-label" style="margin-bottom: 20px;">Contato</div>
           <h2>Pronto para automatizar suas conversas?</h2>
-          <p>Junte-se a centenas de empresas que já confiam no Blackchat Pro</p>
-          <router-link to="/register" class="lp-btn lp-btn-primary lp-btn-lg">
-            <i class="fas fa-rocket"></i> Começar Agora
-          </router-link>
+          <p>Junte-se a centenas de empresas que já confiam no Blackchat Pro para crescer no Telegram.</p>
+          <div class="lp-cta-actions">
+            <router-link to="/register" class="lp-btn lp-btn-primary lp-btn-lg">
+              <i class="fas fa-rocket"></i> Começar Agora
+            </router-link>
+            <a href="mailto:contato@blackchatpro.com.br" class="lp-btn lp-btn-outline lp-btn-lg">
+              <i class="fas fa-envelope"></i> Falar com a equipe
+            </a>
+          </div>
         </div>
       </div>
     </section>
@@ -344,19 +547,71 @@ import api from '@/api/http.js'
 const plans = ref([])
 const loading = ref(true)
 const mobileMenuOpen = ref(false)
+const openFaq = ref(null)
+
+// Social proof
+const proofSection = ref(null)
+const proofVisible = ref(false)
+
+const testimonials = [
+  {
+    segment: 'Infoprodutos',
+    quote: '"Antes perdíamos lead no meio do caminho porque dependíamos de resposta manual. Com os fluxos do Blackchat Pro, o lead entra, se qualifica automaticamente, recebe o conteúdo na sequência certa e só chega para o X1 quando está realmente pronto para comprar."',
+    name: 'Camila Torres',
+    role: 'Produtora de conteúdo digital',
+    icon: 'fas fa-user',
+  },
+  {
+    segment: 'Comunidade & Mentoria',
+    quote: '"O Telegram virou nossa operação central de aquisição. O lead entra no canal, avança pelos fluxos de automação e nossa equipe só entra em cena nos momentos estratégicos. Ficou muito mais organizado — e a taxa de conversão subiu junto."',
+    name: 'Diego Fonseca',
+    role: 'Mentor de negócios digitais',
+    icon: 'fas fa-user',
+  },
+  {
+    segment: 'Captação de Leads',
+    quote: '"A virada foi conectar automação com atendimento humano no ponto certo. O sistema aquece o lead, filtra o interesse real e entrega para o time já no momento de decisão. Gastamos menos com ferramenta e operamos com muito mais eficiência."',
+    name: 'Renata Alves',
+    role: 'Head de Vendas, agência B2B',
+    icon: 'fas fa-user',
+  },
+]
+
+const metrics = [
+  {
+    icon: 'fas fa-network-wired',
+    title: 'Fluxos prontos para rodar',
+    desc: 'Capte, qualifique e avance leads automaticamente dentro do Telegram — sem esforço manual e sem perder ninguém no caminho.',
+    color: '#00FF66',
+    bg: 'rgba(0, 255, 102, 0.08)',
+  },
+  {
+    icon: 'fas fa-crosshairs',
+    title: 'X1 no momento certo',
+    desc: 'Direcione o atendimento humano apenas para leads mais quentes. Sua equipe foca em quem já está pronto para avançar.',
+    color: '#38bdf8',
+    bg: 'rgba(56, 189, 248, 0.08)',
+  },
+  {
+    icon: 'fas fa-piggy-bank',
+    title: 'Até 40% mais economia',
+    desc: 'Estruture sua operação com mais eficiência e pague menos que as soluções similares do mercado. Sem abrir mão de nenhum recurso.',
+    color: '#fbbf24',
+    bg: 'rgba(251, 191, 36, 0.08)',
+  },
+]
 
 const scrollTo = (id) => {
   mobileMenuOpen.value = false
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
-// Calculadora VPM – tabela oficial de preços com interpolação linear
-const calcSlider = ref(30) // ~5.000 contatos por padrão
+// Calculadora VPM
+const calcSlider = ref(30)
 const showPriceTable = ref(false)
-const PRO_MIN = 99
-const ENT_MIN = 999
+const PRO_MIN = 99.90
+const ENT_MIN = 999.90
 
-// Tabela de preços oficial (contatos ? preço/mês)
 const PRICE_TABLE = [
   { contacts:         500, price:      24.50 },
   { contacts:       2_500, price:     106.31 },
@@ -392,20 +647,16 @@ const PRICE_TABLE = [
   { contacts:   2_000_000, price:  68_600.00 },
 ]
 
-// Interpola o preço para qualquer número de contatos
 const getPrice = (contacts) => {
   if (contacts <= 0) return 0
   const last = PRICE_TABLE[PRICE_TABLE.length - 1]
   if (contacts >= last.contacts) {
-    // Excedente cobrado a R$34,30/1K
     return last.price + Math.ceil((contacts - last.contacts) / 1000) * 34.30
   }
   const first = PRICE_TABLE[0]
   if (contacts <= first.contacts) {
-    // Abaixo de 500: proporcional
     return first.price * (contacts / first.contacts)
   }
-  // Interpolação linear entre os pontos da tabela
   for (let i = 1; i < PRICE_TABLE.length; i++) {
     if (contacts <= PRICE_TABLE[i].contacts) {
       const lo = PRICE_TABLE[i - 1]
@@ -417,12 +668,7 @@ const getPrice = (contacts) => {
   return last.price
 }
 
-const getEffectiveRate = (contacts) => {
-  if (contacts <= 0) return 49
-  return getPrice(contacts) / (contacts / 1000)
-}
 
-// Slider: 500 ? 2.000.000 em escala logarítmica (500 * 4000^(t/100))
 const calcContacts = computed(() =>
   Math.round(500 * Math.pow(4000, calcSlider.value / 100))
 )
@@ -433,11 +679,10 @@ const calcPlanLabel = computed(() =>
   calcPrice.value >= ENT_MIN ? 'Enterprise' : 'Pro'
 )
 
-const calcRateLabel = computed(() =>
-  `R$\u00a0${formatPriceNumber(getEffectiveRate(calcContacts.value))}/1K contatos`
-)
+// Preço de mercado = Blackchat Pro + 40%
+const calcCompetitorPrice = computed(() => calcPrice.value * 1.4)
+const calcSavings = computed(() => calcPrice.value * 0.4)
 
-// Tabela completa de preços (exata, sem interpolação)
 const pricingTableRows = computed(() =>
   PRICE_TABLE.map(({ contacts, price }) => ({
     contacts,
@@ -449,63 +694,82 @@ const pricingTableRows = computed(() =>
 const features = [
   {
     title: 'Telegram Nativo',
-    description: 'Automação completa no Telegram – o canal com 500M+ de usuários ativos no mundo.',
+    description: 'Automação completa no Telegram — o canal com maior taxa de abertura do mundo.',
     icon: 'fab fa-telegram',
-    iconBg: 'rgba(14, 165, 233, 0.15)'
+    iconBg: 'rgba(14, 165, 233, 0.12)',
+    iconColor: '#0ea5e9',
   },
   {
     title: 'Fluxos Visuais',
     description: 'Editor drag-and-drop intuitivo para criar automações complexas sem escrever código.',
     icon: 'fas fa-project-diagram',
-    iconBg: 'rgba(0, 255, 102, 0.15)'
+    iconBg: 'rgba(0, 255, 102, 0.12)',
+    iconColor: '#00FF66',
   },
   {
     title: 'Automação 24/7',
     description: 'Respostas instantâneas a qualquer hora do dia, mesmo enquanto você dorme.',
     icon: 'fas fa-bolt',
-    iconBg: 'rgba(251, 191, 36, 0.15)'
+    iconBg: 'rgba(251, 191, 36, 0.12)',
+    iconColor: '#fbbf24',
   },
   {
     title: 'Analytics em Tempo Real',
     description: 'Métricas detalhadas para entender seu público e otimizar cada campanha.',
     icon: 'fas fa-chart-line',
-    iconBg: 'rgba(168, 85, 247, 0.15)'
+    iconBg: 'rgba(168, 85, 247, 0.12)',
+    iconColor: '#a855f7',
   },
   {
     title: 'Broadcast Inteligente',
     description: 'Envie campanhas segmentadas para sua base de contatos com um clique.',
     icon: 'fas fa-bullhorn',
-    iconBg: 'rgba(239, 68, 68, 0.15)'
+    iconBg: 'rgba(239, 68, 68, 0.12)',
+    iconColor: '#ef4444',
   },
   {
-    title: 'Em Breve: API & Webhooks',
-    description: 'Integração com seus sistemas via API REST e webhooks – em desenvolvimento.',
+    title: 'API & Webhooks',
+    description: 'Integração com seus sistemas via API REST e webhooks — em desenvolvimento.',
     icon: 'fas fa-plug',
-    iconBg: 'rgba(0, 255, 102, 0.08)'
-  }
+    iconBg: 'rgba(251, 191, 36, 0.08)',
+    iconColor: '#fbbf24',
+    soon: true,
+  },
 ]
 
-const stats = [
-  { value: '500M+', label: 'Usuários no Telegram' },
-  { value: '24/7', label: 'Disponibilidade' },
-  { value: '< 1s', label: 'Tempo de resposta' },
-  { value: '99.9%', label: 'Uptime garantido' }
+const faqItems = [
+  {
+    q: 'Preciso de cartão de crédito para testar?',
+    a: 'Não. O período de teste de 14 dias é completamente gratuito e não exige cartão de crédito. Você só precisa cadastrar um método de pagamento ao escolher um plano pago.',
+  },
+  {
+    q: 'O que é um "contato ativo"?',
+    a: 'Um contato ativo é qualquer usuário que interagiu com o seu bot no Telegram nos últimos 30 dias. Contatos inativos não são cobrados.',
+  },
+  {
+    q: 'Posso cancelar a qualquer momento?',
+    a: 'Sim. Não há fidelidade. Você pode cancelar sua assinatura a qualquer momento diretamente pelo painel, sem multas ou burocracia.',
+  },
+  {
+    q: 'O Blackchat Pro funciona com WhatsApp?',
+    a: 'No momento, a plataforma é focada exclusivamente no Telegram. Integrações com outros canais estão no nosso roadmap.',
+  },
+  {
+    q: 'Posso mudar de plano depois?',
+    a: 'Sim. Você pode fazer upgrade ou downgrade do seu plano a qualquer momento. A cobrança é proporcional ao período utilizado.',
+  },
 ]
 
 const planIcon = (name) => {
-  const icons = {
-    free: 'fas fa-seedling',
-    pro: 'fas fa-rocket',
-    unlimited: 'fas fa-crown'
-  }
+  const icons = { free: 'fas fa-seedling', pro: 'fas fa-rocket', unlimited: 'fas fa-crown' }
   return icons[name] || 'fas fa-layer-group'
 }
 
 const planDescription = (name) => {
   const descs = {
-    free: 'Para testar a ferramenta',
-    pro: 'Plano fixo – até 2.500 contatos',
-    unlimited: 'Para grandes volumes – cobrado por contatos'
+    free: 'Para testar a plataforma',
+    pro: 'Plano fixo — até 2.500 contatos',
+    unlimited: 'Para grandes volumes, cobrado por contatos',
   }
   return descs[name] || 'Plano completo'
 }
@@ -527,27 +791,32 @@ const formatPriceNumber = (value) => {
   const isInt = Math.abs(n - Math.round(n)) < 1e-9
   return n.toLocaleString('pt-BR', {
     minimumFractionDigits: isInt ? 0 : 2,
-    maximumFractionDigits: isInt ? 0 : 2
+    maximumFractionDigits: isInt ? 0 : 2,
   })
 }
 
 onMounted(() => {
   loadPlans()
+
+  const observer = new IntersectionObserver(
+    ([entry]) => { if (entry.isIntersecting) { proofVisible.value = true; observer.disconnect() } },
+    { threshold: 0.15 }
+  )
+  if (proofSection.value) observer.observe(proofSection.value)
 })
 </script>
 
 <style scoped>
 /* ============================================================
-   LANDING PAGE - DESIGN TECNOLÓGICO
+   LANDING PAGE
    ============================================================ */
 
-/* === Background === */
 .landing-page {
   min-height: 100vh;
   background: #060606;
   position: relative;
   overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
   color: #e5e7eb;
 }
 
@@ -560,18 +829,14 @@ onMounted(() => {
 }
 
 .bg-glow-1 {
-  width: 700px;
-  height: 700px;
-  top: -200px;
-  left: -200px;
+  width: 700px; height: 700px;
+  top: -200px; left: -200px;
   background: radial-gradient(circle, rgba(0, 255, 102, 0.08) 0%, transparent 70%);
 }
 
 .bg-glow-2 {
-  width: 600px;
-  height: 600px;
-  bottom: -150px;
-  right: -150px;
+  width: 600px; height: 600px;
+  bottom: -150px; right: -150px;
   background: radial-gradient(circle, rgba(14, 165, 233, 0.07) 0%, transparent 70%);
 }
 
@@ -599,7 +864,7 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(6, 6, 6, 0.85);
+  background: rgba(6, 6, 6, 0.9);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(148, 163, 184, 0.08);
   padding: 14px 0;
@@ -616,35 +881,33 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   text-decoration: none;
+  flex-shrink: 0;
 }
 
 .lp-logo-mark {
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border-radius: 8px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 
 .lp-logo-mark img {
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   object-fit: contain;
 }
 
 .lp-logo-text {
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   color: #f8fafc;
   letter-spacing: -0.3px;
 }
 
 .lp-nav-links {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
 }
 
@@ -652,9 +915,10 @@ onMounted(() => {
   padding: 8px 14px;
   border-radius: 8px;
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: #64748b;
   text-decoration: none;
   transition: all 0.15s ease;
+  font-weight: 500;
 }
 
 .lp-nav-links a:hover {
@@ -687,22 +951,12 @@ onMounted(() => {
 .lp-btn-primary {
   background: linear-gradient(135deg, #00FF66, #00cc52);
   color: #060606;
-  box-shadow: 0 0 20px rgba(0, 255, 102, 0.35);
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
 }
 
 .lp-btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 0 35px rgba(0, 255, 102, 0.5);
-}
-
-.lp-btn-ghost {
-  background: transparent;
-  color: #94a3b8;
-}
-
-.lp-btn-ghost:hover {
-  background: rgba(148, 163, 184, 0.08);
-  color: #e5e7eb;
 }
 
 .lp-btn-outline {
@@ -725,7 +979,7 @@ onMounted(() => {
 
 /* === Hero === */
 .lp-hero {
-  padding: 120px 0 100px;
+  padding: 120px 0 80px;
   text-align: center;
 }
 
@@ -734,23 +988,23 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  background: rgba(0, 255, 102, 0.08);
-  border: 1px solid rgba(0, 255, 102, 0.2);
+  background: rgba(0, 255, 102, 0.07);
+  border: 1px solid rgba(0, 255, 102, 0.18);
   border-radius: 999px;
   font-size: 0.8rem;
   color: #00FF66;
   font-weight: 500;
-  margin-bottom: 28px;
-  letter-spacing: 0.3px;
+  margin-bottom: 32px;
+  letter-spacing: 0.2px;
 }
 
 .lp-badge-dot {
-  width: 7px;
-  height: 7px;
+  width: 7px; height: 7px;
   background: #00FF66;
   border-radius: 50%;
   box-shadow: 0 0 8px rgba(0, 255, 102, 0.8);
   animation: pulse-dot 2s infinite;
+  flex-shrink: 0;
 }
 
 @keyframes pulse-dot {
@@ -759,13 +1013,13 @@ onMounted(() => {
 }
 
 .lp-hero-title {
-  font-size: 3.75rem;
+  font-size: 4rem;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
   color: #f8fafc;
   margin: 0 auto 24px;
-  max-width: 800px;
-  letter-spacing: -1.5px;
+  max-width: 720px;
+  letter-spacing: -2px;
 }
 
 .lp-highlight {
@@ -777,11 +1031,12 @@ onMounted(() => {
 }
 
 .lp-hero-subtitle {
-  font-size: 1.2rem;
-  color: #94a3b8;
-  max-width: 600px;
-  margin: 0 auto 48px;
-  line-height: 1.7;
+  font-size: 1.15rem;
+  color: #64748b;
+  max-width: 560px;
+  margin: 0 auto 40px;
+  line-height: 1.75;
+  font-weight: 400;
 }
 
 .lp-hero-cta {
@@ -789,45 +1044,50 @@ onMounted(() => {
   gap: 14px;
   justify-content: center;
   flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.lp-hero-footnote {
+  font-size: 0.78rem;
+  color: #334155;
+  letter-spacing: 0.3px;
+  font-weight: 500;
 }
 
 /* === Section Styles === */
 .lp-section-label {
   display: inline-block;
   padding: 4px 14px;
-  background: rgba(0, 255, 102, 0.08);
-  border: 1px solid rgba(0, 255, 102, 0.2);
+  background: rgba(0, 255, 102, 0.07);
+  border: 1px solid rgba(0, 255, 102, 0.18);
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   color: #00FF66;
   margin-bottom: 16px;
 }
 
 .lp-section-title {
-  font-size: 2.4rem;
+  font-size: 2.25rem;
   font-weight: 800;
   color: #f8fafc;
   margin-bottom: 12px;
   letter-spacing: -0.8px;
+  line-height: 1.2;
 }
 
 .lp-section-subtitle {
-  font-size: 1.05rem;
+  font-size: 1rem;
   color: #64748b;
-  max-width: 520px;
-  line-height: 1.6;
+  max-width: 500px;
+  line-height: 1.65;
 }
 
 /* === Features === */
 .lp-features {
   padding: 100px 0;
-}
-
-.lp-features .lp-container > * {
-  margin-bottom: 0;
 }
 
 .lp-features .lp-section-subtitle {
@@ -838,12 +1098,12 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
-  margin-top: 60px;
+  margin-top: 56px;
 }
 
 .lp-feature-card {
-  background: linear-gradient(135deg, rgba(20, 20, 20, 0.9), rgba(20, 20, 20, 0.7));
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: linear-gradient(135deg, rgba(18, 18, 18, 0.9), rgba(18, 18, 18, 0.7));
+  border: 1px solid rgba(148, 163, 184, 0.08);
   border-radius: 20px;
   padding: 28px;
   transition: all 0.25s ease;
@@ -852,36 +1112,45 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.lp-feature-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(0, 255, 102, 0.03) 0%, transparent 60%);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.lp-feature-card:hover::before {
-  opacity: 1;
-}
-
 .lp-feature-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(0, 255, 102, 0.2);
+  border-color: rgba(148, 163, 184, 0.18);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
 }
 
+.lp-feature-card--soon {
+  border-color: rgba(251, 191, 36, 0.2);
+  background: linear-gradient(135deg, rgba(18, 18, 18, 0.9), rgba(251, 191, 36, 0.04));
+}
+
+.lp-feature-card--soon:hover {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.lp-soon-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
 .lp-feature-icon {
-  width: 52px;
-  height: 52px;
+  width: 52px; height: 52px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   margin-bottom: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .lp-feature-card h3 {
@@ -889,46 +1158,273 @@ onMounted(() => {
   font-weight: 700;
   color: #f1f5f9;
   margin-bottom: 10px;
+  letter-spacing: -0.2px;
 }
 
 .lp-feature-card p {
   font-size: 0.875rem;
   color: #64748b;
   line-height: 1.65;
+  margin-bottom: 0;
 }
 
-/* === Stats === */
-.lp-stats {
-  padding: 60px 0;
+.lp-feature-soon-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fbbf24;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.lp-feature-soon-link:hover { opacity: 0.75; }
+
+/* === Testimonial === */
+/* ============================================================
+   SOCIAL PROOF — bc-proof-
+   ============================================================ */
+.bc-proof-section {
+  padding: 100px 0;
   border-top: 1px solid rgba(148, 163, 184, 0.06);
   border-bottom: 1px solid rgba(148, 163, 184, 0.06);
-  background: rgba(20, 20, 20, 0.4);
-  backdrop-filter: blur(10px);
+  background: rgba(8, 8, 8, 0.6);
+  position: relative;
+  overflow: hidden;
 }
 
-.lp-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 32px;
+.bc-proof-section::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 800px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 102, 0.15), transparent);
+}
+
+/* Header */
+.bc-proof-header {
   text-align: center;
+  margin-bottom: 64px;
 }
 
-.lp-stat-value {
-  font-size: 2.4rem;
+.bc-proof-title {
+  font-size: 2.25rem;
   font-weight: 800;
   color: #f8fafc;
-  letter-spacing: -1px;
-  background: linear-gradient(135deg, #00FF66, #00cc52);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+  margin: 0 0 16px;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.lp-stat-label {
+.bc-proof-subtitle {
+  font-size: 1rem;
+  color: #64748b;
+  line-height: 1.7;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* Depoimentos */
+.bc-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 48px;
+}
+
+.bc-proof-quote {
+  background: linear-gradient(150deg, rgba(18, 18, 18, 0.95), rgba(14, 14, 14, 0.85));
+  border: 1px solid rgba(148, 163, 184, 0.09);
+  border-radius: 20px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease,
+              opacity 0.5s ease, translate 0.5s ease;
+  opacity: 0;
+  translate: 0 24px;
+}
+
+.bc-proof-quote--visible {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.bc-proof-quote:hover {
+  transform: translateY(-5px);
+  border-color: rgba(0, 255, 102, 0.18);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 255, 102, 0.07);
+}
+
+.bc-proof-quote-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bc-proof-stars {
+  display: flex;
+  gap: 3px;
+}
+
+.bc-proof-stars i {
+  font-size: 0.7rem;
+  color: #fbbf24;
+}
+
+.bc-proof-segment {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #00FF66;
+  background: rgba(0, 255, 102, 0.07);
+  border: 1px solid rgba(0, 255, 102, 0.15);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.bc-proof-text {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  line-height: 1.75;
+  font-style: italic;
+  margin: 0;
+  flex: 1;
+}
+
+.bc-proof-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.07);
+  margin-top: auto;
+}
+
+.bc-proof-avatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.85rem;
   color: #64748b;
-  margin-top: 6px;
-  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.bc-proof-author strong {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.bc-proof-author span {
+  display: block;
+  font-size: 0.75rem;
+  color: #475569;
+  margin-top: 2px;
+}
+
+/* Cards de Métricas */
+.bc-proof-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.bc-proof-metric {
+  background: rgba(14, 14, 14, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 16px;
+  padding: 24px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease,
+              opacity 0.5s ease, translate 0.5s ease;
+  opacity: 0;
+  translate: 0 20px;
+}
+
+.bc-proof-metric--visible {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.bc-proof-metric:hover {
+  transform: translateY(-4px);
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+}
+
+.bc-proof-metric-icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+}
+
+.bc-proof-metric-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: -0.2px;
+  margin: 0;
+}
+
+.bc-proof-metric-desc {
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* Microcopy */
+.bc-proof-microcopy {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.bc-proof-microcopy i {
+  color: #00FF66;
+  font-size: 0.72rem;
+  margin-right: 5px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .bc-proof-grid { grid-template-columns: 1fr; }
+  .bc-proof-metrics { grid-template-columns: 1fr; }
+  .bc-proof-title { font-size: 1.8rem; }
+}
+
+@media (max-width: 640px) {
+  .bc-proof-section { padding: 72px 0; }
+  .bc-proof-title { font-size: 1.6rem; }
+  .bc-proof-microcopy { flex-direction: column; gap: 10px; }
 }
 
 /* === Pricing === */
@@ -940,7 +1436,6 @@ onMounted(() => {
   margin-bottom: 60px;
 }
 
-/* === Pricing Price helpers === */
 .pricing-inline {
   display: flex;
   align-items: flex-end;
@@ -954,7 +1449,7 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pricing-pro-contacts {
@@ -967,71 +1462,67 @@ onMounted(() => {
 .pricing-ent-main {
   font-size: 1.6rem;
   font-weight: 800;
-  color: var(--text-primary, #f1f5f9);
+  color: #f1f5f9;
   line-height: 1.1;
 }
 
 .pricing-vpm-from {
-  font-size: 0.72rem;
-  color: #94a3b8;
-  font-weight: 500;
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: -4px;
 }
 
 .pricing-vpm-main {
   display: flex;
   align-items: baseline;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   line-height: 1;
 }
 
 .pricing-vpm-unit {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: #64748b;
-  margin-top: -8px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .pricing-vpm-min {
-  margin-top: 2px;
   display: inline-flex;
   align-items: baseline;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 4px;
+  padding: 7px 14px;
   border-radius: 999px;
-  background: rgba(251, 191, 36, 0.10);
-  border: 1px solid rgba(251, 191, 36, 0.22);
-  box-shadow: 0 0 18px rgba(251, 191, 36, 0.10);
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.2);
 }
 
 .pricing-vpm-min-label {
-  font-size: 0.72rem;
-  font-weight: 900;
-  color: rgba(251, 191, 36, 0.95);
-  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(251, 191, 36, 0.85);
   text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .pricing-vpm-min-currency {
   font-size: 0.85rem;
-  font-weight: 900;
-  color: rgba(251, 191, 36, 0.95);
+  font-weight: 800;
+  color: #fbbf24;
 }
 
 .pricing-vpm-min-value {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 900;
   color: #fbbf24;
   letter-spacing: -0.02em;
 }
 
 .pricing-vpm-min-period {
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: #94a3b8;
 }
 
@@ -1042,32 +1533,28 @@ onMounted(() => {
   gap: 12px;
   padding: 60px;
   color: #64748b;
-  font-size: 0.95rem;
 }
 
 .lp-spinner {
-  width: 22px;
-  height: 22px;
+  width: 22px; height: 22px;
   border: 2px solid rgba(0, 255, 102, 0.2);
   border-top-color: #00FF66;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .lp-pricing-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 24px;
   margin-top: 60px;
   align-items: start;
 }
 
 .lp-pricing-card {
-  background: linear-gradient(160deg, rgba(20, 20, 20, 0.95), rgba(20, 20, 20, 0.8));
+  background: linear-gradient(160deg, rgba(18, 18, 18, 0.95), rgba(18, 18, 18, 0.8));
   border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 24px;
   padding: 32px;
@@ -1086,14 +1573,13 @@ onMounted(() => {
 }
 
 .lp-pricing-card--popular {
-  border-color: rgba(0, 255, 102, 0.35);
-  background: linear-gradient(160deg, rgba(20, 20, 20, 0.98), rgba(20, 20, 20, 0.92));
-  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.15), 0 30px 60px rgba(0, 0, 0, 0.3);
+  border-color: rgba(0, 255, 102, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.12), 0 30px 60px rgba(0, 0, 0, 0.3);
 }
 
 .lp-pricing-card--popular:hover {
-  border-color: rgba(0, 255, 102, 0.55);
-  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.3), 0 30px 80px rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 255, 102, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.25), 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
 .lp-popular-badge {
@@ -1105,7 +1591,7 @@ onMounted(() => {
   color: #060606;
   padding: 5px 18px;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
   letter-spacing: 0.3px;
@@ -1118,21 +1604,35 @@ onMounted(() => {
 }
 
 .lp-pricing-plan-icon {
-  width: 52px;
-  height: 52px;
-  background: rgba(0, 255, 102, 0.1);
-  border: 1px solid rgba(0, 255, 102, 0.2);
+  width: 52px; height: 52px;
   border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
-  color: #00FF66;
+  font-size: 1.25rem;
   margin: 0 auto 16px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lp-plan-icon--free {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+}
+
+.lp-plan-icon--pro {
+  background: rgba(0, 255, 102, 0.1);
+  color: #00FF66;
+  border-color: rgba(0, 255, 102, 0.2);
+}
+
+.lp-plan-icon--unlimited {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.2);
 }
 
 .lp-pricing-name {
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   font-weight: 700;
   color: #f1f5f9;
   margin-bottom: 6px;
@@ -1144,46 +1644,46 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
-.lp-pricing-price {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 2px;
-  line-height: 1;
-}
+.lp-price-block { margin-bottom: 8px; }
 
-.lp-price-free {
-  font-size: 2.5rem;
+.lp-free-label {
+  font-size: 2.4rem;
   font-weight: 800;
-  color: #00FF66;
+  color: #94a3b8 !important;
   letter-spacing: -1px;
 }
 
-.lp-price-currency, .pricing-price .price-currency {
-  font-size: 1.2rem;
+.pricing-price .price-currency {
+  font-size: 1.1rem;
   font-weight: 600;
   color: #64748b;
   margin-bottom: 6px;
 }
 
-.lp-price-amount, .pricing-price .price-value {
-  font-size: 3.6rem;
+.pricing-price .price-value {
+  font-size: 3.4rem;
   font-weight: 800;
   color: #f8fafc;
   letter-spacing: -2px;
   line-height: 1;
 }
 
-.lp-price-period, .pricing-price .price-period {
-  font-size: 1rem;
+.price-cents {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.pricing-price .price-period {
+  font-size: 0.95rem;
   font-weight: 500;
   color: #64748b;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .lp-pricing-divider {
   height: 1px;
-  background: rgba(148, 163, 184, 0.08);
+  background: rgba(148, 163, 184, 0.07);
   margin: 24px 0;
 }
 
@@ -1193,24 +1693,26 @@ onMounted(() => {
   margin: 0 0 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 11px;
   flex: 1;
 }
 
 .lp-pricing-features li {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 0.875rem;
-  color: #94a3b8;
 }
 
+.feat-yes { color: #94a3b8; }
+.feat-no { color: #475569; }
+.feat-no span { text-decoration: line-through; opacity: 0.6; }
+
 .lp-check {
+  font-size: 0.7rem;
+  width: 18px; height: 18px;
+  background: rgba(0, 255, 102, 0.1);
   color: #00FF66;
-  font-size: 0.75rem;
-  width: 18px;
-  height: 18px;
-  background: rgba(0, 255, 102, 0.12);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1223,6 +1725,12 @@ onMounted(() => {
   background: rgba(251, 191, 36, 0.12);
 }
 
+.lp-check--no {
+  color: #475569;
+  background: rgba(71, 85, 105, 0.12);
+}
+
+/* === Plan Buttons === */
 .lp-btn-plan {
   width: 100%;
   display: flex;
@@ -1231,117 +1739,167 @@ onMounted(() => {
   gap: 8px;
   padding: 13px;
   border-radius: 14px;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: rgba(0, 255, 102, 0.1);
-  border: 1px solid rgba(0, 255, 102, 0.25);
-  color: #00FF66;
+  border: 1px solid transparent;
+  background: none;
 }
 
-.lp-btn-plan:hover {
-  background: rgba(0, 255, 102, 0.18);
-  border-color: rgba(0, 255, 102, 0.5);
+.lp-btn-plan--free {
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+}
+
+.lp-btn-plan--free:hover {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #e5e7eb;
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 255, 102, 0.2);
 }
 
-.lp-pricing-card--popular .lp-btn-plan {
+.lp-btn-plan--pro {
   background: linear-gradient(135deg, #00FF66, #00cc52);
   border-color: transparent;
   color: #060606;
   box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
 }
 
-.lp-pricing-card--popular .lp-btn-plan:hover {
+.lp-btn-plan--pro:hover {
+  transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(0, 255, 102, 0.5);
 }
 
-/* === CTA === */
-.lp-cta {
-  padding: 100px 0;
+.lp-btn-plan--enterprise {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.25);
+  color: #fbbf24;
 }
 
-.lp-cta-card {
-  background: linear-gradient(135deg, rgba(20, 20, 20, 0.95), rgba(20, 20, 20, 0.85));
-  border: 1px solid rgba(0, 255, 102, 0.2);
-  border-radius: 28px;
-  padding: 80px 40px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
+.lp-btn-plan--enterprise:hover {
+  background: rgba(251, 191, 36, 0.14);
+  border-color: rgba(251, 191, 36, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(251, 191, 36, 0.15);
 }
 
-.lp-cta-glow {
-  position: absolute;
-  width: 500px;
-  height: 500px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(0, 255, 102, 0.06) 0%, transparent 70%);
-  pointer-events: none;
+/* === Enterprise Highlight === */
+.lp-enterprise-highlight {
+  margin-top: 40px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.05), rgba(18, 18, 18, 0.9));
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  padding: 36px 40px;
+  backdrop-filter: blur(12px);
 }
 
-.lp-cta-card h2 {
-  font-size: 2.5rem;
-  font-weight: 800;
-  color: #f8fafc;
-  margin-bottom: 14px;
-  letter-spacing: -0.8px;
-}
-
-.lp-cta-card p {
-  font-size: 1.05rem;
-  color: #64748b;
-  margin-bottom: 36px;
-}
-
-/* === Footer === */
-.lp-footer {
-  padding: 32px 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.08);
-  background: rgba(6, 6, 6, 0.8);
-}
-
-.lp-footer-content {
+.lp-enterprise-highlight-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  gap: 40px;
 }
 
-.lp-footer-copy {
+.lp-enterprise-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex: 1;
+}
+
+.lp-enterprise-icon {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fbbf24;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.lp-enterprise-left h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+}
+
+.lp-enterprise-left p {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-bottom: 16px;
+  line-height: 1.55;
+}
+
+.lp-enterprise-features-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.lp-enterprise-features-row span {
   font-size: 0.8rem;
-  color: #475569;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-/* === Responsive (tablet) === */
-@media (max-width: 900px) {
-  .lp-features-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.lp-enterprise-features-row .fa-check { color: #fbbf24; }
+.lp-x-no { color: #475569; }
 
-  .lp-stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 24px;
-  }
+.lp-enterprise-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+  flex-shrink: 0;
 }
+
+.lp-enterprise-price { text-align: right; }
+
+.lp-enterprise-from {
+  display: block;
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.lp-enterprise-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: -1px;
+}
+
+.lp-enterprise-value small {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0;
+}
+
+.lp-enterprise-cta { width: auto; padding: 12px 24px; }
 
 /* === VPM Calculator === */
+/* === Calculator === */
 .lp-vpm-calc {
   margin-top: 80px;
   text-align: center;
 }
 
-.lp-vpm-calc-header {
-  margin-bottom: 32px;
-}
+.lp-vpm-calc-header { margin-bottom: 32px; }
 
 .lp-vpm-calc-title {
-  font-size: 2rem;
+  font-size: 1.9rem;
   font-weight: 800;
   color: #f8fafc;
   letter-spacing: -0.6px;
@@ -1351,101 +1909,56 @@ onMounted(() => {
 .lp-vpm-calc-sub {
   font-size: 0.9rem;
   color: #64748b;
+  max-width: 480px;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 
 .lp-vpm-calc-card {
-  background: rgba(20, 20, 20, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(18, 18, 18, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.1);
   border-radius: 24px;
   padding: 40px 48px;
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
   backdrop-filter: blur(12px);
 }
 
-.lp-vpm-calc-body {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 32px;
-  margin-bottom: 36px;
+/* Slider section */
+.lp-calc-slider-section {
+  margin-bottom: 0;
 }
 
-.lp-vpm-calc-left {
-  flex: 1;
-  text-align: left;
-  background: #fff;
-  border-radius: 16px;
-  padding: 20px 24px;
-}
-
-.lp-vpm-calc-label {
+.lp-calc-slider-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
   color: #64748b;
-  margin-bottom: 8px;
-  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 16px;
 }
 
-.lp-vpm-calc-label b {
-  color: #00FF66;
-  font-weight: 700;
-}
-
-.lp-vpm-calc-number {
-  font-size: 2.4rem;
-  font-weight: 800;
-  color: #121212;
-  letter-spacing: -1px;
-  line-height: 1;
-}
-
-.lp-vpm-calc-equals {
-  font-size: 2.4rem;
-  font-weight: 300;
-  color: #334155;
-  flex-shrink: 0;
-}
-
-.lp-vpm-calc-right {
-  flex: 1;
-  text-align: center;
+.lp-calc-contacts-display {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 24px;
 }
 
-.lp-vpm-calc-price {
-  font-size: 3rem;
+.lp-calc-contacts-number {
+  font-size: 3.2rem;
   font-weight: 900;
-  color: #00FF66;
+  color: #f8fafc;
   letter-spacing: -2px;
   line-height: 1;
 }
 
-.lp-vpm-calc-plan-label {
-  font-size: 0.85rem;
+.lp-calc-contacts-unit {
+  font-size: 1rem;
   font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.lp-vpm-calc-rate-badge {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.08);
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: 999px;
-  padding: 2px 10px;
-  margin-top: 4px;
-  display: inline-block;
-}
-
-.lp-vpm-calc-slider-wrap {
-  margin-bottom: 24px;
+  color: #475569;
 }
 
 .lp-vpm-calc-range {
@@ -1453,81 +1966,250 @@ onMounted(() => {
   height: 6px;
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.15);
   border-radius: 999px;
   outline: none;
   cursor: pointer;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .lp-vpm-calc-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 24px; height: 24px;
   border-radius: 50%;
-  background: #121212;
+  background: #0a0a0a;
   border: 3px solid #00FF66;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
+  box-shadow: 0 0 12px rgba(0, 255, 102, 0.5);
   transition: box-shadow 0.15s;
 }
 
 .lp-vpm-calc-range::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 18px rgba(0, 255, 102, 0.7);
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.75);
 }
 
 .lp-vpm-calc-ticks {
   display: flex;
   justify-content: space-between;
-  font-size: 0.72rem;
-  color: #475569;
-  font-weight: 500;
-  padding: 0 2px;
+  font-size: 0.68rem;
+  color: #334155;
+  font-weight: 600;
+  margin-bottom: 0;
 }
 
-.lp-vpm-calc-footer {
-  text-align: center;
+/* Divider */
+.lp-calc-divider {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.08);
+  margin: 32px 0;
+}
+
+/* Resultado / comparativo */
+.lp-calc-result {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.lp-calc-compare-row {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.lp-calc-compare-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
+  padding: 20px 16px;
+  border-radius: 16px;
+}
+
+.lp-calc-compare-col--market {
+  background: rgba(148, 163, 184, 0.04);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.lp-calc-compare-col--bcp {
+  background: rgba(0, 255, 102, 0.04);
+  border: 1px solid rgba(0, 255, 102, 0.15);
+}
+
+.lp-calc-compare-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #64748b;
+}
+
+.lp-calc-compare-price {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  line-height: 1;
+}
+
+.lp-calc-compare-price--strike .lp-calc-compare-currency,
+.lp-calc-compare-price--strike .lp-calc-compare-value,
+.lp-calc-compare-price--strike .lp-calc-compare-period {
+  color: #475569;
+  text-decoration: line-through;
+  text-decoration-color: rgba(239, 68, 68, 0.6);
+}
+
+.lp-calc-compare-price--bcp .lp-calc-compare-currency {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #00FF66;
+  margin-bottom: 4px;
+}
+
+.lp-calc-compare-price--bcp .lp-calc-compare-value {
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: #00FF66;
+  letter-spacing: -1.5px;
+}
+
+.lp-calc-compare-price--bcp .lp-calc-compare-period {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.lp-calc-compare-price--strike .lp-calc-compare-value {
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.lp-calc-compare-price--strike .lp-calc-compare-currency {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.lp-calc-compare-price--strike .lp-calc-compare-period {
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.lp-calc-compare-note {
+  font-size: 0.68rem;
+  color: #334155;
+  font-style: italic;
+}
+
+.lp-calc-compare-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #00FF66;
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.18);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.lp-calc-compare-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  font-size: 0.85rem;
+}
+
+/* Banner de economia */
+.lp-calc-savings-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  background: rgba(0, 255, 102, 0.05);
+  border: 1px solid rgba(0, 255, 102, 0.18);
+  border-radius: 14px;
+  text-align: left;
+}
+
+.lp-calc-savings-icon {
+  font-size: 1.5rem;
+  color: #00FF66;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.lp-calc-savings-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lp-calc-savings-headline {
+  font-size: 0.95rem;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.lp-calc-savings-headline strong {
+  color: #00FF66;
+  font-weight: 800;
+}
+
+.lp-calc-savings-sub {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+/* Footer */
+.lp-calc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .lp-vpm-calc-cta {
-  width: 100%;
-  max-width: 320px;
+  flex-shrink: 0;
   justify-content: center;
   font-size: 0.95rem;
-  padding: 12px 24px;
-}
-
-.lp-btn-plan--enterprise {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  border-color: #f59e0b;
-}
-.lp-btn-plan--enterprise:hover {
-  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  padding: 12px 28px;
 }
 
 .lp-vpm-calc-link {
   background: none;
   border: none;
-  color: #00FF66;
-  font-size: 0.85rem;
+  color: #475569;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: opacity 0.15s;
+  transition: color 0.15s;
 }
 
-.lp-vpm-calc-link:hover { opacity: 0.75; }
+.lp-vpm-calc-link:hover { color: #94a3b8; }
 
-/* === Modal Tabela de Preços === */
+/* Responsive calculator */
+@media (max-width: 640px) {
+  .lp-vpm-calc-card { padding: 28px 20px; }
+  .lp-calc-contacts-number { font-size: 2.4rem; }
+  .lp-calc-compare-row { grid-template-columns: 1fr; gap: 8px; }
+  .lp-calc-compare-arrow { transform: rotate(90deg); }
+  .lp-calc-footer { flex-direction: column; align-items: stretch; }
+  .lp-vpm-calc-cta { text-align: center; }
+}
+
+/* === Modal === */
 .lp-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1561,7 +2243,7 @@ onMounted(() => {
 }
 
 .lp-modal-header h3 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: #f8fafc;
 }
@@ -1570,8 +2252,7 @@ onMounted(() => {
   background: rgba(148, 163, 184, 0.1);
   border: none;
   color: #94a3b8;
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
@@ -1582,10 +2263,7 @@ onMounted(() => {
 
 .lp-modal-close:hover { background: rgba(148, 163, 184, 0.2); color: #f8fafc; }
 
-.lp-modal-body {
-  overflow-y: auto;
-  padding: 0;
-}
+.lp-modal-body { overflow-y: auto; padding: 0; }
 
 .lp-price-table {
   width: 100%;
@@ -1593,208 +2271,276 @@ onMounted(() => {
   font-size: 0.875rem;
 }
 
-.lp-price-table thead tr {
-  background: rgba(148, 163, 184, 0.06);
-}
+.lp-price-table thead tr { background: rgba(148, 163, 184, 0.06); }
 
 .lp-price-table th {
   padding: 12px 20px;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #64748b;
 }
 
 .lp-price-table td {
-  padding: 14px 20px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding: 13px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.07);
   color: #cbd5e1;
-  font-size: 0.88rem;
+  font-size: 0.875rem;
 }
 
 .lp-price-table tbody tr:hover td { background: rgba(148, 163, 184, 0.04); }
+.lp-price-table-val { font-weight: 700; color: #00FF66 !important; }
+.lp-price-table-per { color: #fbbf24 !important; }
+.lp-price-table-extra td { opacity: 0.6; font-style: italic; font-size: 0.82rem; }
 
-.lp-price-table-val {
-  font-weight: 700;
-  color: #00FF66 !important;
+/* === FAQ === */
+.lp-faq {
+  padding: 100px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.06);
 }
 
-.lp-price-table-per {
-  color: #fbbf24 !important;
+.lp-faq .lp-section-title { margin-bottom: 48px; }
+
+.lp-faq-list {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.lp-price-table-extra td {
-  opacity: 0.6;
-  font-style: italic;
-  font-size: 0.82rem;
+.lp-faq-item {
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s;
 }
 
-/* === Utility replacements (ex-Tailwind) === */
-.lp-price-block {
-  margin-bottom: 8px;
+.lp-faq-item--open {
+  border-color: rgba(0, 255, 102, 0.2);
 }
 
-.lp-free-label {
-  color: #00FF66 !important;
+.lp-faq-question {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  background: none;
+  border: none;
+  color: #e2e8f0;
+  font-size: 0.925rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.lp-faq-question:hover { background: rgba(148, 163, 184, 0.04); }
+.lp-faq-question i { color: #64748b; flex-shrink: 0; font-size: 0.8rem; }
+
+.lp-faq-answer {
+  padding: 0 22px 18px;
+  font-size: 0.875rem;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.faq-expand-enter-active,
+.faq-expand-leave-active {
+  transition: all 0.2s ease;
+}
+
+.faq-expand-enter-from,
+.faq-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* === CTA Final === */
+.lp-cta {
+  padding: 100px 0;
+}
+
+.lp-cta-card {
+  background: linear-gradient(135deg, rgba(18, 18, 18, 0.95), rgba(18, 18, 18, 0.85));
+  border: 1px solid rgba(0, 255, 102, 0.18);
+  border-radius: 28px;
+  padding: 80px 40px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.lp-cta-glow {
+  position: absolute;
+  width: 500px; height: 500px;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(0, 255, 102, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.lp-cta-card h2 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-bottom: 14px;
+  letter-spacing: -0.8px;
+}
+
+.lp-cta-card p {
+  font-size: 1rem;
+  color: #64748b;
+  margin-bottom: 36px;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.65;
+}
+
+.lp-cta-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* === Footer === */
+.lp-footer {
+  padding: 32px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.07);
+  background: rgba(6, 6, 6, 0.8);
+}
+
+.lp-footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.lp-footer-copy {
+  font-size: 0.78rem;
+  color: #334155;
 }
 
 /* === Mobile hamburger === */
 .lp-menu-toggle {
   display: none;
   background: none;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #e5e7eb;
-  width: 40px;
-  height: 40px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #64748b;
+  width: 40px; height: 40px;
   border-radius: 10px;
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   transition: all 0.15s ease;
   margin-left: auto;
 }
 
 .lp-menu-toggle:hover {
-  background: rgba(148, 163, 184, 0.1);
-  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.08);
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .lp-mobile-menu {
   position: sticky;
-  top: 59px;
+  top: 65px;
   z-index: 99;
-  background: rgba(10, 10, 10, 0.97);
+  background: rgba(8, 8, 8, 0.97);
   backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
   display: flex;
   flex-direction: column;
-  padding: 16px 24px;
-  gap: 4px;
+  padding: 12px 20px 20px;
+  gap: 2px;
 }
 
-.lp-mobile-menu a {
-  padding: 12px 16px;
+.lp-mobile-link {
+  padding: 11px 16px;
   border-radius: 10px;
-  color: #94a3b8;
+  color: #64748b;
   text-decoration: none;
-  font-size: 0.95rem;
+  font-size: 0.925rem;
   font-weight: 500;
   transition: all 0.15s ease;
+  display: block;
 }
 
-.lp-mobile-menu a:hover {
-  background: rgba(148, 163, 184, 0.08);
-  color: #e5e7eb;
+.lp-mobile-link:hover {
+  background: rgba(148, 163, 184, 0.07);
+  color: #94a3b8;
 }
 
 .lp-mobile-menu-divider {
   height: 1px;
-  background: rgba(148, 163, 184, 0.1);
-  margin: 8px 0;
+  background: rgba(148, 163, 184, 0.08);
+  margin: 10px 0 8px;
 }
 
 .lp-mobile-cta {
-  margin-top: 4px;
   justify-content: center;
 }
 
 /* Mobile menu transition */
 .lp-slide-enter-active,
-.lp-slide-leave-active {
-  transition: all 0.25s ease;
-}
+.lp-slide-leave-active { transition: all 0.22s ease; }
 
 .lp-slide-enter-from,
-.lp-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-12px);
+.lp-slide-leave-to { opacity: 0; transform: translateY(-10px); }
+
+/* === Responsive === */
+@media (max-width: 900px) {
+  .lp-features-grid { grid-template-columns: repeat(2, 1fr); }
+  .lp-menu-toggle { display: flex; }
+  .lp-nav-links, .lp-nav-actions { display: none; }
+
+  .lp-enterprise-highlight-inner {
+    flex-direction: column;
+    gap: 24px;
+  }
+  .lp-enterprise-right {
+    align-items: center;
+    width: 100%;
+  }
+  .lp-enterprise-cta { width: 100%; max-width: 320px; }
 }
 
 @media (max-width: 640px) {
-  .lp-hero-title {
-    font-size: 2.4rem;
-  }
+  .lp-hero { padding: 80px 0 60px; }
+  .lp-hero-title { font-size: 2.6rem; letter-spacing: -1.2px; }
+  .lp-hero-subtitle { font-size: 0.975rem; }
+  .lp-section-title { font-size: 1.8rem; }
+  .lp-features-grid { grid-template-columns: 1fr; }
+  .lp-hero-cta { flex-direction: column; align-items: center; }
+  .lp-cta-card { padding: 50px 24px; }
+  .lp-cta-card h2 { font-size: 1.8rem; }
+  .lp-footer-content { flex-direction: column; text-align: center; }
 
-  .lp-hero-subtitle {
-    font-size: 1rem;
-  }
-
-  .lp-section-title {
-    font-size: 1.8rem;
-  }
-
-  .lp-features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .lp-stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .lp-hero-cta {
+  .lp-testimonial-stats {
     flex-direction: column;
-    align-items: center;
+    gap: 20px;
+    padding: 24px 20px;
   }
+  .lp-t-stat-divider { width: 48px; height: 1px; }
+  .lp-t-stat-label { white-space: normal; }
 
-  .lp-cta-card {
-    padding: 50px 24px;
-  }
+  .lp-vpm-calc-card { padding: 24px 16px; }
+  .lp-vpm-calc-body { flex-direction: column; gap: 16px; }
+  .lp-vpm-calc-equals { display: none; }
+  .lp-vpm-calc-left { text-align: center; }
+  .lp-vpm-calc-number { font-size: 1.8rem; }
+  .lp-vpm-calc-price { font-size: 2.2rem; }
+  .lp-vpm-calc-title { font-size: 1.5rem; }
+  .lp-vpm-calc-cta { max-width: 100%; }
 
-  .lp-cta-card h2 {
-    font-size: 1.8rem;
-  }
-
-  .lp-footer-content {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  /* VPM Calculator mobile */
-  .lp-vpm-calc-card {
-    padding: 24px 16px;
-  }
-
-  .lp-vpm-calc-body {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .lp-vpm-calc-equals {
-    display: none;
-  }
-
-  .lp-vpm-calc-left {
-    text-align: center;
-  }
-
-  .lp-vpm-calc-number {
-    font-size: 1.8rem;
-  }
-
-  .lp-vpm-calc-price {
-    font-size: 2.2rem;
-  }
-
-  .lp-vpm-calc-title {
-    font-size: 1.5rem;
-  }
-
-  .lp-vpm-calc-cta {
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 900px) {
-  .lp-menu-toggle {
-    display: flex;
-  }
-
-  .lp-nav-links,
-  .lp-nav-actions {
-    display: none;
-  }
+  .lp-cta-actions { flex-direction: column; align-items: center; }
+  .lp-enterprise-highlight { padding: 24px 20px; }
 }
 </style>

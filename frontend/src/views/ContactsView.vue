@@ -76,7 +76,7 @@
           <!-- ── Canais ── -->
           <div class="ct-filter-group">
             <button class="ct-fgroup-header" type="button" @click="channelsCollapsed = !channelsCollapsed">
-              <span class="ct-fgroup-title">
+              <span class="ct-fgroup-title ct-fgroup-title--canais">
                 <i class="fa-solid fa-tower-broadcast"></i>
                 Canais
               </span>
@@ -107,7 +107,7 @@
           <!-- ── Tags ── -->
           <div class="ct-filter-group">
             <button class="ct-fgroup-header" type="button" @click="tagsCollapsed = !tagsCollapsed">
-              <span class="ct-fgroup-title">
+              <span class="ct-fgroup-title ct-fgroup-title--tags">
                 <i class="fa-solid fa-tag"></i>
                 Tags
                 <span v-if="selectedTags.length > 0" class="ct-fgroup-badge">{{ selectedTags.length }}</span>
@@ -133,7 +133,7 @@
           <!-- ── Campos ── -->
           <div class="ct-filter-group">
             <button class="ct-fgroup-header" type="button" @click="fieldsCollapsed = !fieldsCollapsed">
-              <span class="ct-fgroup-title">
+              <span class="ct-fgroup-title ct-fgroup-title--campos">
                 <i class="fa-solid fa-sliders"></i>
                 Campos
                 <span v-if="selectedFieldFilters.length > 0" class="ct-fgroup-badge">{{ selectedFieldFilters.length }}</span>
@@ -366,7 +366,10 @@
         <!-- ════════════════════════════════ -->
         <!-- COL 3 — CONTACT DETAIL PANEL     -->
         <!-- ════════════════════════════════ -->
-        <div v-if="selectedContact" class="ct-col-detail">
+        <div v-if="selectedContact" class="ct-col-detail" :style="{ width: detailWidth + 'px', minWidth: detailWidth + 'px' }">
+
+          <!-- Resizer -->
+          <div class="ct-detail-resizer" @mousedown.stop.prevent="startDetailResize"></div>
 
           <!-- Detail Header -->
           <div class="ct-detail-header">
@@ -963,6 +966,34 @@ const totalContacts = ref(0)
 const pageLimit = ref(50)
 const pageOffset = ref(0)
 const selectedContact = ref(null)
+const detailWidth = ref(380)
+const DETAIL_MIN_W = 280
+const DETAIL_MAX_W = 800
+let _detailResizing = false
+let _detailStartX = 0
+let _detailStartW = 0
+
+const startDetailResize = (e) => {
+  _detailResizing = true
+  _detailStartX = e.clientX
+  _detailStartW = detailWidth.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onDetailResizeMove)
+  document.addEventListener('mouseup', onDetailResizeUp)
+}
+const onDetailResizeMove = (e) => {
+  if (!_detailResizing) return
+  const delta = _detailStartX - e.clientX
+  detailWidth.value = Math.min(DETAIL_MAX_W, Math.max(DETAIL_MIN_W, _detailStartW + delta))
+}
+const onDetailResizeUp = () => {
+  _detailResizing = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  document.removeEventListener('mousemove', onDetailResizeMove)
+  document.removeEventListener('mouseup', onDetailResizeUp)
+}
 const messages = ref([])
 const loadingMessages = ref(false)
 const messagesOffset = ref(0)
@@ -2641,6 +2672,30 @@ const deleteSegment = (idx) => {
 
 .ct-fgroup-title i { font-size: 11px; }
 
+.ct-fgroup-title--canais {
+  color: #4ade80;
+}
+.ct-fgroup-title--canais i {
+  color: #00FF66;
+  filter: drop-shadow(0 0 4px rgba(0, 255, 102, 0.4));
+}
+
+.ct-fgroup-title--tags {
+  color: #f59e0b;
+}
+.ct-fgroup-title--tags i {
+  color: #fbbf24;
+  filter: drop-shadow(0 0 4px rgba(251, 191, 36, 0.4));
+}
+
+.ct-fgroup-title--campos {
+  color: #a78bfa;
+}
+.ct-fgroup-title--campos i {
+  color: #c084fc;
+  filter: drop-shadow(0 0 4px rgba(192, 132, 252, 0.4));
+}
+
 .ct-fgroup-badge {
   display: inline-flex;
   align-items: center;
@@ -3258,7 +3313,25 @@ const deleteSegment = (idx) => {
 /* ══════════════════════════════════════
    COL 3 — CONTACT DETAIL PANEL
 ══════════════════════════════════════ */
+.ct-detail-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.ct-detail-resizer:hover,
+.ct-detail-resizer:active {
+  background: rgba(0, 255, 102, 0.25);
+}
+
 .ct-col-detail {
+  position: relative;
   width: 380px;
   min-width: 380px;
   flex-shrink: 0;
@@ -3509,45 +3582,50 @@ const deleteSegment = (idx) => {
    CHAT AREA (reused from original)
 ══════════════════════════════════════ */
 .cql-panel {
-  width: 150px;
-  min-width: 150px;
+  width: 200px;
+  min-width: 200px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg-secondary);
+  background: #0d0d0d;
 }
 
 .cql-header {
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: #4ade80;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .cql-search-wrap {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
 }
 
 .cql-search {
   width: 100%;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 7px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 6px 9px;
   color: var(--text-primary);
   font-size: 0.75rem;
   outline: none;
+  transition: border-color 0.15s;
+}
+
+.cql-search:focus {
+  border-color: rgba(0, 255, 102, 0.35);
 }
 
 .cql-items {
@@ -3561,8 +3639,8 @@ const deleteSegment = (idx) => {
 .cql-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 9px 12px;
   width: 100%;
   background: none;
   border: none;
@@ -3572,12 +3650,15 @@ const deleteSegment = (idx) => {
   border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 
-.cql-item:hover { background: rgba(255,255,255,0.03); }
-.cql-active { background: rgba(0,255,102,0.06) !important; }
+.cql-item:hover { background: rgba(255,255,255,0.04); }
+.cql-active {
+  background: rgba(0,255,102,0.08) !important;
+  border-left: 2px solid #00FF66;
+}
 
 .cql-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -3593,8 +3674,8 @@ const deleteSegment = (idx) => {
 }
 
 .cql-name {
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.78rem;
+  font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -3602,19 +3683,21 @@ const deleteSegment = (idx) => {
 }
 
 .cql-preview {
-  font-size: 0.66rem;
-  color: var(--text-muted);
+  font-size: 0.69rem;
+  color: rgba(148, 163, 184, 0.6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 1px;
 }
 
 .cql-time {
   font-size: 0.62rem;
-  color: var(--text-muted);
+  color: rgba(148, 163, 184, 0.45);
   white-space: nowrap;
   flex-shrink: 0;
-  display: none; /* hide on narrow panel */
+  align-self: flex-start;
+  margin-top: 1px;
 }
 
 .cql-empty {
@@ -3690,13 +3773,14 @@ const deleteSegment = (idx) => {
 .tg-scroller {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
+  background: #080808;
 }
 
 .tg-scroller::-webkit-scrollbar { width: 4px; }
-.tg-scroller::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.tg-scroller::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 
 .tg-loading,
 .tg-empty {
@@ -3713,25 +3797,29 @@ const deleteSegment = (idx) => {
 .tg-feed {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .tg-day-pill {
   text-align: center;
-  margin: 10px 0;
+  margin: 14px 0;
 }
 
 .tg-day-pill span {
   display: inline-block;
-  padding: 3px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 12px;
+  padding: 4px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
   font-size: 0.68rem;
-  color: var(--text-muted);
+  color: rgba(148, 163, 184, 0.7);
+  letter-spacing: 0.3px;
 }
 
 .tg-row {
   display: flex;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .tg-in { justify-content: flex-start; }
@@ -3739,23 +3827,29 @@ const deleteSegment = (idx) => {
 
 .tg-bubble {
   position: relative;
-  max-width: 82%;
-  padding: 7px 10px;
-  border-radius: 10px;
-  font-size: 0.82rem;
-  line-height: 1.45;
+  max-width: 80%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  word-break: break-word;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
+/* Mensagem recebida (contato → bot) */
 .tg-in .tg-bubble {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border-radius: 3px 10px 10px 10px;
+  background: #1e2430;
+  color: #e2e8f0;
+  border-radius: 4px 14px 14px 14px;
+  border: 1px solid rgba(255,255,255,0.07);
 }
 
+/* Mensagem enviada (bot → contato) */
 .tg-out .tg-bubble {
-  background: rgba(0,255,102,0.12);
-  color: var(--text-primary);
-  border-radius: 10px 3px 10px 10px;
+  background: rgba(0, 255, 102, 0.13);
+  color: #e2e8f0;
+  border-radius: 14px 4px 14px 14px;
+  border: 1px solid rgba(0, 255, 102, 0.2);
 }
 
 .tg-footer {
@@ -3763,12 +3857,12 @@ const deleteSegment = (idx) => {
   align-items: center;
   gap: 4px;
   justify-content: flex-end;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .tg-time {
-  font-size: 0.65rem;
-  color: var(--text-muted);
+  font-size: 0.63rem;
+  color: rgba(148, 163, 184, 0.55);
 }
 
 .tg-ticks { display: flex; align-items: center; }
@@ -3780,9 +3874,9 @@ const deleteSegment = (idx) => {
   align-items: center;
   gap: 4px;
   font-size: 0.7rem;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  border-left: 2px solid var(--primary);
+  color: rgba(148, 163, 184, 0.7);
+  margin-bottom: 5px;
+  border-left: 2px solid #4ade80;
   padding-left: 6px;
 }
 
@@ -3932,22 +4026,28 @@ const deleteSegment = (idx) => {
 .tg-textarea::placeholder { color: var(--text-muted); }
 
 .tg-send-btn {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--primary);
+  background: #00FF66;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #000;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
   flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(0, 255, 102, 0.35);
 }
 
-.tg-send-btn:hover { background: var(--primary-hover); }
-.tg-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.tg-send-btn:hover:not(:disabled) {
+  background: #00e65c;
+  box-shadow: 0 0 16px rgba(0, 255, 102, 0.55);
+  transform: scale(1.06);
+}
+
+.tg-send-btn:disabled { opacity: 0.25; cursor: not-allowed; box-shadow: none; }
 
 .tg-emoji-picker {
   position: absolute;
@@ -4359,13 +4459,8 @@ const deleteSegment = (idx) => {
 /* ══════════════════════════════════════
    RESPONSIVE
 ══════════════════════════════════════ */
-@media (max-width: 1300px) {
-  .ct-col-detail { width: 340px; min-width: 340px; }
-}
-
 @media (max-width: 1100px) {
   .ct-col-filters { width: 220px; min-width: 220px; }
-  .ct-col-detail { width: 320px; min-width: 320px; }
 }
 
 @media (max-width: 900px) {
