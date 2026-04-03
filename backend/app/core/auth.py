@@ -3,6 +3,7 @@ Utilitários de autenticação e segurança
 """
 from datetime import datetime, timedelta
 from typing import Optional
+import types
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db.models import User, Tenant, Subscription, TenantUser
 from app.config import get_settings
+from app.cache.redis_client import cache_get, cache_set
+from app.cache.keys import CacheKeys
 
 # Configuração de hash de senha
 # bcrypt possui limite de 72 bytes; bcrypt_sha256 faz pre-hash e suporta senhas longas.
@@ -104,38 +107,74 @@ def get_current_tenant(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Tenant:
-    """Dependency para pegar o tenant (workspace) ativo do usuário autenticado"""
-    active_tid = getattr(user, "_active_tenant_id", user.tenant_id)
+    """Dependency para pegar o tenant (workspace) ativo do usuário autenticado.
 
-    # Verificar se o usuário tem acesso a esse workspace
-    membership = (
-        db.query(TenantUser)
-        .filter(TenantUser.user_id == user.id, TenantUser.tenant_id == active_tid)
+    Cache Redis (60s): na primeira chamada faz 1 JOIN ao SQL Server.
+    Nas chamadas seguintes retorna do Redis sem tocar no banco.
+    """
+    active_tid = getattr(user, "_active_tenant_id", user.tenant_id)
+    cache_key = CacheKeys.tenant_auth(user.id, active_tid)
+
+    # ── Cache hit: reconstrói objeto mínimo sem tocar no banco ──────────
+    cached = cache_get(cache_key)
+    if cached is not None:
+        tenant = types.SimpleNamespace(
+            id=cached["tenant_id"],
+            is_active=cached["is_active"],
+            name=cached.get("name", ""),
+            timezone=cached.get("timezone"),
+            stripe_customer_id=cached.get("stripe_customer_id"),
+        )
+        tenant._user_role = cached["role"]
+        tenant._user_membership = None  # não necessário após validação
+        return tenant
+
+    # ── Cache miss: 1 JOIN resolve Tenant + TenantUser ──────────────────
+    row = (
+        db.query(Tenant, TenantUser)
+        .outerjoin(
+            TenantUser,
+            (TenantUser.tenant_id == Tenant.id) & (TenantUser.user_id == user.id),
+        )
+        .filter(Tenant.id == active_tid)
         .first()
     )
 
-    # Fallback: se não tem registro em tenant_users (migração ainda não rodou),
-    # aceitar se é o tenant_id original do user
-    if membership is None and active_tid == user.tenant_id:
-        # Compatibilidade — aceita acesso direto
-        pass
-    elif membership is None:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Você não tem acesso a esse workspace"
+            detail="Conta inativa ou não encontrada"
         )
 
-    tenant = db.query(Tenant).filter(Tenant.id == active_tid).first()
+    tenant, membership = row
+
     if tenant is None or not tenant.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Conta inativa ou não encontrada"
         )
 
-    # Armazenar role e membership no tenant para dependências de permissão
-    tenant._user_role = membership.role if membership else "owner"
-    tenant._user_membership = membership  # objeto TenantUser completo
-    
+    # Fallback: sem registro em tenant_users mas é o tenant original do user
+    if membership is None and active_tid != user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Você não tem acesso a esse workspace"
+        )
+
+    role = membership.role if membership else "owner"
+
+    # Persiste no Redis para as próximas requisições
+    cache_set(cache_key, {
+        "tenant_id": tenant.id,
+        "is_active": tenant.is_active,
+        "name": tenant.name,
+        "timezone": tenant.timezone,
+        "stripe_customer_id": tenant.stripe_customer_id,
+        "role": role,
+    }, CacheKeys.TENANT_AUTH_TTL)
+
+    tenant._user_role = role
+    tenant._user_membership = membership
     return tenant
 
 

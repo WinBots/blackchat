@@ -2157,33 +2157,16 @@ const openBillingPortal = async () => {
 const loadBillingData = async () => {
   billingDataLoading.value = true
   try {
-    try {
-      plans.value = await listPlans()
-    } catch (e) {
-      console.error(e)
-      plans.value = []
-    }
-
-    try {
-      subscriptionData.value = await getMySubscription()
-    } catch (e) {
-      console.error(e)
-      subscriptionData.value = null
-    }
-
-    try {
-      billingStatus.value = await getBillingStatus()
-    } catch (e) {
-      console.error(e)
-      billingStatus.value = null
-    }
-
-    try {
-      const est = await getVpmEstimate()
-      vpmEstimate.value = est?.is_vpm_plan ? est : null
-    } catch (e) {
-      vpmEstimate.value = null
-    }
+    const [plansResult, subResult, billingResult, vpmResult] = await Promise.all([
+      listPlans().catch((e) => { console.error(e); return [] }),
+      getMySubscription().catch((e) => { console.error(e); return null }),
+      getBillingStatus().catch((e) => { console.error(e); return null }),
+      getVpmEstimate().catch(() => null),
+    ])
+    plans.value = plansResult
+    subscriptionData.value = subResult
+    billingStatus.value = billingResult
+    vpmEstimate.value = vpmResult?.is_vpm_plan ? vpmResult : null
   } finally {
     billingDataLoading.value = false
   }
@@ -2365,12 +2348,12 @@ onMounted(async () => {
     }
   } catch {}
 
-  await loadTenantSettings()
-  await loadBillingData()
-  await loadTelegramChannels()
-  if (activeTab.value === 'Workspaces') {
-    await loadWorkspaces()
-  }
+  await Promise.all([
+    loadTenantSettings(),
+    loadBillingData(),
+    loadTelegramChannels(),
+    ...(activeTab.value === 'Workspaces' ? [loadWorkspaces()] : []),
+  ])
 
   if (checkoutSuccess) {
     toast.success('🎉 Plano ativado com sucesso! Bem-vindo ao Pro.')

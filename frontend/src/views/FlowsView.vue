@@ -1,9 +1,14 @@
 <template>
   <AppLayout>
-    <div class="card flows-container">
-      <div class="flows-header">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <h2 class="flows-title">Fluxos de Automação</h2>
+    <div class="card flows-page">
+
+      <!-- ─── Header ─────────────────────────────────────────── -->
+      <div class="fp-header">
+        <div class="fp-header-info">
+          <h2 class="fp-title">Automações</h2>
+          <p class="fp-subtitle">Gerencie os fluxos de resposta automática do seu bot</p>
+        </div>
+        <div class="fp-header-actions">
           <span
             v-if="planUsage && planUsage.limit !== null"
             class="plan-usage-badge"
@@ -12,219 +17,209 @@
             {{ flows.length }}/{{ planUsage.limit }} fluxos
             <router-link v-if="flows.length >= planUsage.limit" to="/settings" class="plan-usage-upgrade">Upgrade</router-link>
           </span>
+          <div class="fp-search-wrap">
+            <svg class="fp-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="fp-search-input"
+              placeholder="Buscar por nome ou keyword…"
+            />
+            <button v-if="searchQuery" class="fp-search-clear" @click="searchQuery = ''" title="Limpar busca">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <button class="btn btn-primary" @click="openCreateModal" :disabled="loading">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Nova Automação
+          </button>
         </div>
-        <button class="btn btn-primary" @click="openCreateModal" :disabled="loading">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Criar Fluxo
-        </button>
       </div>
 
-      <!-- Card de Configuração de Fallback -->
-      <div class="fallback-config-card">
-        <div class="fallback-header">
-          <div class="fallback-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              <path d="M9 10h.01M15 10h.01M9.5 14.5s1.5 2 3.5 2 3.5-2 3.5-2"/>
-            </svg>
-          </div>
-          <div class="fallback-title-section">
-            <h3 class="fallback-title">Resposta Quando Não Há Match</h3>
-            <p class="fallback-subtitle">Configure o que acontece quando uma mensagem não corresponde a nenhuma keyword</p>
-          </div>
-        </div>
-
-        <div class="fallback-options">
-          <div 
-            v-for="option in fallbackOptions.filter(o => !o.disabled)" 
-            :key="option.value"
-            class="fallback-option"
-            :class="{ 
-              'selected': fallbackConfig.type === option.value
-            }"
-            @click="selectFallback(option.value)"
-          >
-            <div class="option-radio">
-              <div class="radio-outer">
-                <div v-if="fallbackConfig.type === option.value" class="radio-inner"></div>
-              </div>
-            </div>
-            <div class="option-content">
-              <div class="option-header">
-                <span class="option-icon-wrapper" v-html="option.icon"></span>
-                <span class="option-name">{{ option.label }}</span>
-                <span v-if="option.badge" class="option-badge" :class="`badge-${option.badgeType}`">
-                  {{ option.badge }}
-                </span>
-              </div>
-              <p class="option-description">{{ option.description }}</p>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="fallbackConfig.type !== fallbackConfigOriginal.type" class="fallback-actions">
-          <button class="btn btn-secondary btn-sm" @click="cancelFallbackChanges">
+      <!-- ─── Comportamento padrão (fallback strip) ───────────── -->
+      <div class="fp-behavior-strip">
+        <div class="fp-behavior-left">
+          <div class="fp-behavior-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
             </svg>
-            Cancelar
-          </button>
-          <button class="btn btn-primary btn-sm" @click="saveFallbackConfig" :disabled="savingFallback">
-            <svg v-if="!savingFallback" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            {{ savingFallback ? 'Salvando...' : 'Salvar Configuração' }}
-          </button>
+          </div>
+          <span class="fp-behavior-label">Mensagem sem keyword correspondente:</span>
+          <span class="fp-behavior-value">Ignorar mensagem</span>
+        </div>
+        <span class="fp-behavior-soon">IA e Mensagem Fixa em breve</span>
+      </div>
+
+      <!-- ─── Loading skeleton ─────────────────────────────────── -->
+      <div v-if="loading" class="fp-skeleton-list">
+        <div v-for="i in 4" :key="i" class="fp-skeleton-row">
+          <div class="fp-skel fp-skel-dot"></div>
+          <div class="fp-skel fp-skel-main"></div>
+          <div class="fp-skel fp-skel-badge"></div>
+          <div class="fp-skel fp-skel-badge" style="width:64px"></div>
+          <div class="fp-skel fp-skel-kw"></div>
+          <div class="fp-skel fp-skel-actions"></div>
         </div>
       </div>
 
-      <div v-if="loading" class="flows-loading">
-        <div class="loading-spinner"></div>
-        <span>Carregando fluxos...</span>
+      <!-- ─── Empty state ──────────────────────────────────────── -->
+      <div v-else-if="filteredFlows.length === 0" class="fp-empty">
+        <template v-if="searchQuery">
+          <div class="fp-empty-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <h3 class="fp-empty-title">Nenhuma automação encontrada</h3>
+          <p class="fp-empty-desc">Tente outro nome ou keyword</p>
+          <button class="btn btn-secondary btn-sm" @click="searchQuery = ''">Limpar busca</button>
+        </template>
+        <template v-else>
+          <div class="fp-empty-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <h3 class="fp-empty-title">Nenhuma automação criada ainda</h3>
+          <p class="fp-empty-desc">Automatize as respostas do seu bot com mensagens, condições e ações</p>
+          <button class="btn btn-primary" @click="openCreateModal">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Criar primeira automação
+          </button>
+        </template>
       </div>
 
-      <div v-else-if="flows.length === 0" class="flows-empty-state">
-        <div class="empty-state-icon">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
+      <!-- ─── Lista de flows ───────────────────────────────────── -->
+      <div v-else class="fp-list">
+        <div
+          v-for="f in filteredFlows"
+          :key="f.id"
+          class="fp-row"
+          @click="goToFlow(f.id)"
+          :title="`Editar: ${f.name}`"
+        >
+          <!-- Status dot -->
+          <span class="fp-status-dot" :class="f.is_active ? 'dot-on' : 'dot-off'" :title="f.is_active ? 'Ativo' : 'Inativo'"></span>
+
+          <!-- Nome + descrição -->
+          <div class="fp-row-main">
+            <span class="fp-row-name">{{ f.name }}</span>
+            <span v-if="f.description" class="fp-row-desc">{{ f.description }}</span>
+          </div>
+
+          <!-- Meta: canal + gatilho + keywords -->
+          <div class="fp-row-meta">
+            <div class="fp-channel-badge" :class="`system-${getFlowSystem(f)}`">
+              <i :class="getSystemIcon(f)"></i>
+              <span>{{ getSystemLabel(f) }}</span>
+              <span v-if="!isChannelActive(f.channel_id)" class="fp-bot-warn" title="Bot inativo">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </span>
+            </div>
+
+            <span class="trigger-badge">{{ getTriggerLabel(f) }}</span>
+
+            <div class="fp-keywords" v-if="f.keywords && f.keywords.length > 0">
+              <span
+                v-for="(kw, i) in f.keywords.slice(0, 3)"
+                :key="i"
+                class="keyword-badge"
+                :style="{ background: getKeywordColor(kw) }"
+              >{{ kw }}</span>
+              <span v-if="f.keywords.length > 3" class="kw-overflow">+{{ f.keywords.length - 3 }}</span>
+            </div>
+            <span v-else class="no-keywords">sem keywords</span>
+          </div>
+
+          <!-- Ações (não propagam click para a row) -->
+          <div class="fp-row-actions" @click.stop>
+            <label class="toggle-switch" :title="f.is_active ? 'Desativar automação' : 'Ativar automação'">
+              <input type="checkbox" :checked="f.is_active" @click.prevent="openToggleConfirmModal(f)" />
+              <span class="toggle-slider"></span>
+            </label>
+            <button
+              class="btn btn-ghost btn-sm fp-btn-duplicate"
+              @click.stop="handleDuplicate(f)"
+              :disabled="duplicating === f.id"
+              title="Duplicar automação"
+            >
+              <svg v-if="duplicating !== f.id" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="fp-spin">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+            </button>
+            <button class="btn btn-ghost btn-sm fp-btn-edit" @click.stop="goToFlow(f.id)" title="Editar automação">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Editar
+            </button>
+            <button class="btn btn-ghost btn-sm fp-btn-delete" @click.stop="openDeleteModal(f)" title="Excluir automação">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <h3 class="empty-state-title">Nenhum fluxo criado</h3>
-        <p class="empty-state-description">
-          Comece criando seu primeiro fluxo de automação clicando no botão acima
-        </p>
       </div>
 
-      <div v-else class="flows-table-wrapper">
-        <table class="table flows-table">
-          <thead>
-            <tr>
-              <th>Nome do Fluxo</th>
-              <th>Sistema</th>
-              <th>Gatilho</th>
-              <th>Keywords</th>
-              <th>Status</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="f in flows" :key="f.id">
-              <td>
-                <div style="font-weight: 600; color: var(--text-primary);">{{ f.name }}</div>
-                <div v-if="f.description" style="color: var(--muted); font-size: 0.8125rem; margin-top: 2px;">
-                  {{ f.description }}
-                </div>
-              </td>
-              <td>
-                <div class="system-badge" :class="`system-${getFlowSystem(f)}`">
-                  <i :class="getSystemIcon(f)"></i>
-                  <span>{{ getSystemLabel(f) }}</span>
-                </div>
-                <!-- Aviso se o bot está inativo -->
-                <div v-if="!isChannelActive(f.channel_id)" class="bot-inactive-warning">
-                  <i class="fa-solid fa-exclamation-triangle"></i>
-                  <span>Bot inativo</span>
-                </div>
-              </td>
-              <td>
-                <span class="trigger-badge">{{ getTriggerLabel(f) }}</span>
-              </td>
-              <td>
-                <div class="keywords-container">
-                  <span 
-                    v-for="(keyword, index) in f.keywords" 
-                    :key="index"
-                    class="keyword-badge"
-                    :style="{ backgroundColor: getKeywordColor(keyword), color: getKeywordTextColor(keyword) }"
-                  >
-                    {{ keyword }}
-                  </span>
-                  <span v-if="!f.keywords || f.keywords.length === 0" class="no-keywords">
-                    Sem keywords
-                  </span>
-                </div>
-              </td>
-              <td>
-                <span class="badge" :class="f.is_active ? 'badge-success' : 'badge-muted'">
-                  {{ f.is_active ? 'Ativo' : 'Inativo' }}
-                </span>
-              </td>
-              <td>
-                <div class="table-actions">
-                  <!-- Toggle Switch Ativar/Desativar -->
-                  <div class="toggle-switch-wrapper">
-                    <label class="toggle-switch" :title="f.is_active ? 'Desativar fluxo' : 'Ativar fluxo'">
-                      <input 
-                        type="checkbox" 
-                        :checked="f.is_active"
-                        @click.prevent="openToggleConfirmModal(f)"
-                      />
-                      <span class="toggle-slider"></span>
-                    </label>
-                  </div>
-
-                  <!-- Botão Editar -->
-                  <button class="btn btn-ghost btn-sm" @click="goToFlow(f.id)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    Editar
-                  </button>
-                  <button class="btn btn-ghost btn-sm" @click="duplicateFlow(f.id)">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                    </svg>
-                  </button>
-                  <button class="btn btn-ghost btn-sm" @click="openDeleteModal(f)" style="color: #ef4444;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
     </div>
 
-    <!-- Modal de Criação de Fluxo -->
+    <!-- ─── Modal: Criar Automação ────────────────────────────── -->
     <div v-if="showCreateModal" class="modal-overlay" @click="showCreateModal = false">
       <div class="modal-content create-flow-modal" @click.stop>
         <div class="modal-header cfm-header">
           <div class="cfm-title-group">
-            <div class="cfm-icon"><i class="fa-solid fa-bolt"></i></div>
+            <div class="cfm-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
             <div>
-              <h3 class="modal-title">Novo Fluxo</h3>
-              <p class="cfm-subtitle">Configure as informações básicas</p>
+              <h3 class="modal-title">Nova Automação</h3>
+              <p class="cfm-subtitle">Configure o nome e o bot desta automação</p>
             </div>
           </div>
           <button class="modal-close" @click="showCreateModal = false">
-            <i class="fa-solid fa-times"></i>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
           </button>
         </div>
 
         <div class="modal-body">
           <div class="form-group">
-            <label class="form-label">Nome do Fluxo *</label>
+            <label class="form-label">Nome da automação <span class="required-star">*</span></label>
             <input
               v-model="newFlow.name"
               type="text"
               class="form-input"
               placeholder="Ex: Boas-vindas, Suporte, Vendas..."
               @keyup.enter="createNewFlow"
+              autofocus
             />
+            <span class="form-hint">Escolha um nome que descreva o objetivo desta automação</span>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Bot / Canal *</label>
+            <label class="form-label">Bot / Canal <span class="required-star">*</span></label>
             <div class="cs-list">
               <button
                 v-for="channel in availableChannels"
@@ -240,10 +235,16 @@
                   <span class="cs-item-name">{{ channel.name }}</span>
                   <span class="cs-item-meta">{{ getChannelTypeName(channel.type) }}</span>
                 </div>
-                <span :class="['cs-item-badge', channel.is_active ? 'cs-badge--on' : 'cs-badge--off']">{{ channel.is_active ? 'Ativo' : 'Inativo' }}</span>
+                <span :class="['cs-item-badge', channel.is_active ? 'cs-badge--on' : 'cs-badge--off']">
+                  {{ channel.is_active ? 'Ativo' : 'Inativo' }}
+                </span>
                 <div class="cs-item-radio">
-                  <i v-if="newFlow.channel_id === channel.id" class="fa-solid fa-circle-check"></i>
-                  <i v-else class="fa-regular fa-circle"></i>
+                  <svg v-if="newFlow.channel_id === channel.id" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FF66" stroke-width="2.5">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                  <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                  </svg>
                 </div>
               </button>
 
@@ -255,213 +256,168 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Descrição (opcional)</label>
+            <label class="form-label">Descrição <span class="form-optional">(opcional)</span></label>
             <textarea
               v-model="newFlow.description"
               class="form-input"
-              rows="3"
-              placeholder="Descreva o objetivo deste fluxo..."
+              rows="2"
+              placeholder="Descreva brevemente o que esta automação faz..."
             ></textarea>
           </div>
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showCreateModal = false">
-            Cancelar
-          </button>
+          <button class="btn btn-secondary" @click="showCreateModal = false">Cancelar</button>
           <button
             class="btn btn-primary"
             @click="createNewFlow"
             :disabled="!newFlow.name || !newFlow.channel_id || creating"
           >
-            <i class="fa-solid fa-plus"></i>
-            {{ creating ? 'Criando...' : 'Criar Fluxo' }}
+            <svg v-if="!creating" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            {{ creating ? 'Criando…' : 'Criar e Editar' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal de Confirmação para Toggle (Ativar/Desativar) -->
+    <!-- ─── Modal: Confirmar Toggle ──────────────────────────── -->
     <div v-if="showToggleModal" class="modal-overlay" @click="cancelToggle">
       <div class="modal-content confirm-modal" @click.stop>
         <div class="modal-header">
           <div class="confirm-icon" :class="flowToToggle?.is_active ? 'icon-warning' : 'icon-success'">
-            <svg v-if="flowToToggle?.is_active" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="15" y1="9" x2="9" y2="15"/>
-              <line x1="9" y1="9" x2="15" y2="15"/>
+            <svg v-if="flowToToggle?.is_active" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
             </svg>
-            <svg v-else width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
+            <svg v-else width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
             </svg>
           </div>
-          <h3 class="modal-title">
-            {{ flowToToggle?.is_active ? 'Desativar Fluxo?' : 'Ativar Fluxo?' }}
-          </h3>
+          <h3 class="modal-title">{{ flowToToggle?.is_active ? 'Desativar automação?' : 'Ativar automação?' }}</h3>
           <button class="modal-close" @click="cancelToggle">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
 
         <div class="modal-body">
           <div class="flow-info-box">
-            <div class="flow-info-label">Fluxo:</div>
+            <div class="flow-info-label">Automação</div>
             <div class="flow-info-value">{{ flowToToggle?.name }}</div>
           </div>
-
           <p v-if="flowToToggle?.is_active" class="confirm-message">
-            Ao desativar este fluxo, ele <strong>não responderá mais</strong> às mensagens dos usuários até que seja reativado.
+            Ao desativar, esta automação <strong>não responderá mais</strong> às mensagens até ser reativada.
           </p>
           <p v-else class="confirm-message">
-            Ao ativar este fluxo, ele voltará a <strong>responder automaticamente</strong> às mensagens que corresponderem às suas keywords.
+            Ao ativar, esta automação voltará a <strong>responder automaticamente</strong> às mensagens que corresponderem às suas keywords.
           </p>
         </div>
 
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="cancelToggle" :disabled="toggling">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-            Cancelar
-          </button>
-          <button 
+          <button class="btn btn-secondary" @click="cancelToggle" :disabled="toggling">Cancelar</button>
+          <button
             class="btn"
             :class="flowToToggle?.is_active ? 'btn-warning' : 'btn-success'"
             @click="confirmToggle"
             :disabled="toggling"
           >
-            <svg v-if="!toggling" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span v-if="toggling">Processando...</span>
-            <span v-else>{{ flowToToggle?.is_active ? 'Desativar' : 'Ativar' }}</span>
+            {{ toggling ? 'Processando…' : (flowToToggle?.is_active ? 'Desativar' : 'Ativar') }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal de Confirmação 1: Aviso Inicial -->
+    <!-- ─── Modal: Excluir — Etapa 1 ────────────────────────── -->
     <div v-if="showDeleteModal1" class="modal-overlay" @click="cancelDelete">
       <div class="modal-content delete-modal" @click.stop>
         <div class="modal-header delete-header">
           <div class="delete-icon-warning">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
           </div>
-          <h3 class="modal-title">Excluir Fluxo?</h3>
+          <h3 class="modal-title">Excluir automação?</h3>
           <button class="modal-close" @click="cancelDelete">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
-
         <div class="modal-body">
-          <p class="delete-warning-text">
-            Você está prestes a excluir o fluxo:
-          </p>
+          <p class="delete-warning-text">Você está prestes a excluir permanentemente:</p>
           <div class="delete-flow-info">
             <strong>{{ flowToDelete?.name }}</strong>
           </div>
           <div class="delete-warning-box">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            <div>
-              <strong>Atenção:</strong> Esta ação não pode ser desfeita.<br>
-              Todos os steps, conexões e configurações serão perdidos permanentemente.
-            </div>
+            <div><strong>Atenção:</strong> Todos os blocos, conexões e configurações serão perdidos. Esta ação não pode ser desfeita.</div>
           </div>
         </div>
-
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="cancelDelete">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-            Cancelar
-          </button>
+          <button class="btn btn-secondary" @click="cancelDelete">Cancelar</button>
           <button class="btn btn-danger" @click="showDeleteModal2 = true; showDeleteModal1 = false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-            Continuar com a Exclusão
+            Continuar com exclusão
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal de Confirmação 2: Confirmação Crítica -->
+    <!-- ─── Modal: Excluir — Etapa 2 (confirmação crítica) ──── -->
     <div v-if="showDeleteModal2" class="modal-overlay" @click="cancelDelete">
       <div class="modal-content delete-modal critical" @click.stop>
-        <div class="modal-header delete-header critical">
+        <div class="modal-header delete-header">
           <div class="delete-icon-critical">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="15" y1="9" x2="9" y2="15"/>
-              <line x1="9" y1="9" x2="15" y2="15"/>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
             </svg>
           </div>
-          <h3 class="modal-title">Confirmação Crítica</h3>
+          <h3 class="modal-title">Confirmação final</h3>
           <button class="modal-close" @click="cancelDelete">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
         </div>
-
         <div class="modal-body">
           <p class="delete-critical-text">
-            Para confirmar a exclusão permanente, digite o nome do fluxo exatamente como aparece abaixo:
+            Para confirmar, digite o nome exato da automação:
           </p>
           <div class="delete-flow-name-box">
             <code>{{ flowToDelete?.name }}</code>
           </div>
           <div class="form-group">
-            <label class="form-label">Digite o nome do fluxo:</label>
             <input
               v-model="deleteConfirmation"
               type="text"
               class="form-input"
               :class="{ 'input-error': deleteConfirmation && deleteConfirmation !== flowToDelete?.name }"
-              placeholder="Digite o nome exato do fluxo..."
+              placeholder="Digite o nome exato…"
               @keyup.enter="deleteConfirmation === flowToDelete?.name && confirmDelete()"
               autofocus
             />
             <span v-if="deleteConfirmation && deleteConfirmation !== flowToDelete?.name" class="input-error-message">
-              ❌ O nome não corresponde
+              Nome incorreto — tente novamente
             </span>
-            <span v-if="deleteConfirmation === flowToDelete?.name" class="input-success-message">
-              ✅ Nome correto
+            <span v-if="deleteConfirmation === flowToDelete?.name && deleteConfirmation" class="input-success-message">
+              Nome confirmado
             </span>
           </div>
           <div class="delete-final-warning">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            <strong>ÚLTIMA CHANCE:</strong> Esta ação é IRREVERSÍVEL!
+            Esta ação é irreversível e não pode ser desfeita.
           </div>
         </div>
-
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="cancelDelete">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="btn btn-secondary" @click="showDeleteModal2 = false; showDeleteModal1 = true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
             Voltar
@@ -471,25 +427,20 @@
             @click="confirmDelete"
             :disabled="deleteConfirmation !== flowToDelete?.name || deleting"
           >
-            <svg v-if="!deleting" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              <line x1="10" y1="11" x2="10" y2="17"/>
-              <line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
-            {{ deleting ? 'Excluindo...' : 'EXCLUIR PERMANENTEMENTE' }}
+            {{ deleting ? 'Excluindo…' : 'Excluir permanentemente' }}
           </button>
         </div>
       </div>
     </div>
+
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import { listFlows, createFlow, createFlowStep, deleteFlow as deleteFlowAPI, listFlowSteps, updateFlow } from '@/api/flows'
+import { listFlows, createFlow, createFlowStep, deleteFlow as deleteFlowAPI, updateFlow, duplicateFlow } from '@/api/flows'
 import { getMySubscription } from '@/api/subscription'
 import { listChannels } from '@/api/channels'
 import { useToast } from '@/composables/useToast'
@@ -504,94 +455,36 @@ const showCreateModal = ref(false)
 const router = useRouter()
 const toast = useToast()
 
+// Filtro de busca
+const searchQuery = ref('')
+const filteredFlows = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return flows.value
+  return flows.value.filter(f =>
+    f.name.toLowerCase().includes(q) ||
+    (f.description || '').toLowerCase().includes(q) ||
+    (f.keywords || []).some(k => k.toLowerCase().includes(q))
+  )
+})
+
 // Estados para deletar
 const showDeleteModal1 = ref(false)
 const showDeleteModal2 = ref(false)
 const flowToDelete = ref(null)
 const deleteConfirmation = ref('')
 const deleting = ref(false)
+const duplicating = ref(null) // id do flow sendo duplicado
 
 // Estados para toggle de ativação/desativação
 const showToggleModal = ref(false)
 const flowToToggle = ref(null)
 const toggling = ref(false)
 
-// Estados para configuração de fallback
-const fallbackConfig = ref({
-  type: 'ignore' // 'ignore', 'ai', 'fixed_message', 'specific_flow'
-})
-const fallbackConfigOriginal = ref({
-  type: 'ignore'
-})
-const savingFallback = ref(false)
-
-const fallbackOptions = [
-  {
-    value: 'ignore',
-    label: 'Ignorar',
-    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <circle cx="12" cy="12" r="10"/>
-      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    </svg>`,
-    description: 'Não responde quando não houver match com keywords',
-    disabled: false
-  },
-  {
-    value: 'ai',
-    label: 'Responder com IA',
-    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
-      <circle cx="9" cy="16" r="1"/>
-      <circle cx="15" cy="16" r="1"/>
-    </svg>`,
-    description: 'Usa inteligência artificial para gerar respostas contextuais (em breve)',
-    badge: 'Em Breve',
-    badgeType: 'info',
-    disabled: true
-  },
-  {
-    value: 'fixed_message',
-    label: 'Mensagem Fixa',
-    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-      <line x1="9" y1="10" x2="15" y2="10"/>
-      <line x1="9" y1="14" x2="13" y2="14"/>
-    </svg>`,
-    description: 'Envia uma mensagem pré-definida quando não houver match',
-    disabled: true,
-    badge: 'Em Breve',
-    badgeType: 'muted'
-  },
-  {
-    value: 'specific_flow',
-    label: 'Executar Fluxo Específico',
-    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polyline points="23 4 23 10 17 10"/>
-      <polyline points="1 20 1 14 7 14"/>
-      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-    </svg>`,
-    description: 'Direciona para um fluxo padrão quando não houver match',
-    disabled: true,
-    badge: 'Em Breve',
-    badgeType: 'muted'
-  }
-]
-
 const newFlow = ref({
   name: '',
   channel_id: null,
   description: ''
 })
-
-const availableSystems = [
-  {
-    id: 'telegram',
-    label: 'Telegram',
-    icon: 'fa-brands fa-telegram',
-    color: 'linear-gradient(135deg, #229ED9 0%, #1E88E5 100%)',
-    description: 'Crie automações para o Telegram'
-  },
-]
 
 
 const loadChannels = async () => {
@@ -615,45 +508,9 @@ const fetchFlows = async () => {
     if (availableChannels.value.length === 0) {
       await loadChannels()
     }
-    
-    const flowsList = await listFlows()
-    
-    // Para cada fluxo, buscar os steps e extrair as keywords
-    const flowsWithKeywords = await Promise.all(
-      flowsList.map(async (flow) => {
-        try {
-          const steps = await listFlowSteps(flow.id)
-          const triggerStep = steps.find(s => s.type === 'trigger')
-          
-          let keywords = []
-          if (triggerStep && triggerStep.config) {
-            const config = typeof triggerStep.config === 'string' 
-              ? JSON.parse(triggerStep.config) 
-              : triggerStep.config
-            
-            if (config.keywords && Array.isArray(config.keywords)) {
-              keywords = config.keywords.map(kw => 
-                typeof kw === 'string' ? kw : kw.text || ''
-              ).filter(k => k)
-            }
-          }
-          
-          return {
-            ...flow,
-            keywords
-          }
-        } catch (error) {
-          console.error(`Erro ao buscar keywords do fluxo ${flow.id}:`, error)
-          return {
-            ...flow,
-            keywords: []
-          }
-        }
-      })
-    )
-    
-    flows.value = flowsWithKeywords
-    console.log('Fluxos carregados com keywords:', flows.value)
+
+    // Keywords já vêm do backend — sem N+1
+    flows.value = await listFlows()
   } catch (e) {
     console.error(e)
     toast.error('Erro ao carregar fluxos')
@@ -773,14 +630,14 @@ const getSystemIcon = (flow) => {
 }
 
 const getSystemLabel = (flow) => {
-  // Se o flow tem channel_id, buscar o nome do canal específico
+  // Buscar em TODOS os canais (ativos e inativos) para não perder o nome
   if (flow.channel_id) {
-    const channel = availableChannels.value.find(c => c.id === flow.channel_id)
+    const channel = allChannels.value.find(c => c.id === flow.channel_id)
     if (channel) {
       return channel.name
     }
   }
-  
+
   // Fallback para sistema genérico
   const system = getFlowSystem(flow)
   const labels = {
@@ -801,8 +658,23 @@ const goToFlow = (id) => {
   router.push(`/flows/${id}`)
 }
 
-const duplicateFlow = (id) => {
-  toast.info('Funcionalidade em desenvolvimento')
+const handleDuplicate = async (flow) => {
+  duplicating.value = flow.id
+  try {
+    const newFlow = await duplicateFlow(flow.id)
+    await fetchFlows()
+    toast.success(`"${flow.name}" duplicado com sucesso`)
+    router.push(`/flows/${newFlow.id}`)
+  } catch (e) {
+    const detail = e?.response?.data?.detail
+    if (e?.response?.status === 403 && detail?.code === 'PLAN_LIMIT_EXCEEDED') {
+      toast.error(`Limite de fluxos atingido. Faça upgrade para duplicar.`)
+    } else {
+      toast.error('Erro ao duplicar automação')
+    }
+  } finally {
+    duplicating.value = null
+  }
 }
 
 // Função para abrir modal de confirmação do toggle
@@ -879,16 +751,6 @@ const confirmDelete = async () => {
   }
 }
 
-const formatTrigger = (type) => {
-  const types = {
-    manual: 'Manual',
-    message: 'Mensagem',
-    command: 'Comando',
-    event: 'Evento'
-  }
-  return types[type] || type
-}
-
 const getTriggerLabel = (flow) => {
   if (flow.trigger_type === 'message') return 'Qualquer Msg'
   if (flow.trigger_type === 'command') return 'Comando'
@@ -927,59 +789,8 @@ const getKeywordColor = (keyword) => {
   return colors[index]
 }
 
-// Função para determinar cor do texto (branco ou preto) baseado no background
-const getKeywordTextColor = (keyword) => {
-  const bgColor = getKeywordColor(keyword)
-  // Todas as cores escolhidas ficam melhores com texto branco
-  return '#FFFFFF'
-}
-
-// Funções de configuração de fallback
-const selectFallback = (type) => {
-  fallbackConfig.value.type = type
-}
-
-const cancelFallbackChanges = () => {
-  fallbackConfig.value = { ...fallbackConfigOriginal.value }
-}
-
-const saveFallbackConfig = async () => {
-  savingFallback.value = true
-  
-  try {
-    // TODO: Chamar API para salvar configuração no tenant/channel
-    // await saveTenantConfig({ fallback: fallbackConfig.value })
-    
-    // Simulação por enquanto
-    await new Promise(resolve => setTimeout(resolve, 500))
-    
-    fallbackConfigOriginal.value = { ...fallbackConfig.value }
-    toast.success('Configuração salva com sucesso!')
-  } catch (error) {
-    console.error('Erro ao salvar configuração:', error)
-    toast.error('Erro ao salvar configuração')
-  } finally {
-    savingFallback.value = false
-  }
-}
-
-const loadFallbackConfig = async () => {
-  try {
-    // TODO: Carregar configuração do tenant/channel
-    // const config = await getTenantConfig()
-    // fallbackConfig.value = config.fallback || { type: 'ignore' }
-    
-    // Por enquanto, mantém o padrão
-    fallbackConfig.value = { type: 'ignore' }
-    fallbackConfigOriginal.value = { ...fallbackConfig.value }
-  } catch (error) {
-    console.error('Erro ao carregar configuração:', error)
-  }
-}
-
 onMounted(async () => {
   fetchFlows()
-  loadFallbackConfig()
   try {
     const sub = await getMySubscription()
     const maxFlows = sub?.plan?.max_flows ?? null
@@ -992,6 +803,406 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ── Page container ── */
+.flows-page {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Header ── */
+.fp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 24px 16px;
+  flex-wrap: wrap;
+}
+
+.fp-header-info {
+  min-width: 0;
+}
+
+.fp-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 3px;
+  letter-spacing: -0.01em;
+}
+
+.fp-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #64748b);
+  margin: 0;
+}
+
+.fp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* ── Search ── */
+.fp-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.fp-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted, #64748b);
+  pointer-events: none;
+}
+
+.fp-search-input {
+  background: var(--bg-secondary, #1e293b);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 7px 32px 7px 32px;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  width: 220px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.fp-search-input:focus {
+  border-color: rgba(0, 255, 102, 0.4);
+}
+
+.fp-search-input::placeholder {
+  color: var(--text-muted, #64748b);
+}
+
+.fp-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted, #64748b);
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.fp-search-clear:hover {
+  color: var(--text-primary);
+}
+
+/* ── Behavior strip ── */
+.fp-behavior-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 24px;
+  background: rgba(255,255,255,0.025);
+  border-top: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  font-size: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.fp-behavior-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.fp-behavior-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted, #64748b);
+  flex-shrink: 0;
+}
+
+.fp-behavior-label {
+  color: var(--text-muted, #64748b);
+}
+
+.fp-behavior-value {
+  font-weight: 600;
+  color: var(--text-secondary, #94a3b8);
+}
+
+.fp-behavior-soon {
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border, rgba(255,255,255,0.06));
+  border-radius: 99px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+/* ── Skeleton ── */
+.fp-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 0;
+}
+
+.fp-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+}
+
+.fp-skel {
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
+  animation: fp-shimmer 1.5s ease-in-out infinite;
+}
+
+.fp-skel-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.fp-skel-main { height: 14px; flex: 1; max-width: 220px; }
+.fp-skel-badge { height: 22px; width: 80px; border-radius: 99px; }
+.fp-skel-kw   { height: 22px; width: 120px; border-radius: 99px; }
+.fp-skel-actions { height: 28px; width: 100px; border-radius: 8px; margin-left: auto; }
+
+@keyframes fp-shimmer {
+  0%   { opacity: 0.5; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+/* ── Empty state ── */
+.fp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 24px;
+  text-align: center;
+}
+
+.fp-empty-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 4px;
+}
+
+.fp-empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.fp-empty-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted, #64748b);
+  margin: 0 0 8px;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+/* ── List ── */
+.fp-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.fp-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.05));
+  cursor: pointer;
+  transition: background 0.12s;
+  min-width: 0;
+}
+
+.fp-row:last-child {
+  border-bottom: none;
+}
+
+.fp-row:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+/* ── Status dot ── */
+.fp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.fp-status-dot.dot-on  { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
+.fp-status-dot.dot-off { background: #475569; }
+
+/* ── Row main (name + desc) ── */
+.fp-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fp-row-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-row-desc {
+  font-size: 0.775rem;
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Row meta (channel + trigger + keywords) ── */
+.fp-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.fp-channel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  color: var(--text-secondary, #94a3b8);
+  white-space: nowrap;
+}
+
+.fp-channel-badge.system-telegram {
+  background: rgba(34,158,217,0.1);
+  border-color: rgba(34,158,217,0.25);
+  color: #60c4f0;
+}
+
+.fp-bot-warn {
+  display: inline-flex;
+  align-items: center;
+  color: #f87171;
+  margin-left: 2px;
+}
+
+.fp-keywords {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kw-overflow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  padding: 3px 7px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 99px;
+}
+
+/* ── Row actions ── */
+.fp-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.fp-btn-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  color: var(--text-secondary, #94a3b8);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.fp-btn-edit:hover {
+  color: var(--text-primary);
+  border-color: var(--border, rgba(255,255,255,0.08));
+  background: rgba(255,255,255,0.04);
+}
+
+.fp-btn-delete {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+  color: var(--text-muted, #64748b);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.fp-btn-delete:hover {
+  color: #f87171;
+  border-color: rgba(248,113,113,0.25);
+  background: rgba(248,113,113,0.06);
+}
+
+.fp-btn-duplicate {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+  color: var(--text-muted, #64748b);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.fp-btn-duplicate:hover:not(:disabled) {
+  color: #60a5fa;
+  border-color: rgba(96,165,250,0.25);
+  background: rgba(96,165,250,0.06);
+}
+
+.fp-btn-duplicate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@keyframes fp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.fp-spin {
+  animation: fp-spin 0.8s linear infinite;
+}
+
 /* Badge de uso do plano no header */
 .plan-usage-badge {
   display: inline-flex;
@@ -1072,201 +1283,6 @@ onMounted(async () => {
   color: #00FF66;
   white-space: nowrap;
   letter-spacing: 0.2px;
-}
-
-/* Card de Configuração de Fallback */
-.fallback-config-card {
-  background: rgba(0, 255, 102, 0.03);
-  border: 1px solid rgba(0, 255, 102, 0.12);
-  border-radius: 12px;
-  padding: 20px 24px;
-  margin: 16px 20px 0 20px;
-}
-
-.fallback-header {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.fallback-icon {
-  width: 44px;
-  height: 44px;
-  background: rgba(0, 255, 102, 0.12);
-  border: 1px solid rgba(0, 255, 102, 0.25);
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #00FF66;
-  flex-shrink: 0;
-}
-
-.fallback-title-section {
-  flex: 1;
-}
-
-.fallback-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px 0;
-}
-
-.fallback-subtitle {
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin: 0;
-}
-
-.fallback-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.fallback-option {
-  background: #0a0a0a;
-  border: 1.5px solid rgba(255,255,255,0.07);
-  border-radius: 10px;
-  padding: 14px 16px;
-  display: flex;
-  gap: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.fallback-option:hover {
-  border-color: rgba(0, 255, 102, 0.35);
-  background: rgba(0, 255, 102, 0.04);
-}
-
-.fallback-option.selected {
-  border-color: #00FF66;
-  background: rgba(0, 255, 102, 0.06);
-  box-shadow: 0 0 0 3px rgba(0, 255, 102, 0.08);
-}
-
-.option-radio {
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
-.radio-outer {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.fallback-option.selected .radio-outer {
-  border-color: #00FF66;
-}
-
-.radio-inner {
-  width: 10px;
-  height: 10px;
-  background: #00FF66;
-  border-radius: 50%;
-  animation: radioScale 0.2s ease-out;
-}
-
-@keyframes radioScale {
-  0% {
-    transform: scale(0);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.option-content {
-  flex: 1;
-}
-
-.option-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.option-icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: #00FF66;
-}
-
-.fallback-option.selected .option-icon-wrapper {
-  color: #00FF66;
-}
-
-.option-icon-wrapper svg {
-  width: 20px;
-  height: 20px;
-}
-
-.option-name {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 0.9375rem;
-}
-
-.option-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.badge-info {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
-}
-
-.badge-muted {
-  background: rgba(156, 163, 175, 0.1);
-  color: #9ca3af;
-}
-
-.option-description {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.fallback-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(0, 255, 102, 0.1);
-  animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 /* Modais de Delete */

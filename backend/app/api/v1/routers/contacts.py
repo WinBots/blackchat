@@ -1,16 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, cast, text, case
+from sqlalchemy import func, or_, cast, text, case, literal_column
 from sqlalchemy import Float, String
 from typing import List, Optional, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import json
 import logging
+import re
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, date, timedelta
 
 from app.core.auth import get_current_tenant
-from app.db.session import get_db
+from app.db.session import get_db, engine as _db_engine
 from app.db.models.contact import Contact
 from app.db.models.channel import Channel
 from app.db.models.message import Message
@@ -121,6 +122,13 @@ class FieldCondition(BaseModel):
     value: Optional[str] = None
     value_type: Literal["string", "number", "boolean", "date"] = "string"
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def coerce_value_to_str(cls, v):
+        if v is None:
+            return None
+        return str(v)
+
 
 class BulkMessageFilters(BaseModel):
     """
@@ -210,10 +218,77 @@ def _mssql_json_path(key: str) -> str:
     return f'$."{safe}"'
 
 
+def _match_custom_field(cf_raw, field_lower: str, op: str, value: Optional[str], value_type: str) -> bool:
+    """Avalia uma condição de campo personalizado em Python puro.
+    Completamente independente do banco de dados e 100% confiável."""
+    # Parse do JSON
+    cf = cf_raw
+    if isinstance(cf, str):
+        try:
+            cf = json.loads(cf)
+            if isinstance(cf, str):          # dupla serialização
+                cf = json.loads(cf)
+        except Exception:
+            return False
+    if not isinstance(cf, dict):
+        return False
+
+    # Busca case-insensitive da chave
+    raw_val = None
+    found = False
+    for k, v in cf.items():
+        if k.lower() == field_lower:
+            raw_val = v
+            found = True
+            break
+
+    # exists / not_exists
+    if op == "exists":
+        return found
+    if op == "not_exists":
+        return not found
+    if op == "is_empty":
+        return not found or str(raw_val).strip() == ""
+    if op == "is_not_empty":
+        return found and str(raw_val).strip() != ""
+
+    if not found or raw_val is None:
+        return False
+
+    sv = str(raw_val).strip()
+
+    if value_type == "number":
+        try:
+            num_val = float(sv)
+            num_filter = float(value or 0)
+        except (ValueError, TypeError):
+            return False
+        if op == "eq":  return num_val == num_filter
+        if op == "neq": return num_val != num_filter
+        if op == "gt":  return num_val > num_filter
+        if op == "gte": return num_val >= num_filter
+        if op == "lt":  return num_val < num_filter
+        if op == "lte": return num_val <= num_filter
+        return False
+
+    # string — sempre case-insensitive
+    sl = sv.lower()
+    vl = str(value or "").lower()
+    if op == "eq":           return sl == vl
+    if op == "neq":          return sl != vl
+    if op == "contains":     return vl in sl
+    if op == "not_contains": return vl not in sl
+    if op == "starts_with":  return sl.startswith(vl)
+    if op == "ends_with":    return sl.endswith(vl)
+    return False
+
+
 def _build_field_condition_expr(cond: "FieldCondition", tenant: Tenant, db: Session):
     """Converte FieldCondition em expressão SQLAlchemy.
 
-    Suporte exclusivo para SQL Server (JSON_VALUE/JSON_QUERY).
+    Campos do sistema: expressão ORM direta.
+    Campos customizados: filtro Python puro via Contact.id.in_(ids) —
+      evita todos os problemas de JSON path no SQL Server ORM.
     """
     field = (cond.field or "").strip()
     if not field:
@@ -223,7 +298,7 @@ def _build_field_condition_expr(cond: "FieldCondition", tenant: Tenant, db: Sess
     value_type = cond.value_type
     value = cond.value
 
-    # Campo do sistema
+    # ── Campo do sistema ──────────────────────────────────────────────────────
     system_map = {
         "id": Contact.id,
         "first_name": Contact.first_name,
@@ -232,60 +307,32 @@ def _build_field_condition_expr(cond: "FieldCondition", tenant: Tenant, db: Sess
         "default_channel_id": Contact.default_channel_id,
         "created_at": Contact.created_at,
     }
-
     if cond.source == "system":
         col = system_map.get(field)
         if col is None:
             raise HTTPException(status_code=400, detail=f"Campo do sistema não suportado: {field}.")
         return _apply_op_to_expr(col, op=op, value=value, value_type=value_type)
 
-    # Campo personalizado (JSON)
-    path = _mssql_json_path(field)
+    # ── Campo personalizado — filtro Python puro ──────────────────────────────
+    field_lower = field.lower()
+    logger.debug("field_condition custom (python): field=%r op=%s value=%r", field, op, value)
 
-    # Normaliza custom_fields para lidar com registros onde o JSON foi salvo como string (dupla serialização).
-    # Ex: custom_fields = '"{\"cidade\":\"Belo Horizonte\"}"'
-    # SQL Server: quando raiz é string, JSON_VALUE(cf,'$') retorna o conteúdo interno.
-    dialect = None
-    try:
-        dialect = (db.get_bind().dialect.name or "").lower()
-    except Exception:
-        dialect = None
-    if dialect != "mssql":
-        raise HTTPException(status_code=500, detail="Somente SQL Server é suportado para filtros por campos.")
-
-    custom_json = case(
-        # JSON objeto normal
-        (
-            (func.ISJSON(Contact.custom_fields) == 1)
-            & (func.JSON_QUERY(Contact.custom_fields, "$").isnot(None)),
-            Contact.custom_fields,
-        ),
-        # JSON duplamente serializado (raiz string contendo JSON)
-        (
-            (func.ISJSON(Contact.custom_fields) == 1)
-            & (func.JSON_VALUE(Contact.custom_fields, "$").isnot(None))
-            & (func.ISJSON(func.JSON_VALUE(Contact.custom_fields, "$")) == 1),
-            func.JSON_VALUE(Contact.custom_fields, "$"),
-        ),
-        else_=None,
+    # Busca todos os custom_fields do tenant de uma vez (uma única query SQL simples)
+    rows = (
+        db.query(Contact.id, Contact.custom_fields)
+        .filter(Contact.tenant_id == tenant.id)
+        .all()
     )
 
-    extracted_value = func.JSON_VALUE(custom_json, path)
-    extracted_query = func.JSON_QUERY(custom_json, path)
-    extracted = case(
-        (extracted_value.isnot(None), extracted_value),
-        (extracted_query.isnot(None), extracted_query),
-        else_=None,
-    )
+    matching_ids = [
+        cid for cid, cf_raw in rows
+        if _match_custom_field(cf_raw, field_lower, op, value, value_type)
+    ]
 
-    exists_expr = or_(extracted_value.isnot(None), extracted_query.isnot(None))
+    logger.debug("field_condition custom: %d contatos batem '%s' %s %r", len(matching_ids), field, op, value)
 
-    if op == "exists":
-        return exists_expr
-    if op == "not_exists":
-        return ~exists_expr
-
-    return _apply_op_to_expr(extracted, op=op, value=value, value_type=value_type, is_json=True)
+    # Retorna expressão ORM que filtra pelos IDs encontrados
+    return Contact.id.in_(matching_ids if matching_ids else [-1])
 
 
 def _apply_op_to_expr(expr, op: str, value: Optional[str], value_type: str, is_json: bool = False):
@@ -361,13 +408,13 @@ def _apply_op_to_expr(expr, op: str, value: Optional[str], value_type: str, is_j
             return ~or_(left == ("true" if b else "false"), left == ("1" if b else "0"), left == (1 if b else 0))
         raise HTTPException(status_code=400, detail=f"Operador não suportado para boolean: {op}.")
 
-    # string (padrão)
+    # string (padrão) — comparações sempre case-insensitive via ilike
     s = str(value)
     left = cast(expr, String) if is_json else expr
     if op == "eq":
-        return left == s
+        return left.ilike(s)          # case-insensitive exact match
     if op == "neq":
-        return left != s
+        return ~left.ilike(s)         # case-insensitive diferente
     if op == "contains":
         return left.ilike(f"%{s}%")
     if op == "not_contains":
@@ -492,8 +539,9 @@ def _apply_segment_filters(query, body: BulkMessageFilters, tenant: Tenant, db: 
                 conditions.append(_build_field_condition_expr(fc, tenant=tenant, db=db))
             except HTTPException:
                 raise
-            except Exception:
-                raise HTTPException(status_code=400, detail="Condição de campo inválida.")
+            except Exception as exc:
+                logger.error("Erro ao construir field_condition %s: %s", fc, exc, exc_info=True)
+                raise HTTPException(status_code=400, detail=f"Condição de campo inválida: {exc}")
 
     if conditions:
         if match_mode == "any":
@@ -558,6 +606,39 @@ def get_contacts_stats(
     return ContactStatsOut(contacts_total=contacts_total, by_channel=by_channel, by_tag=by_tag)
 
 
+@router.get("/field-keys", response_model=List[str])
+def get_contacts_field_keys(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Retorna os nomes únicos de campos personalizados dos contatos do tenant.
+    Usa parsing Python — funciona independente do banco de dados."""
+    rows = db.query(Contact.custom_fields).filter(
+        Contact.tenant_id == tenant.id,
+        Contact.custom_fields.isnot(None),
+    ).all()
+
+    keys: set[str] = set()
+    for (cf,) in rows:
+        if not cf:
+            continue
+        if isinstance(cf, str):
+            try:
+                cf = json.loads(cf)
+                # doubly serialized: '"{\"k\":\"v\"}"'
+                if isinstance(cf, str):
+                    cf = json.loads(cf)
+            except Exception:
+                continue
+        if isinstance(cf, dict):
+            for k in cf.keys():
+                k = str(k).strip()
+                if k:
+                    keys.add(k)
+
+    return sorted(keys)
+
+
 @router.get("/field-stats", response_model=List[FieldPairCountOut])
 def get_contacts_field_stats(
     limit: int = 60,
@@ -567,11 +648,11 @@ def get_contacts_field_stats(
     """Retorna agregação simples de campos personalizados (key:value) para a sidebar (SQL Server)."""
     limit = max(1, min(int(limit or 60), 200))
 
-    dialect = None
+    # db.get_bind() foi removido no SQLAlchemy 2.x — usa engine importado diretamente
     try:
-        dialect = (db.get_bind().dialect.name or "").lower()
+        dialect = (_db_engine.dialect.name or "").lower()
     except Exception:
-        dialect = None
+        dialect = ""
 
     if not dialect:
         logger.warning("field-stats: não foi possível determinar o dialeto do banco; retornando vazio")
@@ -1154,6 +1235,11 @@ def bulk_start_flow(
     Usa os mesmos filtros da listagem de contatos (search, channel_id, tags).
     Quando dry_run=True, apenas retorna a quantidade de contatos impactados.
     """
+    logger.debug(
+        "bulk_start_flow: dry_run=%s flow_id=%s field_conditions=%s",
+        body.dry_run, body.flow_id,
+        [fc.model_dump() for fc in (body.field_conditions or [])]
+    )
     # Reaproveitar lógica de filtros (avançada)
     query = _apply_segment_filters(db.query(Contact), body=body, tenant=tenant, db=db)
 

@@ -1,9 +1,13 @@
+import json
+import logging
+import uuid
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-import json
-import uuid
-import httpx
+
+logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.db.models.channel import Channel
@@ -21,6 +25,18 @@ class ChannelOut(BaseModel):
     name: str
     config: str | None = None
     is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ChannelListOut(BaseModel):
+    """Schema para listagem — exclui config (contém bot_token sensível) mas expõe bot_username"""
+    id: int
+    tenant_id: int
+    type: str
+    name: str
+    is_active: bool
+    bot_username: str | None = None  # extraído do config server-side, sem expor bot_token
 
     model_config = {"from_attributes": True}
 
@@ -51,7 +67,7 @@ class TelegramWebhookInfoOut(BaseModel):
     telegram: dict | None = None
 
 
-@router.get("/", response_model=list[ChannelOut])
+@router.get("/", response_model=list[ChannelListOut])
 def list_channels(
     include_inactive: bool = True,
     tenant: Tenant = Depends(get_current_tenant),
@@ -70,7 +86,24 @@ def list_channels(
         query = query.filter(Channel.is_active == True)
 
     channels = query.all()
-    return channels
+    result = []
+    for ch in channels:
+        bot_username = None
+        if ch.type == "telegram" and ch.config:
+            try:
+                cfg = json.loads(ch.config)
+                bot_username = cfg.get("bot_username") or None
+            except (json.JSONDecodeError, AttributeError):
+                pass
+        result.append(ChannelListOut(
+            id=ch.id,
+            tenant_id=ch.tenant_id,
+            type=ch.type,
+            name=ch.name,
+            is_active=ch.is_active,
+            bot_username=bot_username,
+        ))
+    return result
 
 
 @router.post("/", response_model=ChannelOut)
@@ -145,11 +178,11 @@ def update_telegram_config(
         webhook_result = webhook_response.json()
         
         if not webhook_result.get("ok"):
-            print(f"⚠️ Aviso: Não foi possível registrar webhook no Telegram: {webhook_result.get('description')}")
+            logger.warning("Não foi possível registrar webhook no Telegram: %s", webhook_result.get("description"))
         else:
-            print(f"✅ Webhook registrado automaticamente no Telegram: {config['webhook_url']}")
+            logger.info("Webhook registrado automaticamente no Telegram: %s", config["webhook_url"])
     except Exception as e:
-        print(f"⚠️ Erro ao registrar webhook no Telegram: {e}")
+        logger.warning("Erro ao registrar webhook no Telegram: %s", e)
         # Não falha a operação, apenas loga o erro
     
     return channel
@@ -173,7 +206,7 @@ def update_channel(
 
     # Log leve para troubleshooting em produção (502 no proxy geralmente esconde o erro real)
     try:
-        print("update_channel", {"channel_id": channel_id, "tenant_id": tenant.id, "payload": data.model_dump(exclude_none=True)})
+        logger.debug("update_channel channel_id=%s tenant_id=%s payload=%s", channel_id, tenant.id, data.model_dump(exclude_none=True))
     except Exception:
         pass
     
@@ -226,11 +259,11 @@ def update_channel(
                     webhook_result = webhook_response.json()
                     
                     if not webhook_result.get("ok"):
-                        print(f"⚠️ Aviso: Não foi possível registrar webhook com novo token: {webhook_result.get('description')}")
+                        logger.warning("Não foi possível registrar webhook com novo token: %s", webhook_result.get("description"))
                     else:
-                        print(f"✅ Webhook re-registrado com novo token: {webhook_url}")
+                        logger.info("Webhook re-registrado com novo token: %s", webhook_url)
                 except Exception as e:
-                    print(f"⚠️ Erro ao re-registrar webhook: {e}")
+                    logger.warning("Erro ao re-registrar webhook: %s", e)
 
     # Ao ligar/desligar o bot, re-registrar (ou remover) o webhook no Telegram.
     # Importante: não falhar a operação caso o Telegram esteja indisponível.
@@ -265,9 +298,9 @@ def update_channel(
                     )
                     webhook_result = webhook_response.json()
                     if not webhook_result.get("ok"):
-                        print(f"⚠️ Aviso: Não foi possível (re)registrar webhook ao ativar: {webhook_result.get('description')}")
+                        logger.warning("Não foi possível (re)registrar webhook ao ativar: %s", webhook_result.get("description"))
                     else:
-                        print(f"✅ Webhook (re)registrado ao ativar: {webhook_url}")
+                        logger.info("Webhook (re)registrado ao ativar: %s", webhook_url)
                 else:
                     telegram_api_url = f"https://api.telegram.org/bot{bot_token}/deleteWebhook"
                     webhook_response = httpx.post(
@@ -277,11 +310,11 @@ def update_channel(
                     )
                     webhook_result = webhook_response.json()
                     if not webhook_result.get("ok"):
-                        print(f"⚠️ Aviso: Não foi possível remover webhook ao desativar: {webhook_result.get('description')}")
+                        logger.warning("Não foi possível remover webhook ao desativar: %s", webhook_result.get("description"))
                     else:
-                        print("✅ Webhook removido ao desativar")
+                        logger.info("Webhook removido ao desativar canal %s", channel_id)
             except Exception as e:
-                print(f"⚠️ Erro ao sincronizar webhook ao alternar status: {e}")
+                logger.warning("Erro ao sincronizar webhook ao alternar status: %s", e)
 
     try:
         db.commit()
@@ -292,7 +325,7 @@ def update_channel(
             db.rollback()
         except Exception:
             pass
-        print("update_channel commit error", {"channel_id": channel_id, "tenant_id": tenant.id, "error": str(exc)})
+        logger.error("update_channel commit error channel_id=%s tenant_id=%s: %s", channel_id, tenant.id, exc)
         raise HTTPException(status_code=500, detail="Erro ao atualizar canal")
 
 

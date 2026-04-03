@@ -16,7 +16,12 @@
       <div class="ct-header">
         <div class="ct-header-left">
           <div class="ct-header-icon">
-            <i class="fa-solid fa-users"></i>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
           </div>
           <div>
             <h1 class="ct-title">Contatos</h1>
@@ -25,22 +30,33 @@
         </div>
         <div class="ct-header-right">
           <div class="ct-search-box">
-            <i class="fa-solid fa-magnifying-glass ct-search-icon"></i>
+            <svg class="ct-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
             <input
               v-model="searchQuery"
               class="ct-search-input"
               placeholder="Buscar por nome, username..."
             />
             <button v-if="searchQuery" class="ct-search-clear" type="button" @click="searchQuery = ''">
-              <i class="fa-solid fa-xmark"></i>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
             </button>
           </div>
           <div class="ct-stat-pill">
-            <i class="fa-solid fa-users" style="font-size:12px;"></i>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+            </svg>
             {{ totalContacts.toLocaleString('pt-BR') }} contatos
           </div>
           <button class="ct-btn-secondary" type="button" @click="exportContacts(false)">
-            <i class="fa-solid fa-file-arrow-down"></i>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
             Exportar
           </button>
         </div>
@@ -137,33 +153,124 @@
                 <i class="fa-solid fa-sliders"></i>
                 Campos
                 <span v-if="selectedFieldFilters.length > 0" class="ct-fgroup-badge">{{ selectedFieldFilters.length }}</span>
+                <svg v-if="loading && selectedFieldFilters.length > 0" class="ct-campos-spinner" viewBox="0 0 24 24" fill="none" width="13" height="13">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-dasharray="28 56" stroke-linecap="round"/>
+                </svg>
               </span>
               <i :class="fieldsCollapsed ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-up'" class="ct-fgroup-arrow"></i>
             </button>
             <div v-show="!fieldsCollapsed" class="ct-fields-body">
-              <div class="ct-field-builder">
-                <select v-model="fieldDraft" class="ct-select" aria-label="Campo">
-                  <option value="">Campo</option>
-                  <option v-for="f in availableFieldKeys" :key="f" :value="f">{{ f }}</option>
-                </select>
+
+              <!-- 1. Picker de campo (inline, sem position:absolute) -->
+              <div class="ct-fdd-wrap" :class="{ 'ct-fdd-wrap--open': fieldDropdownOpen }">
+                <button type="button" class="ct-fdd-trigger" @click.stop="toggleFieldDropdown">
+                  <span :class="fieldDraft ? 'ct-fdd-val' : 'ct-fdd-ph'">{{ selectedFieldLabel || 'Selecionar campo…' }}</span>
+                  <svg class="ct-fdd-arrow" :class="{ 'ct-fdd-arrow--up': fieldDropdownOpen }" width="11" height="11" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+
+                <div v-if="fieldDropdownOpen" class="ct-fdd-list" @click.stop>
+                  <!-- Sistema -->
+                  <div class="ct-fdd-section-label">
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#00ff66" stroke-width="1.5"/></svg>
+                    Sistema
+                  </div>
+                  <button
+                    v-for="f in allFieldOptions.system" :key="f.key"
+                    type="button" class="ct-fdd-item"
+                    :class="{ 'ct-fdd-item--active': fieldDraft === f.key }"
+                    @click="selectField(f.key, f.label)"
+                  >
+                    <span>{{ f.label }}</span>
+                    <span class="ct-fdd-item-key">{{ f.key }}</span>
+                  </button>
+
+                  <!-- Personalizados -->
+                  <div class="ct-fdd-section-label ct-fdd-section-label--custom">
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="#a78bfa" stroke-width="1.5"/></svg>
+                    Personalizados
+                  </div>
+                  <button
+                    v-for="f in allFieldOptions.custom" :key="f"
+                    type="button" class="ct-fdd-item ct-fdd-item--custom"
+                    :class="{ 'ct-fdd-item--active': fieldDraft === f }"
+                    @click="selectField(f, f)"
+                  >{{ f }}</button>
+                  <div v-if="allFieldOptions.custom.length === 0" class="ct-fdd-no-custom">
+                    Nenhum detectado automaticamente.
+                  </div>
+
+                  <!-- Fallback: digitar campo manualmente -->
+                  <div class="ct-fdd-manual-wrap">
+                    <input
+                      v-model="manualFieldDraft"
+                      class="ct-fdd-manual-input"
+                      type="text"
+                      placeholder="Ou digitar nome do campo…"
+                      @keyup.enter="confirmManualField"
+                      @click.stop
+                    />
+                    <button
+                      v-if="manualFieldDraft.trim()"
+                      type="button" class="ct-fdd-manual-confirm"
+                      @click.stop="confirmManualField"
+                      title="Usar este campo"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Operador (mostrado quando um campo está selecionado) -->
+              <div v-if="fieldDraft" class="ct-op-row">
+                <button
+                  v-for="op in OPERATORS" :key="op.op"
+                  type="button"
+                  class="ct-op-pill"
+                  :class="{ 'ct-op-pill--active': opDraft === op.op }"
+                  :title="op.title"
+                  @click="opDraft = op.op"
+                >{{ op.label }}</button>
+              </div>
+
+              <!-- 3. Valor + botão add (oculto para operadores sem valor) -->
+              <div v-if="fieldDraft && currentOpNeedsValue" class="ct-field-value-row">
                 <input
                   v-model="valueDraft"
                   class="ct-input"
                   type="text"
-                  placeholder="Valor"
+                  :placeholder="currentOpPlaceholder"
                   @keyup.enter="addFieldFilter"
                 />
                 <button type="button" class="ct-field-add-btn" @click="addFieldFilter" title="Adicionar filtro">
-                  <i class="fa-solid fa-plus"></i>
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <path d="M6.5 1v11M1 6.5h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  </svg>
                 </button>
               </div>
+              <button v-else-if="fieldDraft && !currentOpNeedsValue" type="button" class="ct-field-add-btn ct-field-add-btn--full" @click="addFieldFilter">
+                + Adicionar filtro
+              </button>
+
+              <!-- 4. Chips de filtros ativos -->
               <div v-if="selectedFieldFilters.length > 0" class="ct-field-chips">
                 <div v-for="(it, idx) in selectedFieldFilters" :key="it.key" class="ct-field-chip">
-                  <span>{{ it.field }}: {{ it.value }}</span>
-                  <button type="button" @click="removeFieldFilter(idx)"><i class="fa-solid fa-xmark"></i></button>
+                  <span class="ct-chip-field">{{ it.label || it.field }}</span>
+                  <span class="ct-chip-op">{{ it.opLabel }}</span>
+                  <span v-if="it.value" class="ct-chip-value">{{ it.value }}</span>
+                  <button type="button" class="ct-chip-rm" @click="removeFieldFilter(idx)" title="Remover">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
-              <div v-else-if="availableFieldKeys.length === 0" class="ct-filter-empty">Sem campos disponíveis.</div>
+              <p v-else-if="!fieldDraft" class="ct-fields-hint">Selecione um campo para filtrar.</p>
+
             </div>
           </div>
 
@@ -238,16 +345,31 @@
             </span>
             <div class="ct-bulk-actions">
               <button class="ct-btn-secondary" type="button" @click="bulkAddTag">
-                <i class="fa-solid fa-tag"></i> Tag
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                  <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+                Tag
               </button>
               <button class="ct-btn-secondary" type="button" @click="bulkExport">
-                <i class="fa-solid fa-file-arrow-down"></i> Exportar
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Exportar
               </button>
               <button class="ct-btn-danger" type="button" @click="bulkDelete">
-                <i class="fa-solid fa-trash"></i> Excluir
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                Excluir
               </button>
               <button class="ct-btn-ghost" type="button" @click="selectedContacts = []" title="Desmarcar tudo">
-                <i class="fa-solid fa-xmark"></i>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -266,7 +388,12 @@
 
           <!-- Empty state -->
           <div v-else-if="filteredContacts.length === 0" class="ct-empty">
-            <i class="fa-solid fa-users-slash ct-empty-icon"></i>
+            <svg class="ct-empty-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <line x1="23" y1="1" x2="17" y2="7"/>
+              <line x1="17" y1="1" x2="23" y2="7"/>
+            </svg>
             <p>Nenhum contato encontrado</p>
             <button v-if="hasActiveFilters || searchQuery" class="ct-btn-secondary" type="button" @click="clearFilters(); searchQuery = ''">
               Limpar filtros
@@ -352,10 +479,14 @@
                 <option :value="100">100 / pág</option>
               </select>
               <button class="ct-pg-btn" type="button" :disabled="loading || currentPage <= 1" @click="goPrevPage">
-                <i class="fa-solid fa-chevron-left"></i>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
               </button>
               <button class="ct-pg-btn" type="button" :disabled="loading || currentPage >= totalPages" @click="goNextPage">
-                <i class="fa-solid fa-chevron-right"></i>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -476,7 +607,12 @@
             <!-- Quick contact sidebar -->
             <div class="cql-panel">
               <div class="cql-header">
-                <i class="fa-solid fa-users" style="font-size:11px;opacity:0.6;"></i>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.55">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
                 Conversas
               </div>
               <div class="cql-search-wrap">
@@ -512,7 +648,7 @@
                     {{ loadingMessages ? 'Carregando...' : 'Mensagens mais antigas' }}
                   </button>
                   <span v-else class="tg-meta">Início do histórico</span>
-                  <span class="tg-meta" v-if="messages.length > 0">{{ messages.length }} mensagem(ns)</span>
+                  <span class="tg-msg-count" v-if="messages.length > 0">{{ messages.length }} msg</span>
                   <button v-if="showJumpToBottom" class="tg-jump-btn" type="button" @click="scrollMessagesToBottom" title="Ir para o final">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                   </button>
@@ -569,7 +705,19 @@
                             <div v-else class="tg-text">🎵 {{ item.msg.extra_data?.title || item.msg.extra_data?.file_name || 'Áudio' }}</div>
                             <div v-if="item.msg.extra_data?.caption" class="tg-caption">{{ item.msg.extra_data.caption }}</div>
                           </div>
-                          <div v-else-if="item.msg.message_type === 'video' || item.msg.message_type === 'video_note'" class="tg-media">
+                          <div v-else-if="item.msg.message_type === 'video_note'" class="tg-video-note">
+                            <div class="tg-vnote-circle">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="white" opacity="0.85">
+                                <polygon points="6 3 20 12 6 21 6 3"/>
+                              </svg>
+                            </div>
+                            <div class="tg-vnote-label">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                              Vídeo nota
+                              <span v-if="item.msg.extra_data?.duration" class="tg-voice-dur">· {{ formatDuration(item.msg.extra_data.duration) }}</span>
+                            </div>
+                          </div>
+                          <div v-else-if="item.msg.message_type === 'video'" class="tg-media">
                             <video v-if="item.msg.content && isProbablyUrl(item.msg.content)" controls :src="item.msg.content" class="tg-video"></video>
                             <div v-else class="tg-text">[Vídeo recebido]</div>
                             <div v-if="item.msg.extra_data?.caption" class="tg-caption">{{ item.msg.extra_data.caption }}</div>
@@ -950,7 +1098,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
-import { listContacts, getContact, getContactMessages, getContactsStats, getContactsFieldStats, addContactTag, removeContactTag, mergeTelegramContactDuplicates, deleteContact as deleteContactAPI, sendMessageToContact, sendMediaToContact } from '@/api/contacts'
+import { listContacts, getContact, getContactMessages, getContactsStats, getContactFieldKeys, addContactTag, removeContactTag, mergeTelegramContactDuplicates, deleteContact as deleteContactAPI, sendMessageToContact, sendMediaToContact } from '@/api/contacts'
 import { listChannels } from '@/api/channels'
 
 const searchQuery = ref('')
@@ -1060,65 +1208,164 @@ const selectedFieldFilters = ref([])
 const availableFieldPairs = ref([])
 
 const fieldDraft = ref('')
+const fieldDraftLabel = ref('')
 const valueDraft = ref('')
+const opDraft = ref('eq')
+const manualFieldDraft = ref('')
+const fieldDropdownOpen = ref(false)
+
+const SYSTEM_FIELDS = [
+  { key: 'first_name', label: 'Nome' },
+  { key: 'last_name', label: 'Sobrenome' },
+  { key: 'username', label: 'Username' },
+]
+
+const OPERATORS = [
+  { op: 'eq',           label: '=',   title: 'Igual a' },
+  { op: 'neq',          label: '≠',   title: 'Diferente de' },
+  { op: 'contains',     label: '⊃',   title: 'Contém' },
+  { op: 'not_contains', label: '⊅',   title: 'Não contém' },
+  { op: 'starts_with',  label: 'A…',  title: 'Começa com' },
+  { op: 'ends_with',    label: '…Z',  title: 'Termina com' },
+  { op: 'gt',           label: '>',   title: 'Maior que' },
+  { op: 'gte',          label: '≥',   title: 'Maior ou igual a' },
+  { op: 'lt',           label: '<',   title: 'Menor que' },
+  { op: 'lte',          label: '≤',   title: 'Menor ou igual a' },
+  { op: 'is_empty',     label: '∅',   title: 'Está vazio', noValue: true },
+  { op: 'is_not_empty', label: '!∅',  title: 'Não está vazio', noValue: true },
+]
+
+const OP_LABEL_MAP = Object.fromEntries(OPERATORS.map(o => [o.op, o.label]))
+
+const currentOpObj = computed(() => OPERATORS.find(o => o.op === opDraft.value) || OPERATORS[0])
+const currentOpNeedsValue = computed(() => !currentOpObj.value.noValue)
+const currentOpPlaceholder = computed(() => {
+  const m = { gt: 'número', gte: 'número', lt: 'número', lte: 'número', starts_with: 'prefixo', ends_with: 'sufixo', contains: 'trecho', not_contains: 'trecho' }
+  return m[opDraft.value] || 'Valor…'
+})
 
 const availableFieldKeys = computed(() => {
   const items = Array.isArray(availableFieldPairs.value) ? availableFieldPairs.value : []
   const totals = new Map()
   for (const it of items) {
     const field = String(it?.field || '').trim()
-    if (!field) continue
-    if (field === 'None' || field === 'null' || field === 'undefined') continue
+    if (!field || field === 'None' || field === 'null' || field === 'undefined') continue
     totals.set(field, (totals.get(field) || 0) + Number(it?.count || 0))
   }
-  const out = Array.from(totals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([field]) => field)
-  return out.slice(0, 120)
+  return Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).map(([f]) => f).slice(0, 120)
 })
+
+// Campos do sistema sempre disponíveis + custom fields do tenant
+const allFieldOptions = computed(() => {
+  const sysKeys = new Set(SYSTEM_FIELDS.map(f => f.key))
+  return {
+    system: SYSTEM_FIELDS,
+    custom: availableFieldKeys.value.filter(k => !sysKeys.has(k)),
+  }
+})
+
+const selectedFieldLabel = computed(() => {
+  if (!fieldDraft.value) return ''
+  const sys = SYSTEM_FIELDS.find(f => f.key === fieldDraft.value)
+  return sys ? sys.label : fieldDraft.value
+})
+
+let _fddCloseHandler = null
+const toggleFieldDropdown = () => {
+  fieldDropdownOpen.value = !fieldDropdownOpen.value
+  if (fieldDropdownOpen.value) {
+    nextTick(() => {
+      if (_fddCloseHandler) document.removeEventListener('click', _fddCloseHandler)
+      _fddCloseHandler = () => {
+        fieldDropdownOpen.value = false
+        document.removeEventListener('click', _fddCloseHandler)
+        _fddCloseHandler = null
+      }
+      document.addEventListener('click', _fddCloseHandler)
+    })
+  } else {
+    if (_fddCloseHandler) { document.removeEventListener('click', _fddCloseHandler); _fddCloseHandler = null }
+  }
+}
+
+const selectField = (key, label) => {
+  fieldDraft.value = key
+  fieldDraftLabel.value = label || key
+  manualFieldDraft.value = ''
+  fieldDropdownOpen.value = false
+  if (_fddCloseHandler) { document.removeEventListener('click', _fddCloseHandler); _fddCloseHandler = null }
+  nextTick(() => { try { document.querySelector('.ct-input')?.focus() } catch {} })
+}
+
+const confirmManualField = () => {
+  const raw = manualFieldDraft.value.trim()
+  if (!raw) return
+  const { key, label } = resolveFieldKey(raw)
+  selectField(key, label)
+}
 
 // Retráteis
 const channelsCollapsed = ref(false)
 const tagsCollapsed = ref(false)
 const fieldsCollapsed = ref(false)
 
+const SYSTEM_FIELD_KEYS = new Set(SYSTEM_FIELDS.map(f => f.key))
+
+/**
+ * Resolve o case exato de um campo digitado pelo usuário comparando (case-insensitive)
+ * contra os campos conhecidos (sistema + custom). Necessário porque JSON_VALUE no SQL Server
+ * é case-sensitive no path ($."IDADE" !== $."idade").
+ */
+const resolveFieldKey = (input) => {
+  const raw = (input || '').trim()
+  if (!raw) return { key: raw, label: raw }
+  const lower = raw.toLowerCase()
+  // 1. Sistema
+  const sys = SYSTEM_FIELDS.find(f => f.key.toLowerCase() === lower)
+  if (sys) return { key: sys.key, label: sys.label }
+  // 2. Custom fields conhecidos (retornados pelo /field-keys)
+  const customKeys = allFieldOptions.value.custom
+  const exact = customKeys.find(k => k.toLowerCase() === lower)
+  if (exact) return { key: exact, label: exact }
+  // 3. Fallback: usa o texto como digitado
+  return { key: raw, label: raw }
+}
+
 const normalizedFieldConditions = computed(() => {
-  const list = Array.isArray(selectedFieldFilters.value) ? selectedFieldFilters.value : []
-  return list
-    .filter(it => it && String(it.field || '').trim() && String(it.value || '').trim())
-    .map(it => ({
-      source: 'custom',
-      field: String(it.field).trim(),
-      op: 'eq',
-      value: String(it.value).trim(),
-      value_type: 'string',
-    }))
+  return (selectedFieldFilters.value || [])
+    .filter(it => it && String(it.field || '').trim())
+    .map(it => {
+      const field = String(it.field).trim()
+      const op = it.op || 'eq'
+      const opObj = OPERATORS.find(o => o.op === op)
+      const value = opObj?.noValue ? '' : String(it.value || '').trim()
+      const numericOps = new Set(['gt', 'gte', 'lt', 'lte'])
+      const isNum = numericOps.has(op) || (value !== '' && !isNaN(Number(value)) && value !== '')
+      return {
+        source: SYSTEM_FIELD_KEYS.has(field) ? 'system' : 'custom',
+        field,
+        op,
+        value,
+        value_type: isNum ? 'number' : 'string',
+      }
+    })
 })
 
 const addFieldFilter = () => {
-  const field = String(fieldDraft.value || '').trim()
-  const value = String(valueDraft.value || '').trim()
-  if (!field) {
-    toast.error('Selecione um campo')
-    return
-  }
-  if (!value) {
-    toast.error('Informe um valor')
-    return
-  }
-  const key = JSON.stringify([field, value])
-  if (selectedFieldFilters.value.some(it => it?.key === key)) {
-    toast.error('Esse filtro já foi adicionado')
-    return
-  }
-  selectedFieldFilters.value.push({ field, value, key })
+  const rawField = String(fieldDraft.value || '').trim()
+  if (!rawField) { toast.error('Selecione um campo'); return }
+  // Resolve case exato contra campos conhecidos (JSON_VALUE é case-sensitive)
+  const { key: field, label: resolvedLabel } = resolveFieldKey(rawField)
+  const op = opDraft.value
+  const opObj = OPERATORS.find(o => o.op === op)
+  const value = opObj?.noValue ? '' : String(valueDraft.value || '').trim()
+  if (!opObj?.noValue && !value) { toast.error('Informe um valor'); return }
+  const filterKey = JSON.stringify([field, op, value])
+  if (selectedFieldFilters.value.some(it => it?.key === filterKey)) { toast.error('Filtro já adicionado'); return }
+  const label = fieldDraftLabel.value || resolvedLabel
+  const opLabel = OP_LABEL_MAP[op] || op
+  selectedFieldFilters.value.push({ field, value, op, key: filterKey, label, opLabel })
   valueDraft.value = ''
-  nextTick(() => {
-    try {
-      const el = document.querySelector('.field-builder input.field-builder-value')
-      el?.focus?.()
-    } catch {}
-  })
 }
 
 const removeFieldFilter = (idx) => {
@@ -1555,32 +1802,14 @@ const loadContactStats = async () => {
 
 const loadFieldStats = async () => {
   try {
-    const data = await getContactsFieldStats({ limit: 60 })
-    const list = Array.isArray(data) ? data : []
-    availableFieldPairs.value = list
-      .filter(it => {
-        if (!it) return false
-        const field = it.field
-        const value = it.value
-        if (field === null || field === undefined) return false
-        if (value === null || value === undefined) return false
-        if (String(field).trim() === '') return false
-        if (String(value).trim() === '') return false
-        return true
-      })
-      .map(it => {
-        const field = String(it.field)
-        const value = String(it.value)
-        const count = Number(it.count || 0)
-        return {
-          field,
-          value,
-          count,
-          key: JSON.stringify([field, value]),
-        }
-      })
+    // Usa o endpoint simples que faz parsing Python — funciona em qualquer BD
+    const keys = await getContactFieldKeys()
+    const sysKeys = new Set(SYSTEM_FIELDS.map(f => f.key))
+    availableFieldPairs.value = (Array.isArray(keys) ? keys : [])
+      .filter(k => k && String(k).trim() && !sysKeys.has(String(k).trim()))
+      .map(k => ({ field: String(k).trim(), value: '_', count: 1, key: String(k).trim() }))
   } catch (error) {
-    console.error('❌ Erro ao carregar stats de campos:', error)
+    console.error('❌ Erro ao carregar campos:', error)
     availableFieldPairs.value = []
   }
 }
@@ -2355,7 +2584,7 @@ const deleteSegment = (idx) => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  background: var(--bg-secondary);
+  background: var(--bg-card, var(--bg-secondary));
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 12px;
@@ -2370,23 +2599,21 @@ const deleteSegment = (idx) => {
 .ct-header-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: rgba(0, 255, 102, 0.1);
-  border: 1px solid rgba(0, 255, 102, 0.2);
+  border-radius: 12px;
+  background: rgba(0, 255, 102, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary);
-  font-size: 16px;
+  color: #00ff66;
   flex-shrink: 0;
 }
 
 .ct-title {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0;
-  letter-spacing: -0.2px;
+  margin: 0 0 2px;
+  letter-spacing: -0.3px;
 }
 
 .ct-subtitle {
@@ -2695,6 +2922,14 @@ const deleteSegment = (idx) => {
   color: #c084fc;
   filter: drop-shadow(0 0 4px rgba(192, 132, 252, 0.4));
 }
+.ct-campos-spinner {
+  color: #a78bfa;
+  animation: ct-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ct-spin {
+  to { transform: rotate(360deg); }
+}
 
 .ct-fgroup-badge {
   display: inline-flex;
@@ -2781,51 +3016,207 @@ const deleteSegment = (idx) => {
 /* Fields builder */
 .ct-fields-body {
   padding: 6px 10px 10px;
-}
-
-.ct-field-builder {
   display: flex;
-  gap: 5px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.ct-select,
-.ct-input {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 6px 8px;
-  color: var(--text-primary);
-  font-size: 0.78rem;
-  outline: none;
-  transition: border-color 0.2s;
-  min-width: 0;
+/* ── Custom field dropdown ── */
+.ct-fdd-wrap {
+  position: relative;
+  width: 100%;
 }
 
-.ct-select { flex: 1.2; }
-.ct-input { flex: 1.5; }
-
-.ct-select:focus,
-.ct-input:focus { border-color: var(--primary); }
-
-.ct-field-add-btn {
-  width: 30px;
-  height: 30px;
-  flex-shrink: 0;
-  background: rgba(0, 255, 102, 0.1);
-  border: 1px solid rgba(0, 255, 102, 0.2);
-  border-radius: 7px;
-  color: var(--primary);
+.ct-fdd-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--bg-tertiary, #1a2030);
+  border: 1px solid var(--border, #2a3448);
+  border-radius: 8px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 0.8rem;
   cursor: pointer;
-  font-size: 13px;
+  transition: border-color 0.18s, background 0.18s;
+  text-align: left;
+}
+.ct-fdd-trigger:hover { border-color: rgba(0,255,102,0.35); background: var(--bg-hover, #1e2840); }
+.ct-fdd-wrap--open .ct-fdd-trigger { border-color: #00ff66; }
+
+.ct-fdd-ph { color: var(--text-muted, #64748b); }
+.ct-fdd-val { color: var(--text-primary, #e2e8f0); font-weight: 500; }
+
+.ct-fdd-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted, #64748b);
+  transition: transform 0.18s;
+}
+.ct-fdd-arrow--up { transform: rotate(180deg); }
+
+.ct-fdd-list {
+  /* Inline — sem position:absolute para não ser clipado pela overflow-y da sidebar */
+  width: 100%;
+  background: #131a26;
+  border: 1px solid rgba(0,255,102,0.2);
+  border-radius: 8px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.ct-fdd-section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px 4px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #00ff66;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.ct-fdd-section-label:first-child { border-top: none; }
+.ct-fdd-section-label--custom { color: #a78bfa; }
+
+.ct-fdd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font-size: 0.8rem;
+  color: #c8d6e8;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.ct-fdd-item:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+.ct-fdd-item--active { color: #00ff66 !important; background: rgba(0,255,102,0.08) !important; }
+.ct-fdd-item--custom { color: #c4b5fd; }
+.ct-fdd-item--custom:hover { color: #ddd6fe; }
+.ct-fdd-item--custom.ct-fdd-item--active { color: #a78bfa !important; }
+
+.ct-fdd-item-key {
+  font-size: 0.65rem;
+  color: rgba(148,163,184,0.5);
+  font-family: monospace;
+}
+
+.ct-fdd-no-custom {
+  padding: 4px 10px 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+  font-style: italic;
+}
+
+/* Manual field input */
+.ct-fdd-manual-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  margin-top: 2px;
+}
+.ct-fdd-manual-input {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+  color: #c8d6e8;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ct-fdd-manual-input::placeholder { color: rgba(148,163,184,0.45); }
+.ct-fdd-manual-input:focus { border-color: rgba(167,139,250,0.5); }
+.ct-fdd-manual-confirm {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  background: rgba(167,139,250,0.15);
+  border: 1px solid rgba(167,139,250,0.3);
+  border-radius: 5px;
+  color: #a78bfa;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: background 0.15s;
+}
+.ct-fdd-manual-confirm:hover { background: rgba(167,139,250,0.28); }
+
+/* Operator pills */
+.ct-op-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0;
+}
+.ct-op-pill {
+  padding: 3px 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.13s;
+  white-space: nowrap;
+}
+.ct-op-pill:hover { background: rgba(255,255,255,0.09); color: #e2e8f0; border-color: rgba(255,255,255,0.15); }
+.ct-op-pill--active { background: rgba(0,255,102,0.12) !important; border-color: rgba(0,255,102,0.35) !important; color: #00ff66 !important; font-weight: 600; }
+
+/* Value row */
+.ct-field-value-row {
+  display: flex;
+  gap: 5px;
 }
 
-.ct-field-add-btn:hover { background: rgba(0, 255, 102, 0.2); }
+.ct-input {
+  flex: 1;
+  background: var(--bg-tertiary, #1a2030);
+  border: 1px solid var(--border, #2a3448);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text-primary, #e2e8f0);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.18s;
+  min-width: 0;
+}
+.ct-input::placeholder { color: var(--text-muted, #64748b); }
+.ct-input:focus { border-color: #00ff66; }
 
+.ct-field-add-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: rgba(0, 255, 102, 0.1);
+  border: 1px solid rgba(0, 255, 102, 0.2);
+  border-radius: 8px;
+  color: #00ff66;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s;
+}
+.ct-field-add-btn:hover { background: rgba(0, 255, 102, 0.22); border-color: rgba(0,255,102,0.5); }
+.ct-field-add-btn--full {
+  width: 100%;
+  height: 30px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Chips */
 .ct-field-chips {
   display: flex;
   flex-direction: column;
@@ -2835,26 +3226,45 @@ const deleteSegment = (idx) => {
 .ct-field-chip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
   padding: 5px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  font-size: 0.76rem;
-  color: var(--text-secondary);
+  background: rgba(0,255,102,0.05);
+  border: 1px solid rgba(0,255,102,0.15);
+  border-radius: 8px;
+  font-size: 0.75rem;
 }
+.ct-chip-field { color: #00ff66; font-weight: 600; }
+.ct-chip-op {
+  padding: 1px 5px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.ct-chip-value { color: #c8d6e8; flex: 1; }
 
-.ct-field-chip button {
+.ct-chip-rm {
+  flex-shrink: 0;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 0;
+  color: var(--text-muted, #64748b);
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 0.15s;
 }
+.ct-chip-rm:hover { color: #f87171; }
 
-.ct-field-chip button:hover { color: #f87171; }
+.ct-fields-hint {
+  font-size: 0.73rem;
+  color: var(--text-muted, #64748b);
+  margin: 0;
+  padding: 2px 0;
+}
 
 /* ── Segments section ── */
 .ct-segments-group {
@@ -3082,7 +3492,6 @@ const deleteSegment = (idx) => {
 }
 
 .ct-empty-icon {
-  font-size: 48px;
   opacity: 0.15;
 }
 
@@ -3264,8 +3673,8 @@ const deleteSegment = (idx) => {
 }
 
 .ct-pg-meta {
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: 0.78rem;
+  color: var(--muted, var(--text-muted));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3307,7 +3716,7 @@ const deleteSegment = (idx) => {
   transition: all 0.15s;
 }
 
-.ct-pg-btn:hover:not(:disabled) { border-color: rgba(255,255,255,0.2); color: var(--text-primary); }
+.ct-pg-btn:hover:not(:disabled) { border-color: var(--accent, #00ff66); color: var(--accent, #00ff66); }
 .ct-pg-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ══════════════════════════════════════
@@ -3594,11 +4003,10 @@ const deleteSegment = (idx) => {
 
 .cql-header {
   padding: 10px 12px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #4ade80;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted, rgba(148,163,184,0.7));
+  letter-spacing: 0.2px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
@@ -3653,7 +4061,7 @@ const deleteSegment = (idx) => {
 .cql-item:hover { background: rgba(255,255,255,0.04); }
 .cql-active {
   background: rgba(0,255,102,0.08) !important;
-  border-left: 2px solid #00FF66;
+  box-shadow: inset 3px 0 0 #00ff66;
 }
 
 .cql-avatar {
@@ -3736,7 +4144,19 @@ const deleteSegment = (idx) => {
 
 .tg-meta {
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--muted, var(--text-muted));
+}
+
+.tg-msg-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  font-size: 0.68rem;
+  color: var(--muted, rgba(148,163,184,0.6));
+  font-weight: 500;
 }
 
 .tg-load-more {
@@ -3838,10 +4258,10 @@ const deleteSegment = (idx) => {
 
 /* Mensagem recebida (contato → bot) */
 .tg-in .tg-bubble {
-  background: #1e2430;
+  background: #181e28;
   color: #e2e8f0;
   border-radius: 4px 14px 14px 14px;
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
 /* Mensagem enviada (bot → contato) */
@@ -3954,6 +4374,32 @@ const deleteSegment = (idx) => {
 .tg-audio { max-width: 100%; }
 .tg-video { max-width: 100%; max-height: 140px; border-radius: 7px; }
 .tg-media { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Video Note (circular Telegram) ── */
+.tg-video-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+.tg-vnote-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.35);
+  border: 2px solid rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tg-vnote-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: rgba(148,163,184,0.7);
+}
 
 /* Composer */
 .tg-composer {

@@ -68,7 +68,13 @@
             <i class="fas fa-sign-in-alt"></i> Já tenho conta
           </router-link>
         </div>
-        <p class="lp-hero-footnote">14 dias gratuitos · Sem cartão de crédito · Cancele quando quiser</p>
+        <p class="lp-hero-footnote">
+          <span><i class="fas fa-check-circle" style="color:#00FF66;margin-right:5px;font-size:0.72rem;"></i>14 dias gratuitos</span>
+          <span style="color:#1e293b;">·</span>
+          <span><i class="fas fa-check-circle" style="color:#00FF66;margin-right:5px;font-size:0.72rem;"></i>Sem cartão de crédito</span>
+          <span style="color:#1e293b;">·</span>
+          <span><i class="fas fa-check-circle" style="color:#00FF66;margin-right:5px;font-size:0.72rem;"></i>Cancele quando quiser</span>
+        </p>
       </div>
     </section>
 
@@ -526,14 +532,37 @@
     <!-- Footer -->
     <footer class="lp-footer">
       <div class="lp-container">
-        <div class="lp-footer-content">
-          <div class="lp-logo">
-            <div class="lp-logo-mark">
-              <img src="@/imagens/icon-wht.png" alt="Blackchat Pro" />
+        <div class="lp-footer-top">
+          <div class="lp-footer-brand">
+            <div class="lp-logo">
+              <div class="lp-logo-mark">
+                <img src="@/imagens/icon-wht.png" alt="Blackchat Pro" />
+              </div>
+              <span class="lp-logo-text">Blackchat Pro</span>
             </div>
-            <span class="lp-logo-text">Blackchat Pro</span>
+            <p class="lp-footer-tagline">Automação profissional no Telegram.<br>Mais conversas. Mais conversões.</p>
           </div>
+          <div class="lp-footer-nav-cols">
+            <div class="lp-footer-nav-col">
+              <span class="lp-footer-nav-title">Produto</span>
+              <a href="#recursos" @click.prevent="scrollTo('recursos')" class="lp-footer-link">Recursos</a>
+              <a href="#planos" @click.prevent="scrollTo('planos')" class="lp-footer-link">Planos</a>
+              <a href="#faq" @click.prevent="scrollTo('faq')" class="lp-footer-link">FAQ</a>
+            </div>
+            <div class="lp-footer-nav-col">
+              <span class="lp-footer-nav-title">Acesso</span>
+              <router-link to="/login" class="lp-footer-link">Entrar</router-link>
+              <router-link to="/register" class="lp-footer-link">Criar conta</router-link>
+              <a href="#contato" @click.prevent="scrollTo('contato')" class="lp-footer-link">Contato</a>
+            </div>
+          </div>
+        </div>
+        <div class="lp-footer-bottom">
           <p class="lp-footer-copy">© 2026 Blackchat Pro. Todos os direitos reservados.</p>
+          <div class="lp-footer-badges">
+            <span class="lp-footer-badge"><i class="fas fa-lock"></i> Dados seguros</span>
+            <span class="lp-footer-badge"><i class="fas fa-bolt"></i> 99.9% uptime</span>
+          </div>
         </div>
       </div>
     </footer>
@@ -807,6 +836,8 @@ onMounted(() => {
 </script>
 
 <style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
 /* ============================================================
    LANDING PAGE
    ============================================================ */
@@ -816,7 +847,7 @@ onMounted(() => {
   background: #060606;
   position: relative;
   overflow-x: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
   color: #e5e7eb;
 }
 
@@ -917,13 +948,23 @@ onMounted(() => {
   font-size: 0.875rem;
   color: #64748b;
   text-decoration: none;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
   font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
 }
 
 .lp-nav-links a:hover {
-  background: rgba(148, 163, 184, 0.08);
-  color: #e5e7eb;
+  background: rgba(0, 255, 102, 0.06);
+  color: #4ade80;
+  border-color: rgba(0, 255, 102, 0.15);
+}
+
+.lp-nav-links a.router-link-active,
+.lp-nav-links a.active {
+  color: #00FF66;
+  background: rgba(0, 255, 102, 0.06);
+  border-color: rgba(0, 255, 102, 0.18);
 }
 
 .lp-nav-actions {
@@ -1032,7 +1073,7 @@ onMounted(() => {
 
 .lp-hero-subtitle {
   font-size: 1.15rem;
-  color: #64748b;
+  color: #94a3b8;
   max-width: 560px;
   margin: 0 auto 40px;
   line-height: 1.75;
@@ -1048,10 +1089,15 @@ onMounted(() => {
 }
 
 .lp-hero-footnote {
-  font-size: 0.78rem;
-  color: #334155;
+  font-size: 0.8rem;
+  color: #475569;
   letter-spacing: 0.3px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
 /* === Section Styles === */
@@ -1113,9 +1159,9 @@ onMounted(() => {
 }
 
 .lp-feature-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(148, 163, 184, 0.18);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  transform: translateY(-5px);
+  border-color: rgba(0, 255, 102, 0.2);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 255, 102, 0.06);
 }
 
 .lp-feature-card--soon {
@@ -1159,6 +1205,11 @@ onMounted(() => {
   color: #f1f5f9;
   margin-bottom: 10px;
   letter-spacing: -0.2px;
+  transition: color 0.18s;
+}
+
+.lp-feature-card:hover h3 {
+  color: #e2faea;
 }
 
 .lp-feature-card p {
@@ -1574,12 +1625,13 @@ onMounted(() => {
 
 .lp-pricing-card--popular {
   border-color: rgba(0, 255, 102, 0.3);
-  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.12), 0 30px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.12), 0 30px 60px rgba(0, 0, 0, 0.3), 0 0 60px rgba(0, 255, 102, 0.04);
+  background: linear-gradient(160deg, rgba(0, 255, 102, 0.04) 0%, rgba(18, 18, 18, 0.95) 40%);
 }
 
 .lp-pricing-card--popular:hover {
   border-color: rgba(0, 255, 102, 0.5);
-  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.25), 0 30px 80px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.25), 0 30px 80px rgba(0, 0, 0, 0.4), 0 0 80px rgba(0, 255, 102, 0.06);
 }
 
 .lp-popular-badge {
@@ -2338,8 +2390,11 @@ onMounted(() => {
   transition: background 0.15s;
 }
 
-.lp-faq-question:hover { background: rgba(148, 163, 184, 0.04); }
-.lp-faq-question i { color: #64748b; flex-shrink: 0; font-size: 0.8rem; }
+.lp-faq-question:hover { background: rgba(0, 255, 102, 0.03); color: #e2faea; }
+.lp-faq-question i { color: #64748b; flex-shrink: 0; font-size: 0.8rem; transition: color 0.18s; }
+
+.lp-faq-item--open .lp-faq-question { color: #f1f5f9; }
+.lp-faq-item--open .lp-faq-question i { color: #00FF66; }
 
 .lp-faq-answer {
   padding: 0 22px 18px;
@@ -2376,10 +2431,10 @@ onMounted(() => {
 
 .lp-cta-glow {
   position: absolute;
-  width: 500px; height: 500px;
+  width: 700px; height: 500px;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  background: radial-gradient(circle, rgba(0, 255, 102, 0.05) 0%, transparent 70%);
+  background: radial-gradient(ellipse, rgba(0, 255, 102, 0.07) 0%, transparent 65%);
   pointer-events: none;
 }
 
@@ -2410,22 +2465,93 @@ onMounted(() => {
 
 /* === Footer === */
 .lp-footer {
-  padding: 32px 0;
+  padding: 64px 0 32px;
   border-top: 1px solid rgba(148, 163, 184, 0.07);
-  background: rgba(6, 6, 6, 0.8);
+  background: rgba(6, 6, 6, 0.95);
 }
 
-.lp-footer-content {
+.lp-footer-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 40px;
+  margin-bottom: 48px;
+}
+
+.lp-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 260px;
+}
+
+.lp-footer-tagline {
+  font-size: 0.85rem;
+  color: #475569;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.lp-footer-nav-cols {
+  display: flex;
+  gap: 56px;
+}
+
+.lp-footer-nav-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lp-footer-nav-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.lp-footer-link {
+  font-size: 0.875rem;
+  color: #475569;
+  text-decoration: none;
+  transition: color 0.15s;
+  cursor: pointer;
+}
+
+.lp-footer-link:hover { color: #4ade80; }
+
+.lp-footer-bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  padding-top: 28px;
+  border-top: 1px solid rgba(148, 163, 184, 0.06);
+  flex-wrap: wrap;
 }
 
 .lp-footer-copy {
   font-size: 0.78rem;
   color: #334155;
 }
+
+.lp-footer-badges {
+  display: flex;
+  gap: 16px;
+}
+
+.lp-footer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.lp-footer-badge i { color: #00FF66; font-size: 0.65rem; }
 
 /* === Mobile hamburger === */
 .lp-menu-toggle {
@@ -2444,9 +2570,9 @@ onMounted(() => {
 }
 
 .lp-menu-toggle:hover {
-  background: rgba(148, 163, 184, 0.08);
-  color: #e5e7eb;
-  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(0, 255, 102, 0.07);
+  color: #4ade80;
+  border-color: rgba(0, 255, 102, 0.25);
 }
 
 .lp-mobile-menu {
@@ -2510,6 +2636,8 @@ onMounted(() => {
     width: 100%;
   }
   .lp-enterprise-cta { width: 100%; max-width: 320px; }
+
+  .lp-footer-top { flex-direction: column; gap: 32px; }
 }
 
 @media (max-width: 640px) {
@@ -2521,7 +2649,9 @@ onMounted(() => {
   .lp-hero-cta { flex-direction: column; align-items: center; }
   .lp-cta-card { padding: 50px 24px; }
   .lp-cta-card h2 { font-size: 1.8rem; }
-  .lp-footer-content { flex-direction: column; text-align: center; }
+  .lp-footer-top { flex-direction: column; gap: 32px; }
+  .lp-footer-nav-cols { gap: 32px; }
+  .lp-footer-bottom { flex-direction: column; text-align: center; gap: 12px; }
 
   .lp-testimonial-stats {
     flex-direction: column;

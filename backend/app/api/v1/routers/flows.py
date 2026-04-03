@@ -1,9 +1,13 @@
 import json
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.db.models.flow import Flow
@@ -12,8 +16,14 @@ from app.db.models import User, Tenant
 from app.core.auth import get_current_user, get_current_tenant
 from app.services.billing_service import LimitExceededError, check_flow_limit, get_plan_for_tenant
 from app.cache.service import invalidate_flow, invalidate_tenant_flows
+from app.cache.redis_client import cache_get, cache_set, cache_delete
+from app.cache.keys import CacheKeys
 
 router = APIRouter()
+
+# Inclui sub-router de geração por IA
+from app.api.v1.routers.ai_flows import router as ai_router
+router.include_router(ai_router)
 
 
 class FlowBase(BaseModel):
@@ -53,6 +63,21 @@ class FlowOut(FlowBase):
     model_config = {"from_attributes": True}
 
 
+class FlowListOut(BaseModel):
+    """Schema para listagem — exclui config (nodePositions/conexões) e inclui keywords."""
+    id: int
+    tenant_id: int
+    channel_id: int | None = None
+    name: str
+    description: str | None = None
+    trigger_type: str
+    trigger_config: dict | None = None
+    is_active: bool
+    keywords: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
 class FlowStepBase(BaseModel):
     type: str
     order_index: int
@@ -80,28 +105,127 @@ class DemoRunResult(BaseModel):
     executed_steps: list[dict]
 
 
-@router.get("/", response_model=List[FlowOut])
+def _check_keyword_conflict(
+    db: Session,
+    current_flow: Flow,
+    trigger_config: dict,
+) -> None:
+    """Levanta HTTP 409 se alguma keyword já está em uso por outro fluxo ativo do mesmo canal."""
+    if trigger_config.get("triggerType") != "message":
+        return
+
+    new_keywords = {
+        (kw if isinstance(kw, str) else kw.get("text", "")).lower().strip()
+        for kw in trigger_config.get("keywords", [])
+    }
+    new_keywords.discard("")
+    if not new_keywords:
+        return
+
+    # Outros fluxos ativos do mesmo canal (ou sem canal, para compatibilidade)
+    q = db.query(Flow).filter(
+        Flow.tenant_id == current_flow.tenant_id,
+        Flow.is_active == True,
+        Flow.id != current_flow.id,
+    )
+    if current_flow.channel_id:
+        q = q.filter(
+            or_(Flow.channel_id == current_flow.channel_id, Flow.channel_id == None)
+        )
+
+    for other_flow in q.all():
+        trigger = db.query(FlowStep).filter(
+            FlowStep.flow_id == other_flow.id,
+            FlowStep.type == "trigger",
+        ).first()
+        if not trigger or not trigger.config:
+            continue
+        try:
+            other_cfg = json.loads(trigger.config)
+        except Exception:
+            continue
+        if other_cfg.get("triggerType") != "message":
+            continue
+
+        other_keywords = {
+            (kw if isinstance(kw, str) else kw.get("text", "")).lower().strip()
+            for kw in other_cfg.get("keywords", [])
+        }
+        other_keywords.discard("")
+
+        conflicts = new_keywords & other_keywords
+        if conflicts:
+            conflict_list = ", ".join(f'"{k}"' for k in sorted(conflicts))
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Keyword(s) {conflict_list} já usada(s) no fluxo \"{other_flow.name}\". "
+                    "Cada keyword deve ser única por canal."
+                ),
+            )
+
+
+@router.get("/", response_model=List[FlowListOut])
 def list_flows(
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
-    """Lista flows do tenant autenticado"""
+    """Lista flows do tenant autenticado.
+
+    Otimizações:
+    - Cache Redis 60s (invalidado ao criar/editar/deletar)
+    - Exclui o campo config (nodePositions/conexões — grande e desnecessário na lista)
+    - Extrai keywords dos trigger steps server-side (evita N requisições do frontend)
+    - 2 queries totais (flows + trigger steps) independente do nº de flows
+    """
+    cache_key = CacheKeys.tenant_flows(tenant.id)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return [FlowListOut(**f) for f in cached]
+
     flows = db.query(Flow).filter(Flow.tenant_id == tenant.id).order_by(Flow.id.desc()).all()
-    result: list[FlowOut] = []
+    if not flows:
+        return []
+
+    # Buscar steps trigger de todos os flows em UMA query (evita N+1 no frontend)
+    flow_ids = [f.id for f in flows]
+    trigger_steps = (
+        db.query(FlowStep)
+        .filter(FlowStep.flow_id.in_(flow_ids), FlowStep.type == "trigger")
+        .all()
+    )
+    trigger_by_flow: dict[int, FlowStep] = {s.flow_id: s for s in trigger_steps}
+
+    result: list[FlowListOut] = []
     for f in flows:
-        result.append(
-            FlowOut(
-                id=f.id,
-                tenant_id=f.tenant_id,
-                channel_id=f.channel_id,
-                name=f.name,
-                description=f.description,
-                trigger_type=f.trigger_type,
-                trigger_config=json.loads(f.trigger_config) if f.trigger_config else None,
-                config=json.loads(f.config) if f.config else None,
-                is_active=f.is_active,
-            )
-        )
+        trigger = trigger_by_flow.get(f.id)
+        keywords: list[str] = []
+        if trigger and trigger.config:
+            try:
+                cfg = json.loads(trigger.config)
+                raw_kws = cfg.get("keywords", [])
+                keywords = [
+                    (kw if isinstance(kw, str) else kw.get("text", ""))
+                    for kw in raw_kws
+                    if kw
+                ]
+                keywords = [k for k in keywords if k]
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        result.append(FlowListOut(
+            id=f.id,
+            tenant_id=f.tenant_id,
+            channel_id=f.channel_id,
+            name=f.name,
+            description=f.description,
+            trigger_type=f.trigger_type,
+            trigger_config=json.loads(f.trigger_config) if f.trigger_config else None,
+            is_active=f.is_active,
+            keywords=keywords,
+        ))
+
+    cache_set(cache_key, [r.model_dump() for r in result], CacheKeys.TENANT_FLOWS_TTL)
     return result
 
 
@@ -133,6 +257,7 @@ def create_flow(
     db.add(flow)
     db.commit()
     db.refresh(flow)
+    cache_delete(CacheKeys.tenant_flows(tenant.id))
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
@@ -181,7 +306,7 @@ def update_flow(
     if not flow:
         raise HTTPException(status_code=404, detail="Flow não encontrado")
 
-    print("update_flow payload", data.model_dump())
+    logger.debug("update_flow payload: %s", data.model_dump(exclude_none=True))
 
     if data.channel_id is not None:
         flow.channel_id = data.channel_id
@@ -218,10 +343,11 @@ def update_flow(
     try:
         db.commit()
     except Exception as exc:
-        print("update_flow commit error", exc)
+        logger.error("update_flow commit error: %s", exc)
         raise
     db.refresh(flow)
     invalidate_flow(flow_id)
+    cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
@@ -235,21 +361,100 @@ def update_flow(
     )
 
 
+@router.post("/{flow_id}/duplicate", response_model=FlowOut)
+def duplicate_flow(
+    flow_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Duplica um flow e todos os seus steps."""
+    original = _get_flow_for_tenant(flow_id, tenant.id, db)
+
+    # Verificar limite do plano antes de duplicar
+    try:
+        plan = get_plan_for_tenant(db, tenant.id)
+        if plan:
+            current_count = db.query(Flow).filter(Flow.tenant_id == tenant.id).count()
+            check_flow_limit(db, tenant.id, plan, current_count)
+    except LimitExceededError as exc:
+        raise HTTPException(status_code=403, detail=exc.to_dict())
+
+    new_flow = Flow(
+        tenant_id=tenant.id,
+        channel_id=original.channel_id,
+        name=f"{original.name} (cópia)",
+        description=original.description,
+        trigger_type=original.trigger_type,
+        trigger_config=original.trigger_config,
+        config=None,  # posições não copiadas intencionalmente
+        is_active=False,  # começa inativo para revisão
+    )
+    db.add(new_flow)
+    db.flush()  # gera o id sem commitar
+
+    original_steps = (
+        db.query(FlowStep)
+        .filter(FlowStep.flow_id == flow_id)
+        .order_by(FlowStep.order_index.asc())
+        .all()
+    )
+    for step in original_steps:
+        db.add(FlowStep(
+            flow_id=new_flow.id,
+            type=step.type,
+            order_index=step.order_index,
+            config=step.config,
+        ))
+
+    db.commit()
+    db.refresh(new_flow)
+    cache_delete(CacheKeys.tenant_flows(tenant.id))
+
+    return FlowOut(
+        id=new_flow.id,
+        tenant_id=new_flow.tenant_id,
+        channel_id=new_flow.channel_id,
+        name=new_flow.name,
+        description=new_flow.description,
+        trigger_type=new_flow.trigger_type,
+        trigger_config=json.loads(new_flow.trigger_config) if new_flow.trigger_config else None,
+        config=None,
+        is_active=new_flow.is_active,
+    )
+
+
 @router.delete("/{flow_id}")
-def delete_flow(flow_id: int, db: Session = Depends(get_db)):
-    flow = db.query(Flow).filter(Flow.id == flow_id).first()
+def delete_flow(
+    flow_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    flow = db.query(Flow).filter(Flow.id == flow_id, Flow.tenant_id == tenant.id).first()
     if not flow:
         raise HTTPException(status_code=404, detail="Flow não encontrado")
-    tenant_id = flow.tenant_id
     db.query(FlowStep).filter(FlowStep.flow_id == flow_id).delete()
     db.delete(flow)
     db.commit()
     invalidate_flow(flow_id)
+    cache_delete(CacheKeys.tenant_flows(tenant.id))
     return {"ok": True}
 
 
+def _get_flow_for_tenant(flow_id: int, tenant_id: int, db: Session) -> Flow:
+    """Busca o flow verificando posse do tenant. Levanta 404 se não encontrado."""
+    flow = db.query(Flow).filter(Flow.id == flow_id, Flow.tenant_id == tenant_id).first()
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow não encontrado")
+    return flow
+
+
 @router.get("/{flow_id}/steps", response_model=List[FlowStepOut])
-def list_steps(flow_id: int, db: Session = Depends(get_db)):
+def list_steps(
+    flow_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    _get_flow_for_tenant(flow_id, tenant.id, db)
     steps = (
         db.query(FlowStep)
         .filter(FlowStep.flow_id == flow_id)
@@ -269,10 +474,15 @@ def list_steps(flow_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{flow_id}/steps", response_model=FlowStepOut)
-def create_step(flow_id: int, data: FlowStepCreate, db: Session = Depends(get_db)):
-    flow = db.query(Flow).filter(Flow.id == flow_id).first()
-    if not flow:
-        raise HTTPException(status_code=404, detail="Flow não encontrado")
+def create_step(
+    flow_id: int,
+    data: FlowStepCreate,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    flow = _get_flow_for_tenant(flow_id, tenant.id, db)
+    if data.type == "trigger" and data.config:
+        _check_keyword_conflict(db, flow, data.config)
     step = FlowStep(
         flow_id=flow_id,
         type=data.type,
@@ -283,6 +493,7 @@ def create_step(flow_id: int, data: FlowStepCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(step)
     invalidate_flow(flow_id)
+    cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -293,7 +504,14 @@ def create_step(flow_id: int, data: FlowStepCreate, db: Session = Depends(get_db
 
 
 @router.put("/{flow_id}/steps/{step_id}", response_model=FlowStepOut)
-def update_step(flow_id: int, step_id: int, data: FlowStepUpdate, db: Session = Depends(get_db)):
+def update_step(
+    flow_id: int,
+    step_id: int,
+    data: FlowStepUpdate,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    flow = _get_flow_for_tenant(flow_id, tenant.id, db)
     step = (
         db.query(FlowStep)
         .filter(FlowStep.flow_id == flow_id, FlowStep.id == step_id)
@@ -307,11 +525,16 @@ def update_step(flow_id: int, step_id: int, data: FlowStepUpdate, db: Session = 
     if data.order_index is not None:
         step.order_index = data.order_index
     if data.config is not None:
+        effective_type = data.type or step.type
+        if effective_type == "trigger":
+            _check_keyword_conflict(db, flow, data.config)
         step.config = json.dumps(data.config)
 
     db.commit()
     db.refresh(step)
     invalidate_flow(flow_id)
+    if data.type == "trigger" or (data.config is not None and step.type == "trigger"):
+        cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -322,7 +545,13 @@ def update_step(flow_id: int, step_id: int, data: FlowStepUpdate, db: Session = 
 
 
 @router.delete("/{flow_id}/steps/{step_id}")
-def delete_step(flow_id: int, step_id: int, db: Session = Depends(get_db)):
+def delete_step(
+    flow_id: int,
+    step_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    flow = _get_flow_for_tenant(flow_id, tenant.id, db)
     step = (
         db.query(FlowStep)
         .filter(FlowStep.flow_id == flow_id, FlowStep.id == step_id)
@@ -330,15 +559,22 @@ def delete_step(flow_id: int, step_id: int, db: Session = Depends(get_db)):
     )
     if not step:
         raise HTTPException(status_code=404, detail="Step não encontrado")
+    is_trigger = step.type == "trigger"
     db.delete(step)
     db.commit()
     invalidate_flow(flow_id)
+    if is_trigger:
+        cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
     return {"ok": True}
 
 
 @router.post("/{flow_id}/run-demo", response_model=DemoRunResult)
-def run_demo(flow_id: int, db: Session = Depends(get_db)):
-    flow = db.query(Flow).filter(Flow.id == flow_id).first()
+def run_demo(
+    flow_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    flow = db.query(Flow).filter(Flow.id == flow_id, Flow.tenant_id == tenant.id).first()
     if not flow:
         raise HTTPException(status_code=404, detail="Flow não encontrado")
 

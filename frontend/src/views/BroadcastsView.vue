@@ -291,11 +291,11 @@
               </svg>
             </div>
             <div style="flex: 1;">
-              <h3 class="bc-panel-title">Prévia do Público</h3>
+              <h3 class="bc-panel-title">Audiência</h3>
               <p class="bc-panel-sub">
                 <span v-if="previewState.loading">Calculando...</span>
                 <span v-else>
-                  <strong style="color: #00FF66;">{{ previewState.total ?? 0 }}</strong> contato(s) encontrado(s)
+                  <strong class="bc-count-accent">{{ previewState.total ?? 0 }}</strong> contato(s) no segmento
                 </span>
               </p>
             </div>
@@ -385,8 +385,8 @@
               </svg>
             </div>
             <div>
-              <h3 class="bc-panel-title">Fluxo para Disparo</h3>
-              <p class="bc-panel-sub">Selecione qual fluxo será iniciado</p>
+              <h3 class="bc-panel-title">Automação</h3>
+              <p class="bc-panel-sub">Selecione a automação a disparar</p>
             </div>
           </header>
 
@@ -471,6 +471,7 @@
           </div>
 
           <footer class="bc-panel-footer bc-panel-footer--dispatch">
+            <!-- Resumo do disparo -->
             <div class="dispatch-summary" v-if="selectedFlow && selectedFlow.is_active">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
@@ -481,16 +482,52 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
-              <span>Selecione um fluxo ativo para disparar</span>
+              <span>Selecione uma automação ativa para disparar</span>
             </div>
-            <button type="button" class="btn-dispatch" :disabled="sendDisabled" @click="confirmAndSend">
-              <svg v-if="!sending" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-              {{ sending ? 'Disparando...' : 'Disparar em Massa' }}
+
+            <!-- Confirmação inline -->
+            <div v-if="confirmMode && !sending" class="dispatch-confirm-bar">
+              <div class="dispatch-confirm-msg">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Disparar para <strong>{{ previewState.total }}</strong> contato(s)?
+              </div>
+              <div class="dispatch-confirm-actions">
+                <button type="button" class="btn-cancel-confirm" @click="cancelConfirm">Cancelar</button>
+                <button type="button" class="btn-confirm-send" @click="executeSend">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                  Confirmar
+                </button>
+              </div>
+            </div>
+
+            <!-- Botão principal -->
+            <button
+              v-else
+              type="button"
+              class="btn-dispatch"
+              :class="{ 'btn-dispatch--sending': sending }"
+              :disabled="sendDisabled"
+              @click="confirmAndSend"
+            >
+              <!-- Enviando: shimmer + spinner -->
+              <template v-if="sending">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                </svg>
+                Enviando…
+              </template>
+              <!-- Normal: ícone de envio -->
+              <template v-else>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Disparar em Massa
+              </template>
             </button>
           </footer>
         </section>
@@ -514,6 +551,7 @@ const segment = reactive({ match_mode: 'all', rules: [] })
 const newRuleKind = ref('tags')
 const previewState = reactive({ loading: false, total: null, sample: [] })
 const sending = ref(false)
+const confirmMode = ref(false)
 const channels = ref([])
 const tags = ref([])
 const flows = ref([])
@@ -647,7 +685,7 @@ const buildPayload = () => {
         op: rule.op || 'eq',
         value_type: rule.value_type || 'string'
       }
-      if (needsValue(rule)) fc.value = rule.value ?? ''
+      if (needsValue(rule)) fc.value = String(rule.value ?? '')
       field_conditions.push(fc)
     }
     if ((rule.kind === 'created_after' || rule.kind === 'created_before') && rule.date) payload[rule.kind] = rule.date
@@ -677,18 +715,23 @@ const debouncedPreview = () => {
   previewTimeout = setTimeout(runPreview, 500)
 }
 
-const confirmAndSend = async () => {
-  if (!selectedFlow.value) { toast.warning('Selecione um fluxo para disparar.'); return }
+const confirmAndSend = () => {
+  if (!selectedFlow.value) { toast.warning('Selecione uma automação para disparar.'); return }
   if (!previewState.total || previewState.total === 0) { toast.warning('Nenhum contato no segmento atual.'); return }
-  if (tooLarge.value) { toast.warning('Segmento acima do limite (2000). Refine o público.'); return }
-  const ok = window.confirm(
-    `Confirmar início do fluxo "${selectedFlow.value.name}" para aproximadamente ${previewState.total} contato(s)?`
-  )
-  if (!ok) return
+  if (tooLarge.value) { toast.warning('Segmento acima do limite (2.000). Refine o público.'); return }
+  confirmMode.value = true
+}
+
+const cancelConfirm = () => {
+  confirmMode.value = false
+}
+
+const executeSend = async () => {
+  confirmMode.value = false
   sending.value = true
   try {
     const res = await sendBulkMessage(buildPayload())
-    toast.success(`Disparo concluído. Iniciados: ${res.started}/${res.total}. Falhas: ${res.failed}.`)
+    toast.success(`Disparo concluído! Iniciados: ${res.started}/${res.total}. Falhas: ${res.failed}.`)
   } catch (err) {
     console.error(err)
     const detail = err?.response?.data?.detail || 'Erro ao enviar mensagens em massa.'
@@ -792,6 +835,16 @@ onMounted(async () => {
   background: rgba(234, 179, 8, 0.05);
   border-color: rgba(234, 179, 8, 0.22);
 }
+
+.bc-reach-pill--zero {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.bc-reach-pill--zero .bc-reach-dot {
+  background: rgba(255, 255, 255, 0.06);
+  color: #A7ADB3;
+}
+.bc-reach-pill--zero .bc-reach-value { color: #A7ADB3; }
 
 .bc-reach-dot {
   width: 26px;
@@ -1365,6 +1418,7 @@ onMounted(async () => {
 .dispatch-summary--muted svg { color: #A7ADB3; }
 
 .btn-dispatch {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1382,9 +1436,98 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-dispatch:hover:not(:disabled) { background: #00cc52; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0, 255, 102, 0.22); }
+.btn-dispatch:hover:not(:disabled) { background: #00cc52; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0, 255, 102, 0.25); }
 .btn-dispatch:active:not(:disabled) { transform: translateY(0); }
 .btn-dispatch:disabled { background: rgba(255, 255, 255, 0.07); color: #A7ADB3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Estado "Enviando" — pulse glow + shimmer */
+.btn-dispatch--sending {
+  background: #009940 !important;
+  cursor: wait !important;
+  transform: none !important;
+  overflow: hidden;
+  animation: dispatch-pulse 1.6s ease-in-out infinite;
+}
+.btn-dispatch--sending::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+  animation: dispatch-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes dispatch-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 255, 102, 0.4); }
+  50%       { box-shadow: 0 0 0 7px rgba(0, 255, 102, 0); }
+}
+@keyframes dispatch-shimmer {
+  0%   { left: -100%; }
+  100% { left: 200%; }
+}
+
+/* ─── Confirmação inline ──────────────────────────────────── */
+.dispatch-confirm-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 10px;
+  animation: confirm-slide-in 0.18s ease;
+}
+@keyframes confirm-slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dispatch-confirm-msg {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  color: #d97706;
+  line-height: 1.4;
+}
+.dispatch-confirm-msg strong { color: #f59e0b; }
+.dispatch-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+.btn-cancel-confirm {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: #A7ADB3;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cancel-confirm:hover { background: rgba(255,255,255,0.05); color: #EDEDED; }
+.btn-confirm-send {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #f59e0b;
+  color: #000;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-confirm-send:hover { background: #d97706; }
+
+/* Destaque do contador de contatos no header da coluna */
+.bc-count-accent { color: #00FF66; }
 
 /* ─── Spin Animation ──────────────────────────────────────── */
 .spin-icon { animation: spin 0.8s linear infinite; }

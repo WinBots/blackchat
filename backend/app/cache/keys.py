@@ -48,3 +48,17 @@ class CacheKeys:
         return f"channel:{channel_id}"
 
     CHANNEL_TTL = 300
+
+    # ── Lista de fluxos do tenant (invalidada ao criar/editar/deletar flow) ──
+    @staticmethod
+    def tenant_flows(tenant_id: int) -> str:
+        return f"tenant:{tenant_id}:flows"
+
+    TENANT_FLOWS_TTL = 60  # 1 minuto
+
+    # ── Auth: validação tenant+membership por usuário (TTL curto para refletir revogações) ──
+    @staticmethod
+    def tenant_auth(user_id: int, tenant_id: int) -> str:
+        return f"auth:{user_id}:{tenant_id}"
+
+    TENANT_AUTH_TTL = 60  # 1 minuto

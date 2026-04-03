@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     STRIPE_PRO_PRICE_ID_MONTHLY: str = ""
     STRIPE_PRO_PRICE_ID_YEARLY: str = ""
 
+    # IA (Claude / Anthropic)
+    ANTHROPIC_API_KEY: str = ""
+
     # Redis (cache — opcional; se indisponível o sistema continua via banco)
     REDIS_URL: str = "redis://localhost:6379/0"
 

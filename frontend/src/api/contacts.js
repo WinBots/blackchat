@@ -35,6 +35,16 @@ export async function getContactsFieldStats(params = {}) {
 }
 
 /**
+ * Retorna os nomes únicos de campos personalizados dos contatos do tenant.
+ * Endpoint simples baseado em parsing Python — independente do banco.
+ * @returns {Promise<string[]>}
+ */
+export async function getContactFieldKeys() {
+  const res = await api.get('/api/v1/contacts/field-keys')
+  return res.data
+}
+
+/**
  * Adiciona tag a um contato
  * @param {number} contactId
  * @param {string} tagName

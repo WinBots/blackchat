@@ -103,6 +103,12 @@
             <i class="fa-solid fa-bolt"></i>
             Adicionar Gatilho
           </button>
+          <button class="btn btn-secondary" @click="fitToScreen" title="Encaixar tudo na tela">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            Encaixar
+          </button>
           <button class="btn btn-secondary" @click="resetZoom">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"/>
@@ -120,6 +126,12 @@
             </svg>
             <svg v-else class="loading-spinner" width="16" height="16" viewBox="0 0 24 24"></svg>
             {{ isSaving ? 'Salvando...' : 'Salvar' }}
+          </button>
+          <button class="btn btn-ai-generate" @click="showAIModal = true" title="Gerar fluxo com IA">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            Gerar com IA
           </button>
           <button class="btn-add-block-circle" @click="showAddBlockModal = true; blockSearch = ''; activeBlockCat = 'inicio'">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1566,9 +1578,10 @@
             v-for="step in steps"
             :key="step.id"
             class="flow-node"
-            :class="{ 
+            :class="{
               'is-dragging': draggingNodeId === step.id,
               'is-selected': selectedStep && selectedStep.id === step.id,
+              'is-deleting': deletingStepId === step.id,
               [`node-type-${step.type}`]: true
             }"
             :style="getNodeStyle(step.id)"
@@ -1591,6 +1604,12 @@
 
             <!-- Conteúdo do Node -->
             <div class="flow-node-content">
+              <!-- Overlay de loading ao excluir -->
+              <div v-if="deletingStepId === step.id" class="flow-node-deleting-overlay">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                <span>Excluindo…</span>
+              </div>
+
               <div class="flow-node-header-simple">
                 <span class="flow-node-icon">
                   <i :class="getStepIcon(step.type)"></i>
@@ -1864,6 +1883,7 @@
                     :key="block.type"
                     class="abm-card"
                     :class="{ 'abm-card-accent': block.accent }"
+                    :disabled="isAddingBlock"
                     @click="handleAddBlock(block.type)"
                   >
                     <div class="abm-card-icon" :style="{ background: block.color }">
@@ -1901,6 +1921,7 @@
                     :key="block.type"
                     class="abm-card"
                     :class="{ 'abm-card-accent': block.accent }"
+                    :disabled="isAddingBlock"
                     @click="handleAddBlock(block.type)"
                   >
                     <div class="abm-card-icon" :style="{ background: block.color }">
@@ -1962,9 +1983,10 @@
             </div>
           </div>
 
-          <div class="trigger-card" @click="addTrigger('telegram_message')">
+          <div class="trigger-card" :class="{ 'trigger-card--loading': isAddingBlock }" @click="addTrigger('telegram_message')">
             <div class="trigger-card-icon">
-              <i class="fa-brands fa-telegram"></i>
+              <i v-if="isAddingBlock" class="fa-solid fa-spinner fa-spin"></i>
+              <i v-else class="fa-brands fa-telegram"></i>
             </div>
             <div class="trigger-card-body">
               <p class="trigger-card-kicker">Mensagem do Telegram</p>
@@ -1972,11 +1994,12 @@
               <p class="trigger-card-desc">Selecione uma forma de acionar a automação.</p>
             </div>
             <div class="trigger-card-chevron">
-              <i class="fa-solid fa-chevron-right"></i>
+              <i v-if="isAddingBlock" class="fa-solid fa-spinner fa-spin"></i>
+              <i v-else class="fa-solid fa-chevron-right"></i>
             </div>
           </div>
 
-          <div class="trigger-card" @click="addTrigger('telegram_referral')">
+          <div class="trigger-card" :class="{ 'trigger-card--loading': isAddingBlock }" @click="addTrigger('telegram_referral')">
             <div class="trigger-card-icon">
               <i class="fa-brands fa-telegram"></i>
             </div>
@@ -2008,6 +2031,189 @@
     @cancel="confirmDialog.handleCancel"
     @update:is-visible="(val) => confirmDialog.isVisible.value = val"
   />
+
+  <!-- ──────────────────────────────────────────────────────── -->
+  <!-- Modal: Gerar Fluxo com IA                               -->
+  <!-- ──────────────────────────────────────────────────────── -->
+  <div v-if="showAIModal" class="ai-modal-overlay" @click.self="closeAIModal">
+    <div class="ai-modal">
+
+      <!-- Header -->
+      <div class="ai-modal-header">
+        <div class="ai-modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+          Gerar Fluxo com IA
+        </div>
+        <button class="ai-modal-close" @click="closeAIModal" :disabled="aiGenerating">×</button>
+      </div>
+
+      <!-- Conteúdo: estado inicial (prompt) -->
+      <div v-if="!aiResult" class="ai-modal-body">
+        <p class="ai-modal-hint">
+          Descreva o fluxo que deseja criar. Quanto mais detalhes, melhor o resultado.
+        </p>
+
+        <!-- Exemplos rápidos -->
+        <div class="ai-examples">
+          <span class="ai-examples-label">Exemplos:</span>
+          <button
+            v-for="ex in aiExamples"
+            :key="ex"
+            class="ai-example-chip"
+            @click="aiPrompt = ex"
+            :disabled="aiGenerating"
+          >{{ ex }}</button>
+        </div>
+
+        <textarea
+          v-model="aiPrompt"
+          class="ai-prompt-input"
+          placeholder="Ex: Crie um fluxo de boas-vindas que pergunta o nome do usuário, depois oferece 3 planos com botões (Básico, Pro, Enterprise), salva a escolha e adiciona a tag correspondente..."
+          rows="5"
+          :disabled="aiGenerating"
+          @keydown.ctrl.enter="runAIGenerate"
+        />
+        <div class="ai-prompt-meta">
+          <span class="ai-char-count" :class="{ 'ai-char-count--warn': aiPrompt.length > 1800 }">
+            {{ aiPrompt.length }}/2000
+          </span>
+          <span class="ai-hint-shortcut">Ctrl+Enter para gerar</span>
+        </div>
+
+        <div v-if="aiError" class="ai-error">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          {{ aiError }}
+        </div>
+      </div>
+
+      <!-- Conteúdo: preview do resultado gerado -->
+      <div v-else class="ai-modal-body">
+        <div class="ai-result-header">
+          <div class="ai-result-badge">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Fluxo gerado com sucesso
+          </div>
+        </div>
+
+        <div class="ai-result-info">
+          <div class="ai-result-row">
+            <span class="ai-result-label">Nome</span>
+            <span class="ai-result-value">{{ aiResult.name }}</span>
+          </div>
+          <div class="ai-result-row" v-if="aiResult.description">
+            <span class="ai-result-label">Descrição</span>
+            <span class="ai-result-value">{{ aiResult.description }}</span>
+          </div>
+          <div class="ai-result-row">
+            <span class="ai-result-label">Steps</span>
+            <span class="ai-result-value">{{ aiResult.steps.length }} blocos</span>
+          </div>
+          <div class="ai-result-row">
+            <span class="ai-result-label">Conexões</span>
+            <span class="ai-result-value">{{ aiResult.connections.length }}</span>
+          </div>
+        </div>
+
+        <!-- Lista de steps gerados -->
+        <div class="ai-steps-preview">
+          <div
+            v-for="step in aiResult.steps"
+            :key="step.id"
+            class="ai-step-item"
+          >
+            <span class="ai-step-badge" :class="`ai-step-badge--${step.type}`">
+              {{ step.type }}
+            </span>
+            <span class="ai-step-label">
+              {{ step.config?.text || step.config?.triggerType || step.type }}
+            </span>
+          </div>
+        </div>
+
+        <p class="ai-apply-warning">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          Isso substituirá todos os blocos atuais do fluxo.
+        </p>
+      </div>
+
+      <!-- Loading -->
+      <!-- Loading progressivo -->
+      <div v-if="aiGenerating" class="ai-loading">
+        <div class="ai-loading-inner">
+          <!-- Ícone pulsante -->
+          <div class="ai-loading-icon">
+            <svg class="ai-spinner" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+          </div>
+
+          <!-- Etapas progressivas -->
+          <div class="ai-loading-steps">
+            <div
+              v-for="(step, idx) in aiLoadingSteps"
+              :key="idx"
+              class="ai-loading-step"
+              :class="{
+                'ai-loading-step--done':    idx < aiLoadingCurrentStep,
+                'ai-loading-step--active':  idx === aiLoadingCurrentStep,
+                'ai-loading-step--pending': idx > aiLoadingCurrentStep,
+              }"
+            >
+              <span class="ai-loading-step-icon">
+                <svg v-if="idx < aiLoadingCurrentStep" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <svg v-else-if="idx === aiLoadingCurrentStep" class="ai-step-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                </svg>
+                <span v-else class="ai-step-dot"></span>
+              </span>
+              <span class="ai-loading-step-label">{{ step }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="ai-modal-footer">
+        <template v-if="!aiResult">
+          <button class="ai-btn-cancel" @click="closeAIModal" :disabled="aiGenerating">Cancelar</button>
+          <button
+            class="ai-btn-generate"
+            @click="runAIGenerate"
+            :disabled="aiGenerating || !aiPrompt.trim() || aiPrompt.length > 2000"
+          >
+            <svg v-if="!aiGenerating" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            {{ aiGenerating ? 'Gerando...' : 'Gerar Fluxo' }}
+          </button>
+        </template>
+        <template v-else>
+          <button class="ai-btn-cancel" @click="aiResult = null; aiError = null">
+            ← Tentar novamente
+          </button>
+          <button class="ai-btn-apply" @click="applyAIFlow">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Aplicar ao Canvas
+          </button>
+        </template>
+      </div>
+
+    </div>
+  </div>
+
 </AppLayout>
 </template>
 
@@ -2023,6 +2229,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { getFlow, listFlowSteps, updateFlow, updateFlowStep, deleteFlowStep, createFlowStep, runFlowDemo, listFlows } from '@/api/flows'
+import { generateFlowWithAI } from '@/api/ai'
 import { listChannels, updateChannel } from '@/api/channels'
 
 const route = useRoute()
@@ -2036,6 +2243,43 @@ const selectedStep = ref(null)
 const selectedBlock = ref(null)
 const isSaving = ref(false)
 const isPageLoading = ref(true)
+const hasUnsavedChanges = ref(false)
+
+// Histórico para undo/redo (conexões + posições — steps têm confirmação própria)
+const undoStack = []
+const redoStack = []
+const MAX_HISTORY = 40
+
+const snapshotState = () => ({
+  connections: JSON.parse(JSON.stringify(connections.value)),
+  nodePositions: JSON.parse(JSON.stringify(nodePositions.value)),
+})
+
+const pushUndo = () => {
+  undoStack.push(snapshotState())
+  if (undoStack.length > MAX_HISTORY) undoStack.shift()
+  redoStack.length = 0  // nova ação limpa o redo
+}
+
+const applySnapshot = (snapshot) => {
+  connections.value = snapshot.connections
+  nodePositions.value = snapshot.nodePositions
+  nextTick(() => updateConnectionPaths())
+  scheduleWorkflowSave({ withStepSync: false })
+}
+
+const undo = () => {
+  if (undoStack.length === 0) return
+  redoStack.push(snapshotState())
+  applySnapshot(undoStack.pop())
+}
+
+const redo = () => {
+  if (redoStack.length === 0) return
+  undoStack.push(snapshotState())
+  applySnapshot(redoStack.pop())
+}
+
 let saveTimeout = null
 let saveStepTimeout = null
 let workflowSaveOptions = { withStepSync: false }
@@ -2091,6 +2335,157 @@ const startSidebarResize = (e) => {
 }
 const showTriggerModal = ref(false)
 const showAddBlockModal = ref(false)
+
+// ── IA: Gerar fluxo ──────────────────────────────────────────
+const showAIModal = ref(false)
+const aiPrompt = ref('')
+const aiGenerating = ref(false)
+const aiResult = ref(null)
+const aiError = ref(null)
+
+// Etapas do loader progressivo
+const aiLoadingSteps = [
+  'Lendo o seu prompt...',
+  'Identificando os blocos necessários...',
+  'Montando a estrutura do fluxo...',
+  'Conectando os passos...',
+  'Revisando e validando...',
+  'Finalizando o fluxo...',
+]
+const aiLoadingCurrentStep = ref(0)
+let _aiLoadingTimer = null
+
+const _startAILoadingProgress = () => {
+  aiLoadingCurrentStep.value = 0
+  const intervals = [1200, 2500, 4000, 6000, 9000] // ms para avançar cada etapa
+  let idx = 0
+  const advance = () => {
+    if (idx < intervals.length) {
+      _aiLoadingTimer = setTimeout(() => {
+        aiLoadingCurrentStep.value = idx + 1
+        idx++
+        advance()
+      }, idx === 0 ? intervals[0] : intervals[idx] - intervals[idx - 1])
+    }
+  }
+  advance()
+}
+
+const _stopAILoadingProgress = () => {
+  if (_aiLoadingTimer) { clearTimeout(_aiLoadingTimer); _aiLoadingTimer = null }
+  // Marcar todas como concluídas ao terminar
+  aiLoadingCurrentStep.value = aiLoadingSteps.length
+}
+
+const aiExamples = [
+  'Captura de lead com nome e email',
+  'Suporte ao cliente com menu de opções',
+  'Apresentação de planos com botões e tags',
+  'Agendamento com coleta de data e horário',
+]
+
+const closeAIModal = () => {
+  if (aiGenerating.value) return
+  showAIModal.value = false
+  aiResult.value = null
+  aiError.value = null
+}
+
+const runAIGenerate = async () => {
+  if (!aiPrompt.value.trim() || aiGenerating.value) return
+  aiGenerating.value = true
+  aiError.value = null
+  aiResult.value = null
+  _startAILoadingProgress()
+  try {
+    aiResult.value = await generateFlowWithAI(aiPrompt.value.trim())
+  } catch (err) {
+    const detail = err?.response?.data?.detail
+    aiError.value = detail || 'Erro ao gerar fluxo. Verifique se a API Key está configurada e tente novamente.'
+  } finally {
+    _stopAILoadingProgress()
+    aiGenerating.value = false
+  }
+}
+
+const applyAIFlow = async () => {
+  if (!aiResult.value) return
+  const result = aiResult.value
+
+  // Fecha o modal imediatamente para o usuário ver o canvas enquanto os blocos são criados
+  closeAIModal()
+  await nextTick()
+
+  try {
+    // 1. Deletar todos os steps existentes
+    await Promise.all(
+      steps.value.map(s => deleteFlowStep(flowId.value, s.id).catch(() => {}))
+    )
+    steps.value = []
+    connections.value = []
+    nodePositions.value = {}
+
+    // 2. Criar os novos steps (em sequência para garantir IDs retornados)
+    const idMap = {} // { ai_step_id -> real_step_id }
+    for (const step of result.steps) {
+      const created = await createFlowStep(flowId.value, {
+        type: step.type,
+        order_index: step.order_index,
+        config: step.config || {},
+      })
+      idMap[step.id] = created.id
+      steps.value.push(created)
+      if (step.type === 'message') ensureMessageBlocks(created)
+      // Atualiza as posições progressivamente conforme cada bloco é criado
+      const aiPos = result.node_positions?.[String(step.id)]
+      if (aiPos) nodePositions.value[created.id] = aiPos
+      await nextTick()
+    }
+
+    // 3. Remapear connections com IDs reais
+    connections.value = result.connections
+      .filter(c => idMap[c.from] && idMap[c.to])
+      .map(c => ({
+        id: `${idMap[c.from]}-${c.outputId || 'default'}-${idMap[c.to]}`,
+        from: idMap[c.from],
+        to: idMap[c.to],
+        outputId: c.outputId || 'default',
+      }))
+
+    // 4. Remapear targetStepId nos botões
+    steps.value.forEach(step => {
+      if (step.config?.blocks) {
+        step.config.blocks.forEach(block => {
+          if (block.type === 'button' && block.buttons) {
+            block.buttons.forEach(btn => {
+              if (btn.action === 'flow' && btn.targetStepId) {
+                btn.targetStepId = idMap[btn.targetStepId] || btn.targetStepId
+              }
+            })
+          }
+        })
+      }
+    })
+
+    // 5. Atualizar nome do fluxo se gerado pela IA
+    if (result.name && flow.value) {
+      flow.value.name = result.name
+      if (result.description) flow.value.description = result.description
+    }
+
+    // 6. Salvar tudo
+    await saveWorkflow()
+    await nextTick()
+    fitToScreen()
+
+    toast.success(`Fluxo "${result.name}" aplicado com ${result.steps.length} blocos!`)
+  } catch (err) {
+    console.error('Erro ao aplicar fluxo IA:', err)
+    toast.error('Erro ao aplicar o fluxo gerado. Tente novamente.')
+  }
+}
+const isAddingBlock = ref(false)
+const deletingStepId = ref(null)
 const blockSearch = ref('')
 const activeBlockCat = ref('inicio')
 const contentTextareaRef = ref(null)
@@ -2110,13 +2505,6 @@ const blockCategories = computed(() => [
         icon: 'fa-solid fa-play',
         color: 'linear-gradient(135deg, #22c55e, #16a34a)',
       },
-      {
-        type: 'start',
-        label: 'Iniciar Automação',
-        desc: 'Ponto de partida com mensagem de boas-vindas',
-        icon: 'fa-solid fa-arrow-right',
-        color: 'linear-gradient(135deg, #00FF66, #00cc52)',
-      },
     ],
   },
   {
@@ -2127,8 +2515,8 @@ const blockCategories = computed(() => [
     blocks: [
       {
         type: 'telegram',
-        label: 'Mensagem Telegram',
-        desc: 'Envia texto, imagem, vídeo ou áudio pelo Telegram',
+        label: 'Mensagem',
+        desc: 'Envia texto, imagem, vídeo ou áudio',
         icon: 'fa-brands fa-telegram',
         color: 'linear-gradient(135deg, #229ED9, #1E88E5)',
       },
@@ -2400,14 +2788,43 @@ const handleDocumentClickCloseSidebar = (event) => {
   sidebarCollapsed.value = true
 }
 
+const handleGlobalKeydown = (e) => {
+  // Ignorar se o foco estiver em um input/textarea
+  const tag = document.activeElement?.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable) return
+
+  const ctrl = e.ctrlKey || e.metaKey
+  if (ctrl && e.key === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    undo()
+  } else if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+    e.preventDefault()
+    redo()
+  }
+}
+
+const handleBeforeUnload = (e) => {
+  if (hasUnsavedChanges.value || saveTimeout !== null || saveStepTimeout !== null) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleDocumentMouseDown)
   document.addEventListener('click', handleDocumentClickCloseSidebar)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   document.removeEventListener('click', handleDocumentClickCloseSidebar)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  // Limpar timers pendentes para não vazar memória
+  if (saveTimeout) clearTimeout(saveTimeout)
+  if (saveStepTimeout) clearTimeout(saveStepTimeout)
 })
 
 // Busca username via token e persiste no canal
@@ -2651,79 +3068,26 @@ const loadData = async () => {
     connections.value = []
     botUsername.value = 'seu_bot' // ← reset imediato para evitar vazamento de fluxo anterior
 
-    flow.value = await getFlow(flowId.value)
-    steps.value = await listFlowSteps(flowId.value)
+    // Todas as requisições são independentes — rodar em paralelo
+    const [flowResult, stepsResult, channelsResult, flowsResult] = await Promise.all([
+      getFlow(flowId.value),
+      listFlowSteps(flowId.value),
+      listChannels().catch(e => { console.error('Erro ao carregar canais:', e); return [] }),
+      listFlows().catch(e => { console.warn('Erro ao carregar fluxos:', e); return [] }),
+    ])
 
-    // Buscar username do bot do canal conectado
-    if (flow.value?.channel_id) {
-      try {
-        channelsCache.value = await listChannels()
-        // Coercão explícita de tipo para evitar falha por string vs number
-        const channel = channelsCache.value.find(c => Number(c.id) === Number(flow.value.channel_id))
+    flow.value = flowResult
+    steps.value = stepsResult
+    channelsCache.value = channelsResult
+    availableFlows.value = flowsResult
 
-        if (channel) {
-          // Tentar ler bot_username do config, mesmo que config seja null
-          let savedUsername = ''
-          if (channel.config) {
-            try {
-              const config = typeof channel.config === 'string'
-                ? JSON.parse(channel.config)
-                : channel.config
-              savedUsername = (config.bot_username || '').replace('@', '')
-            } catch (e) {
-              console.warn('Erro ao parsear config do canal:', e)
-            }
-          }
+    // Resolver bot_username a partir dos canais já carregados
+    const targetChannel = flow.value?.channel_id
+      ? channelsCache.value.find(c => Number(c.id) === Number(flow.value.channel_id))
+      : channelsCache.value.find(c => c.type === 'telegram' && c.is_active)
 
-          if (savedUsername) {
-            botUsername.value = savedUsername
-          } else {
-            // Não há bot_username salvo: buscar via token na API do Telegram e persistir
-            const resolved = await fetchBotUsername(channel)
-            if (!resolved) {
-              console.warn('Não foi possível resolver bot_username para canal', channel.id)
-            }
-          }
-        } else {
-          console.warn('Canal do fluxo não encontrado na lista. channel_id =', flow.value.channel_id)
-        }
-      } catch (error) {
-        console.error('Erro ao buscar username do bot:', error)
-      }
-    } else {
-      // Mesmo sem canal_id no fluxo, carregar TODOS os canais para poder usar
-      try {
-        channelsCache.value = await listChannels()
-
-        // Sem canal vinculado: usar o primeiro canal Telegram ativo como fallback
-        const firstTelegramChannel = channelsCache.value.find(c => c.type === 'telegram' && c.is_active)
-        if (firstTelegramChannel) {
-          let savedUsername = ''
-          if (firstTelegramChannel.config) {
-            try {
-              const config = typeof firstTelegramChannel.config === 'string'
-                ? JSON.parse(firstTelegramChannel.config)
-                : firstTelegramChannel.config
-              savedUsername = (config.bot_username || '').replace('@', '')
-            } catch (e) { /* ignore */ }
-          }
-          if (savedUsername) {
-            botUsername.value = savedUsername
-          } else {
-            await fetchBotUsername(firstTelegramChannel)
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao carregar canais:', error)
-      }
-    }
-    
-    // Carregar fluxos disponíveis para "Go to Flow"
-    try {
-      availableFlows.value = await listFlows()
-    } catch (e) {
-      console.warn('Erro ao carregar fluxos:', e)
-      availableFlows.value = []
+    if (targetChannel?.bot_username) {
+      botUsername.value = targetChannel.bot_username.replace('@', '')
     }
     
     // Garantir blocks padrão para mensagens e estrutura de ações
@@ -2808,7 +3172,12 @@ const loadData = async () => {
 
 // ==================== SAVE WORKFLOW ====================
 const saveWorkflow = async (opts = {}) => {
-  if (isSaving.value || !flow.value) return
+  if (!flow.value) return
+  // Se outro save está rodando, reagendar para não perder a posição
+  if (isSaving.value) {
+    scheduleWorkflowSave(opts)
+    return
+  }
 
   const withStepSync = opts.withStepSync !== undefined ? !!opts.withStepSync : true
   
@@ -2854,24 +3223,32 @@ const saveWorkflow = async (opts = {}) => {
     }
     
     await updateFlow(flowId.value, payload)
+    hasUnsavedChanges.value = false
 
     if (withStepSync) {
-      // Salvar o order_index atualizado de cada step
-      for (const step of steps.value) {
-        try {
-          await updateFlowStep(flowId.value, step.id, {
+      // Salvar todos os steps em paralelo (era sequencial: N × latência → agora: 1 × latência)
+      await Promise.all(
+        steps.value.map(step =>
+          updateFlowStep(flowId.value, step.id, {
             type: step.type,
             config: step.config,
-            order_index: step.order_index
+            order_index: step.order_index,
+          }).catch(error => {
+            // 409 = conflito de keyword → propagar para o catch externo mostrar toast
+            if (error?.response?.status === 409) throw error
+            console.error(`❌ Erro ao atualizar step ${step.id}:`, error)
           })
-        } catch (error) {
-          console.error(`❌ Erro ao atualizar order_index do step ${step.id}:`, error)
-        }
-      }
+        )
+      )
     }
   } catch (error) {
     console.error('❌ Erro ao salvar workflow:', error)
-    console.error('❌ Detalhes:', error.response?.data)
+    if (error?.response?.status === 409) {
+      const detail = error.response?.data?.detail || 'Keyword duplicada entre fluxos do mesmo canal.'
+      toast.error(detail)
+    } else {
+      console.error('❌ Detalhes:', error.response?.data)
+    }
   } finally {
     isSaving.value = false
   }
@@ -2933,6 +3310,7 @@ const recalculateOrderIndex = () => {
 }
 
 const scheduleStepSave = (stepSnapshot) => {
+  hasUnsavedChanges.value = true
   if (saveStepTimeout) clearTimeout(saveStepTimeout)
   saveStepTimeout = setTimeout(async () => {
     try {
@@ -2941,14 +3319,16 @@ const scheduleStepSave = (stepSnapshot) => {
         config: stepSnapshot.config,
         order_index: stepSnapshot.order_index
       })
+      if (!saveTimeout) hasUnsavedChanges.value = false
     } catch (error) {
       console.error('❌ Erro ao salvar step:', error)
-      console.error('❌ Detalhes:', error.response?.data)
     }
+    saveStepTimeout = null
   }, 650)
 }
 
 const scheduleWorkflowSave = (opts = {}) => {
+  hasUnsavedChanges.value = true
   workflowSaveOptions = {
     withStepSync: !!opts.withStepSync || !!workflowSaveOptions.withStepSync
   }
@@ -2957,6 +3337,7 @@ const scheduleWorkflowSave = (opts = {}) => {
   saveTimeout = setTimeout(() => {
     const currentOpts = workflowSaveOptions
     workflowSaveOptions = { withStepSync: false }
+    saveTimeout = null
     saveWorkflow({ withStepSync: currentOpts.withStepSync })
   }, 900)
 }
@@ -3011,8 +3392,9 @@ const addMessageStep = async () => {
 }
 
 const handleAddBlock = async (type) => {
+  if (isAddingBlock.value) return
   showAddBlockModal.value = false
-  
+
   // Verificar se precisa de trigger primeiro
   if (!hasTrigger.value && type !== 'trigger') {
     showTriggerModal.value = true
@@ -3020,6 +3402,7 @@ const handleAddBlock = async (type) => {
     return
   }
 
+  isAddingBlock.value = true
   try {
     const nextIndex = steps.value.length + 1
     let stepConfig = {}
@@ -3141,6 +3524,8 @@ const handleAddBlock = async (type) => {
   } catch (error) {
     console.error('Erro ao adicionar bloco:', error)
     toast.error('Erro ao adicionar bloco')
+  } finally {
+    isAddingBlock.value = false
   }
 }
 
@@ -3157,36 +3542,30 @@ const deleteStep = async (stepId) => {
     return // Usuário cancelou
   }
   
+  deletingStepId.value = stepId
   try {
-    console.log('🗑️ Deletando step:', stepId)
-    
-    // Deletar no backend
     await deleteFlowStep(flowId.value, stepId)
-    
-    console.log('✅ Step deletado do backend!')
-    
+
     // Remover conexões relacionadas
     connections.value = connections.value.filter(c => c.from !== stepId && c.to !== stepId)
-    
+
     // Remover o step do frontend
     steps.value = steps.value.filter(s => s.id !== stepId)
     delete nodePositions.value[stepId]
-    
+
     // Fechar sidebar se o step deletado estava selecionado
     if (selectedStep.value && selectedStep.value.id === stepId) {
       selectedStep.value = null
     }
-    
+
     updateConnectionPaths()
-    
-    // Salvar workflow (posições e conexões atualizadas)
     await saveWorkflow()
-    
-    console.log('✅ Bloco excluído completamente!')
     toast.success('Bloco removido do fluxo')
   } catch (error) {
     console.error('❌ Erro ao deletar step:', error)
     toast.error('Erro ao excluir bloco')
+  } finally {
+    deletingStepId.value = null
   }
 }
 
@@ -3701,6 +4080,7 @@ const handleNodeDragMove = (e) => {
 
 const endNodeDrag = () => {
   const id = draggingNodeId.value
+  pushUndo()
   draggingNodeId.value = null
   document.removeEventListener('mousemove', handleNodeDragMove)
   document.removeEventListener('mouseup', endNodeDrag)
@@ -3811,6 +4191,41 @@ const resetZoom = () => {
   updateConnectionPaths()
 }
 
+const fitToScreen = () => {
+  const container = containerRef.value
+  const posEntries = Object.entries(nodePositions.value)
+  if (!container || posEntries.length === 0) {
+    resetZoom()
+    return
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const [stepId, pos] of posEntries) {
+    const el = nodeEls[stepId]
+    const w = el ? el.offsetWidth : 300
+    const h = el ? el.offsetHeight : 140
+    minX = Math.min(minX, pos.x)
+    minY = Math.min(minY, pos.y)
+    maxX = Math.max(maxX, pos.x + w)
+    maxY = Math.max(maxY, pos.y + h)
+  }
+
+  const PADDING = 80
+  const contentW = maxX - minX + PADDING * 2
+  const contentH = maxY - minY + PADDING * 2
+  const containerW = container.clientWidth
+  const containerH = container.clientHeight
+
+  const newScale = Math.min(Math.max(0.25, Math.min(containerW / contentW, containerH / contentH)), 1.2)
+  const offsetX = (containerW - contentW * newScale) / 2 - (minX - PADDING) * newScale
+  const offsetY = (containerH - contentH * newScale) / 2 - (minY - PADDING) * newScale
+
+  canvasScale.value = newScale
+  canvasOffset.value = { x: offsetX, y: offsetY }
+  applyWorkspaceTransform(offsetX, offsetY, newScale)
+  updateConnectionPaths()
+}
+
 // ==================== CONNECTIONS ====================
 const startConnection = (e, stepId, outputId = 'default') => {
   isDraggingConnection.value = true
@@ -3842,6 +4257,7 @@ const completeConnection = (toStepId) => {
   )
   
   if (!exists) {
+    pushUndo()
     connections.value.push({
       id: `${connectionFrom.value.stepId}-${connectionFrom.value.outputId}-${toStepId}`,
       from: connectionFrom.value.stepId,
@@ -3966,6 +4382,7 @@ const removeConnection = async (connId) => {
   }
 
   // Encontrar conexão antes de remover para sincronizar targetStepId
+  pushUndo()
   const removedConn = connections.value.find(c => c.id === connId)
   connections.value = connections.value.filter(c => c.id !== connId)
 
@@ -4170,11 +4587,13 @@ const currentBlock = computed(() => {
 })
 
 const addTrigger = async (kind) => {
+  if (isAddingBlock.value) return
   if (hasTrigger.value) {
     toast.warning('Já existe um gatilho neste fluxo')
     showTriggerModal.value = false
     return
   }
+  isAddingBlock.value = true
 
   const typeMap = {
     telegram_message: 'trigger',
@@ -4202,6 +4621,7 @@ const addTrigger = async (kind) => {
   } catch (error) {
     console.error('Erro ao criar gatilho:', error)
   } finally {
+    isAddingBlock.value = false
     showTriggerModal.value = false
   }
 }
@@ -4271,11 +4691,16 @@ const getTelegramRefUrl = (refKey) => {
 }
 
 const copyTelegramRefLink = (refKey) => {
-  const link = getTelegramRefUrl(refKey)
-  if (link.includes('Configure')) {
+  if (!refKey) {
     toast.warning('Configure a chave de referência primeiro')
     return
   }
+  const username = (botUsername.value || '').replace('@', '').trim()
+  if (!username || username === 'seu_bot') {
+    toast.warning('Configure o username do bot nas configurações do canal primeiro')
+    return
+  }
+  const link = `https://t.me/${username}?start=${refKey}`
   navigator.clipboard.writeText(link)
   toast.success('Link copiado para área de transferência')
 }
@@ -5093,7 +5518,13 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-.abm-card:hover {
+.abm-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.abm-card:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.065);
   border-color: rgba(255, 255, 255, 0.14);
   transform: translateX(3px);
@@ -5878,6 +6309,34 @@ onBeforeUnmount(() => {
 .flow-node-content {
   padding: 16px;
   pointer-events: none;
+  position: relative;
+}
+
+.flow-node-deleting-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(2px);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  z-index: 10;
+  color: #f87171;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.flow-node-deleting-overlay i {
+  font-size: 1.1rem;
+}
+
+.flow-node.is-deleting {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .flow-node-header-simple {
@@ -6086,9 +6545,15 @@ onBeforeUnmount(() => {
   background: rgba(30, 41, 59, 0.7);
 }
 
-.trigger-card:hover {
+.trigger-card:hover:not(.trigger-card--loading) {
   border-color: rgba(132, 204, 22, 0.6);
   transform: translateY(-2px);
+}
+
+.trigger-card--loading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .trigger-card-icon {
@@ -6510,6 +6975,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+  min-height: 56px;
   background: rgba(0, 255, 102, 0.05);
   border: 1.5px solid rgba(0, 255, 102, 0.3);
   border-radius: 8px;
@@ -6543,6 +7010,8 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: #00FF66;
   word-break: break-all;
+  flex: 1;
+  min-width: 0;
   line-height: 1.5;
   letter-spacing: 0.01em;
 }
@@ -7418,4 +7887,416 @@ onBeforeUnmount(() => {
 }
 
 .media-block-btn:hover .media-block-label { color: #e2e8f0; }
+
+/* ─── Botão IA no header ─────────────────────────────────── */
+.btn-ai-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(167, 139, 250, 0.08));
+  color: #c4b5fd;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.btn-ai-generate:hover {
+  border-color: rgba(139, 92, 246, 0.8);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.28), rgba(167, 139, 250, 0.15));
+  color: #e9d5ff;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.25);
+}
+.btn-ai-generate svg {
+  flex-shrink: 0;
+}
+
+/* ─── Modal IA ───────────────────────────────────────────── */
+.ai-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: ai-fade-in 0.18s ease;
+}
+@keyframes ai-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.ai-modal {
+  background: #1a1d23;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 560px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  animation: ai-slide-up 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+@keyframes ai-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ai-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.ai-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e9d5ff;
+}
+.ai-modal-title svg { color: #a78bfa; }
+.ai-modal-close {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255,255,255,0.05);
+  color: #888;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.ai-modal-close:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #ddd; }
+.ai-modal-close:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ai-modal-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ai-modal-hint {
+  font-size: 0.82rem;
+  color: #9ca3af;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+/* Exemplos rápidos */
+.ai-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.ai-examples-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.ai-example-chip {
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.08);
+  color: #c4b5fd;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-example-chip:hover:not(:disabled) {
+  border-color: rgba(139, 92, 246, 0.6);
+  background: rgba(139, 92, 246, 0.15);
+}
+.ai-example-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Textarea */
+.ai-prompt-input {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  padding: 12px 14px;
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.6;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.ai-prompt-input:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(255,255,255,0.06);
+}
+.ai-prompt-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ai-prompt-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+.ai-char-count { font-size: 0.72rem; color: #6b7280; }
+.ai-char-count--warn { color: #f59e0b; }
+.ai-hint-shortcut { font-size: 0.72rem; color: #4b5563; }
+
+/* Erro */
+.ai-error {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+.ai-error svg { flex-shrink: 0; margin-top: 1px; }
+
+/* Resultado */
+.ai-result-header { margin-bottom: 14px; }
+.ai-result-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  border-radius: 20px;
+  color: #86efac;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ai-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+}
+.ai-result-row {
+  display: flex;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+.ai-result-label { color: #6b7280; min-width: 80px; flex-shrink: 0; }
+.ai-result-value { color: #d1d5db; }
+
+/* Steps preview */
+.ai-steps-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.ai-step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.025);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.ai-step-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+.ai-step-badge--trigger  { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.ai-step-badge--message  { background: rgba(59,130,246,0.15); color: #93c5fd; }
+.ai-step-badge--action   { background: rgba(16,185,129,0.15); color: #6ee7b7; }
+.ai-step-badge--condition{ background: rgba(239,68,68,0.15);  color: #fca5a5; }
+.ai-step-badge--wait     { background: rgba(107,114,128,0.15);color: #d1d5db; }
+.ai-step-badge--randomizer{ background: rgba(168,85,247,0.15);color: #d8b4fe; }
+.ai-step-label { color: #9ca3af; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ai-apply-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 0.78rem;
+  color: #d97706;
+  line-height: 1.5;
+  margin: 0;
+}
+.ai-apply-warning svg { flex-shrink: 0; margin-top: 1px; color: #f59e0b; }
+
+/* Loading overlay */
+.ai-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 17, 22, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  z-index: 10;
+  backdrop-filter: blur(3px);
+}
+.ai-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 0 24px;
+  width: 100%;
+  max-width: 360px;
+}
+
+/* Ícone pulsante */
+.ai-loading-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ai-pulse-ring 2s ease-in-out infinite;
+}
+@keyframes ai-pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+  50%       { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+}
+.ai-spinner {
+  animation: ai-spin 2s linear infinite;
+  color: #a78bfa;
+}
+@keyframes ai-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Etapas */
+.ai-loading-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.ai-loading-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  transition: all 0.3s ease;
+}
+.ai-loading-step--done .ai-loading-step-label  { color: #6ee7b7; }
+.ai-loading-step--active .ai-loading-step-label { color: #e9d5ff; font-weight: 600; }
+.ai-loading-step--pending .ai-loading-step-label { color: #374151; }
+
+.ai-loading-step-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+.ai-loading-step--done   .ai-loading-step-icon { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+.ai-loading-step--active .ai-loading-step-icon { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+.ai-loading-step--pending .ai-loading-step-icon { background: rgba(255,255,255,0.04); color: #374151; }
+
+.ai-step-spin { animation: ai-spin 1s linear infinite; }
+.ai-step-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  display: block;
+}
+
+/* Footer */
+.ai-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.ai-btn-cancel {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.83rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-btn-cancel:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
+.ai-btn-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: #fff;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+}
+.ai-btn-generate:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.45);
+  transform: translateY(-1px);
+}
+.ai-btn-generate:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.ai-btn-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #059669, #047857);
+  color: #fff;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+}
+.ai-btn-apply:hover {
+  background: linear-gradient(135deg, #10b981, #059669);
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.45);
+  transform: translateY(-1px);
+}
 </style>

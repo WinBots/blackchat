@@ -49,3 +49,8 @@ export async function runFlowDemo(flowId) {
   const res = await api.post(`/api/v1/flows/${flowId}/run-demo`)
   return res.data
 }
+
+export async function duplicateFlow(flowId) {
+  const res = await api.post(`/api/v1/flows/${flowId}/duplicate`)
+  return res.data
+}

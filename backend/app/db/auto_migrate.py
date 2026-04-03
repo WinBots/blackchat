@@ -248,6 +248,7 @@ _PERF_INDEXES = [
 
     # ── Canais ─────────────────────────────────────────────────────────
     ("ix_channels_tenant_id",           "channels",          "tenant_id"),
+    ("ix_channels_tenant_active",       "channels",          "tenant_id, is_active"),
 
     # ── Fluxos ─────────────────────────────────────────────────────────
     ("ix_flows_tenant_id",              "flows",             "tenant_id"),

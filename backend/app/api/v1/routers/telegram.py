@@ -99,14 +99,22 @@ def execute_action(
             field_name = action.get("field_name", "").strip()
             raw_value = action.get("field_value") or action.get("value") or action.get("fieldValue") or ""
             field_value = personalize_text(raw_value, contact)
-            
+
+            # Campos nativos do modelo Contact (não vão para custom_fields)
+            _SYSTEM_FIELDS = {"first_name", "last_name", "username"}
+
             if field_name:
-                # Carregar custom_fields atual
-                custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
-                custom_fields[field_name] = field_value
-                contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
-                db.commit()
-                logger.info(f"   OK Set Field: {field_name} = {field_value}")
+                if field_name in _SYSTEM_FIELDS:
+                    setattr(contact, field_name, field_value or None)
+                    db.commit()
+                    logger.info(f"   OK Set System Field: {field_name} = {field_value!r}")
+                else:
+                    # Campo personalizado → salva em custom_fields (JSON)
+                    custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
+                    custom_fields[field_name] = field_value
+                    contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
+                    db.commit()
+                    logger.info(f"   OK Set Field: {field_name} = {field_value}")
         
         elif action_type == "add_tag":
             tag_name = action.get("tag_name", "").strip()
@@ -988,19 +996,18 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                             step_id_str = str(step.id)
 
                             # ── Pré-determinar se este bloco deve pausar o fluxo ──────────
-                            # Verifica em: (1) config do botão, (2) conexões visuais do flow
-                            should_pause_for_buttons = any(
+                            # Prioridade: (1) conexões visuais do canvas, (2) targetStepId no config do botão
+                            # As conexões são a fonte mais confiável (sempre atualizadas pelo saveWorkflow)
+                            btn_has_flow_connection = has_connections and any(
+                                str(c.get("from", "")) == step_id_str and
+                                str(c.get("outputId", "")).startswith("btn-")
+                                for c in flow_config.get("connections", [])
+                            )
+                            should_pause_for_buttons = btn_has_flow_connection or any(
                                 b.get("action") == "flow" and b.get("targetStepId")
                                 for b in buttons
                             )
-                            if not should_pause_for_buttons and has_connections:
-                                # Fallback amplo: qualquer conexão saindo deste step com outputId "btn-*"
-                                should_pause_for_buttons = any(
-                                    str(c.get("from", "")) == step_id_str and
-                                    str(c.get("outputId", "")).startswith("btn-")
-                                    for c in flow_config.get("connections", [])
-                                )
-                            logger.info(f"   🔘 Button block: block_id={block_id!r} buttons={len(buttons)} should_pause={should_pause_for_buttons}")
+                            logger.info(f"   🔘 Button block: block_id={block_id!r} buttons={len(buttons)} should_pause={should_pause_for_buttons} has_flow_conn={btn_has_flow_connection}")
 
                             if buttons:
                                 inline_keyboard = []
@@ -1008,10 +1015,11 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                     btn_text = btn.get("text", "")
                                     btn_action = btn.get("action") or "url"  # None-safe default
                                     btn_url = btn.get("url", "") or ""
-                                    btn_target_step_id = btn.get("targetStepId") or ""
 
-                                    # Fallback: resolver targetStepId a partir das conexões visuais
-                                    if btn_action == "flow" and not btn_target_step_id and has_connections:
+                                    # SEMPRE priorizar conexões visuais do canvas para resolver targetStepId.
+                                    # O targetStepId no config pode estar desatualizado (ex: ID da IA antes do remapeamento).
+                                    btn_target_step_id = ""
+                                    if btn_action == "flow" and has_connections:
                                         port_output_id = f"btn-{block_id}-{btn_idx}"
                                         conn_match = next(
                                             (c for c in flow_config.get("connections", [])
@@ -1021,9 +1029,15 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                         )
                                         if conn_match:
                                             btn_target_step_id = conn_match.get("to")
-                                            logger.info(f"   🔗 targetStepId resolvido por conexão: btn {btn_idx} → step {btn_target_step_id}")
+                                            logger.info(f"   🔗 targetStepId via conexão: btn {btn_idx} → step {btn_target_step_id}")
+
+                                    # Fallback: usar targetStepId do config do botão
+                                    if btn_action == "flow" and not btn_target_step_id:
+                                        btn_target_step_id = btn.get("targetStepId") or ""
+                                        if btn_target_step_id:
+                                            logger.info(f"   🔗 targetStepId via config: btn {btn_idx} → step {btn_target_step_id}")
                                         else:
-                                            logger.warning(f"   ⚠️ btn {btn_idx} action=flow mas sem target. block_id={block_id!r} port={port_output_id!r}")
+                                            logger.warning(f"   ⚠️ btn {btn_idx} action=flow mas sem target. block_id={block_id!r} port=btn-{block_id}-{btn_idx}")
                                             for c in flow_config.get("connections", []):
                                                 logger.warning(f"      conn: from={c.get('from')!r}({type(c.get('from')).__name__}) outputId={c.get('outputId')!r} to={c.get('to')!r}")
 
@@ -1065,16 +1079,43 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
 
                                 # ── Pausar — só quando há botões flow reais ──────────────
                                 if should_pause_for_buttons and flow_execution:
+                                    from datetime import timezone
+                                    _UNIT_SECONDS = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}
+                                    _DEFAULT_TIMEOUT_SECONDS = 48 * 3600  # 48h padrão (CRM best-practice)
+
+                                    timeout_deadline = None
+                                    timeout_source = "default_48h"
+                                    try:
+                                        default_next = find_next_step_by_output(flow_config, step.id, "default", steps)
+                                        if default_next and default_next.type == "wait":
+                                            wait_cfg = json.loads(default_next.config) if default_next.config else {}
+                                            if wait_cfg.get("delayType", "fixed") == "fixed":
+                                                val = int(wait_cfg.get("value", 0))
+                                                unit = wait_cfg.get("unit", "minutes")
+                                                seconds = _UNIT_SECONDS.get(unit, 60) * val
+                                                if seconds > 0:
+                                                    deadline_dt = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+                                                    timeout_deadline = deadline_dt.isoformat()
+                                                    timeout_source = f"wait_step ({val} {unit})"
+                                    except Exception as te:
+                                        logger.warning(f"   Falha ao calcular timeout de botão: {te}")
+
+                                    # Fallback: timeout padrão de 48h se não houver step "Espera"
+                                    if not timeout_deadline:
+                                        deadline_dt = datetime.now(timezone.utc) + timedelta(seconds=_DEFAULT_TIMEOUT_SECONDS)
+                                        timeout_deadline = deadline_dt.isoformat()
+
                                     flow_execution.status = 'waiting_response'
                                     flow_execution.context = json.dumps({
                                         "waiting_for": "button_click",
                                         "channel_id": channel.id,
                                         "chat_id": chat_id,
                                         "bot_token": bot_token,
-                                        "step_id": step.id
+                                        "step_id": step.id,
+                                        "timeout_deadline": timeout_deadline,
                                     })
                                     db.commit()
-                                    logger.info(f"   ⏸ Execução {flow_execution.id} pausada aguardando clique de botão")
+                                    logger.info(f"   ⏸ Execução {flow_execution.id} pausada aguardando botão | timeout={timeout_source} | deadline={timeout_deadline}")
                                     return
                             elif button_text:
                                 # Bloco button sem botões (buttons=[]) mas com texto → envia como mensagem simples
@@ -1231,6 +1272,110 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
         db.close()
 
 
+def check_timed_out_executions():
+    """
+    Verifica execuções pausadas (waiting_response) com timeout expirado e as avança
+    via a saída default do step que as pausou (ignorando o wait step, pois o tempo já passou).
+    Chamado periodicamente pela thread de fundo iniciada no startup da aplicação.
+    """
+    from datetime import timezone
+    db = SessionLocal()
+    try:
+        waiting_execs = db.query(FlowExecution).filter(
+            FlowExecution.status == 'waiting_response'
+        ).all()
+
+        if not waiting_execs:
+            return
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        for ex in waiting_execs:
+            try:
+                ctx = json.loads(ex.context) if ex.context else {}
+                if ctx.get("waiting_for") != "button_click":
+                    continue
+                deadline = ctx.get("timeout_deadline")
+                if not deadline or now_iso < deadline:
+                    continue  # sem deadline ou ainda não expirou
+
+                bot_token  = ctx.get("bot_token")
+                chat_id    = ctx.get("chat_id")
+                channel_id = ctx.get("channel_id")
+                paused_step_id = ctx.get("step_id")
+
+                if not all([bot_token, chat_id, channel_id, paused_step_id]):
+                    logger.warning(f"timeout_checker: contexto incompleto para exec {ex.id}")
+                    continue
+
+                flow = db.query(Flow).filter(Flow.id == ex.flow_id).first()
+                if not flow:
+                    ex.status = 'completed'
+                    ex.completed_at = datetime.now()
+                    ex.context = None
+                    db.commit()
+                    continue
+
+                flow_config = json.loads(flow.config) if flow.config else {}
+                all_steps = db.query(FlowStep).filter(
+                    FlowStep.flow_id == flow.id
+                ).order_by(FlowStep.order_index).all()
+
+                # Próximo step via saída default do step que estava pausado
+                next_step = find_next_step_by_output(flow_config, paused_step_id, "default", all_steps)
+
+                if not next_step:
+                    logger.info(f"timeout_checker: exec {ex.id} sem saída default, encerrando.")
+                    ex.status = 'completed'
+                    ex.completed_at = datetime.now()
+                    ex.context = None
+                    db.commit()
+                    continue
+
+                # Se o próximo step for o wait que gerou o timeout, pular para o step APÓS ele
+                start_step_id = next_step.id
+                if next_step.type == "wait":
+                    after_wait = find_next_step_by_output(flow_config, next_step.id, "default", all_steps)
+                    if after_wait:
+                        start_step_id = after_wait.id
+                    else:
+                        logger.info(f"timeout_checker: exec {ex.id} sem step após wait, encerrando.")
+                        ex.status = 'completed'
+                        ex.completed_at = datetime.now()
+                        ex.context = None
+                        db.commit()
+                        continue
+
+                ex.status = 'running'
+                ex.context = None
+                db.commit()
+
+                logger.info(
+                    f"⏰ timeout_checker: avançando exec {ex.id} (flow {ex.flow_id}) "
+                    f"via default → step {start_step_id}"
+                )
+
+                import threading as _threading
+                _threading.Thread(
+                    target=run_flow_background,
+                    kwargs=dict(
+                        channel_id=int(channel_id),
+                        contact_id=ex.contact_id,
+                        flow_id=ex.flow_id,
+                        chat_id=int(chat_id),
+                        bot_token=bot_token,
+                        execution_id=ex.id,
+                        start_from_step_id=start_step_id,
+                    ),
+                    daemon=True,
+                ).start()
+
+            except Exception as e:
+                logger.error(f"timeout_checker: erro ao processar exec {ex.id}: {e}")
+    finally:
+        db.close()
+
+
 @router.post("/{webhook_secret}")
 def telegram_webhook(
     webhook_secret: str,
@@ -1307,16 +1452,37 @@ def telegram_webhook(
         cq_chat_id = cq_message.get("chat", {}).get("id")
         cq_user_id = cq_from.get("id")
 
-        # Responder o callback para remover o loading no app
+        # Recuperar o texto do botão clicado a partir do reply_markup da mensagem original
+        btn_label = ""
+        try:
+            inline_kb = cq_message.get("reply_markup", {}).get("inline_keyboard", [])
+            for row in inline_kb:
+                for btn in row:
+                    if btn.get("callback_data") == cq_data:
+                        btn_label = btn.get("text", "")
+                        break
+                if btn_label:
+                    break
+        except Exception:
+            pass
+
+        # Responder o callback (remove o "relógio" no Telegram) e mostrar o texto selecionado
         try:
             import httpx
             httpx.post(
                 f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-                json={"callback_query_id": cq_id},
+                json={
+                    "callback_query_id": cq_id,
+                    "text": f"✅ {btn_label}" if btn_label else "✅",
+                    "show_alert": False,
+                },
                 timeout=5
             )
         except Exception:
             pass
+
+        # Nota: não enviamos btn_label como sendMessage porque isso viria do BOT (lado esquerdo),
+        # o que confunde o usuário. O popup do answerCallbackQuery já é feedback suficiente.
 
         if cq_data.startswith("goto_step:") and cq_chat_id and cq_user_id:
             target_step_id_str = cq_data.split("goto_step:", 1)[1]
@@ -1326,7 +1492,8 @@ def telegram_webhook(
                 logger.warning(f"callback_data inválido: {cq_data}")
                 return {"status": "ok"}
 
-            # Buscar execução pausada do contato
+            # Buscar execução pausada do contato via mensagens inbound
+            # Filtra apenas 'inbound' para garantir que são mensagens do usuário (com user_id no extra_data)
             user_id_patterns = [
                 f'%"user_id": {cq_user_id}%',
                 f'%"user_id":{cq_user_id}%'
@@ -1334,22 +1501,42 @@ def telegram_webhook(
             recent_contact_ids = [
                 cid for (cid,) in db.query(Message.contact_id).filter(
                     Message.tenant_id == channel.tenant_id,
-                    Message.channel_id == channel.id,
+                    Message.direction == 'inbound',
                     or_(*[Message.extra_data.like(p) for p in user_id_patterns])
                 ).order_by(Message.created_at.desc()).limit(25).all()
                 if cid
             ]
+            logger.info(f"   callback_query: cq_user_id={cq_user_id} recent_contact_ids={recent_contact_ids}")
 
-            paused_exec = db.query(FlowExecution).filter(
-                FlowExecution.contact_id.in_(recent_contact_ids) if recent_contact_ids else FlowExecution.id == -1,
-                FlowExecution.status == 'waiting_response'
-            ).order_by(FlowExecution.updated_at.desc()).first()
+            paused_exec = None
+            if recent_contact_ids:
+                paused_exec = db.query(FlowExecution).filter(
+                    FlowExecution.contact_id.in_(recent_contact_ids),
+                    FlowExecution.status == 'waiting_response'
+                ).order_by(FlowExecution.updated_at.desc()).first()
+
+            # Fallback: buscar por contact_id associado a execuções de qualquer canal do mesmo tenant
+            if not paused_exec:
+                logger.warning(f"   callback_query: paused_exec não encontrado via mensagens. Tentando fallback por chat_id...")
+                # Tenta pelo chat_id no contexto da execução
+                try:
+                    all_waiting = db.query(FlowExecution).filter(
+                        FlowExecution.status == 'waiting_response'
+                    ).order_by(FlowExecution.updated_at.desc()).limit(50).all()
+                    for ex in all_waiting:
+                        ctx = json.loads(ex.context) if ex.context else {}
+                        if ctx.get("bot_token") == bot_token and str(ctx.get("chat_id", "")) == str(cq_chat_id):
+                            paused_exec = ex
+                            logger.info(f"   callback_query: paused_exec encontrado via chat_id fallback: exec {ex.id}")
+                            break
+                except Exception as fe:
+                    logger.warning(f"   callback_query fallback error: {fe}")
 
             if paused_exec:
                 paused_exec.status = 'running'
                 paused_exec.context = None
                 db.commit()
-                logger.info(f"   ▶ Continuando execução {paused_exec.id} a partir do step {target_step_id} (botão clicado)")
+                logger.info(f"   ▶ Continuando execução {paused_exec.id} a partir do step {target_step_id} (botão: {btn_label!r})")
                 background_tasks.add_task(
                     run_flow_background,
                     channel_id=channel.id,
@@ -1361,7 +1548,7 @@ def telegram_webhook(
                     start_from_step_id=target_step_id
                 )
             else:
-                logger.warning(f"Nenhuma execução pausada encontrada para callback goto_step:{target_step_id}")
+                logger.warning(f"Nenhuma execução pausada encontrada para callback goto_step:{target_step_id} (botão: {btn_label!r})")
 
         return {"status": "ok"}
     # ============= FIM CALLBACK QUERY =============
@@ -1824,6 +2011,21 @@ def telegram_webhook(
                     break
 
             if keyword_match_flow:
+                # Se a execução ativa está aguardando clique de botão (não texto),
+                # NÃO reiniciar o fluxo — o usuário ainda precisa clicar num botão.
+                if active_execution:
+                    try:
+                        active_ctx = json.loads(active_execution.context) if active_execution.context else {}
+                        if active_ctx.get("waiting_for") == "button_click":
+                            logger.info(
+                                f"Keyword '{text_lower}' ignorada: execução {active_execution.id} aguarda clique de botão. "
+                                f"Mantendo execução pausada."
+                            )
+                            keyword_match_flow = None  # cancela a decisão de reiniciar
+                    except Exception:
+                        pass
+
+            if keyword_match_flow:
                 logger.info(
                     f"Keyword '{text_lower}' detectada durante waiting_response; "
                     f"cancelando execuções pausadas deste bot e iniciando flow_id={keyword_match_flow.id}"
@@ -1878,7 +2080,7 @@ def telegram_webhook(
     if active_execution:
         print(f"\n🔄 CONTINUANDO FLUXO ATIVO (Execução ID: {active_execution.id})")
         logger.info(f"Contato tem fluxo ativo aguardando resposta - Execução {active_execution.id}")
-        
+
         # Carregar contexto
         try:
             context = json.loads(active_execution.context) if active_execution.context else {}
@@ -1886,10 +2088,28 @@ def telegram_webhook(
             next_step_index = context.get("next_step_index", 0)
             saved_chat_id = context.get("chat_id")
             saved_bot_token = context.get("bot_token")
-            
+
+            # Se a execução está aguardando clique de botão, texto não deve continuar o fluxo.
+            # Mantém pausado e avisa o usuário.
+            if context.get("waiting_for") == "button_click":
+                logger.info(f"   Execução {active_execution.id} aguarda botão, ignorando texto '{text[:30]}'")
+                # Envia feedback ao usuário pedindo que clique em um botão
+                _bt = saved_bot_token or bot_token
+                _cid = saved_chat_id or chat_id
+                if _bt and _cid:
+                    try:
+                        send_telegram_message(
+                            bot_token=_bt,
+                            chat_id=_cid,
+                            text="👆 Por favor, clique em um dos botões acima para continuar."
+                        )
+                    except Exception:
+                        pass
+                return {"status": "ok", "message": "waiting_for_button"}
+
             print(f"   Campo esperado: {waiting_for_field}")
             print(f"   Próximo step index: {next_step_index}")
-            
+
             # Salvar resposta no campo personalizado
             if waiting_for_field:
                 custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})

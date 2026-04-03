@@ -27,4 +27,4 @@ class Tenant(Base):
     subscriptions = relationship("Subscription", back_populates="tenant")
     channels = relationship("Channel", back_populates="tenant")
     flows = relationship("Flow", back_populates="tenant")
-    workspace_members = relationship("TenantUser", back_populates="tenant", lazy="selectin")
+    workspace_members = relationship("TenantUser", back_populates="tenant")

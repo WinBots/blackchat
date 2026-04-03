@@ -56,6 +56,12 @@ backend/data/
 *.sw?
 
 # ===========================
+# Claude Code (ferramentas locais de dev)
+# ===========================
+.claude/
+src/ui-ux-pro-max/
+
+# ===========================
 # OS
 # ===========================
 .DS_Store

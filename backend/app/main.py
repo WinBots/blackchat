@@ -1,3 +1,6 @@
+import threading
+import time
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
@@ -71,6 +74,24 @@ app.include_router(instagram_connect.router, prefix="/api/v1/instagram", tags=["
                    dependencies=[Depends(require_permission("channels"))])
 app.include_router(debug.router, prefix="/api/v1/debug", tags=["debug"])
 app.include_router(dev_tools.router, prefix="/api/v1", tags=["dev-tools"])
+
+
+def _timeout_checker_loop():
+    """Thread daemon que verifica execuções com timeout a cada 60 segundos."""
+    time.sleep(10)  # aguarda o servidor inicializar completamente
+    while True:
+        try:
+            from app.api.v1.routers.telegram import check_timed_out_executions
+            check_timed_out_executions()
+        except Exception as e:
+            pass  # nunca deixa a thread morrer
+        time.sleep(60)
+
+
+@app.on_event("startup")
+def startup_event():
+    t = threading.Thread(target=_timeout_checker_loop, daemon=True, name="timeout-checker")
+    t.start()
 
 
 @app.get("/")
