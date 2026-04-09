@@ -86,6 +86,12 @@ _COLUMNS = [
     # ── contacts ───────────────────────────────────────────────────────
     ("contacts", "last_interaction_at",
         "last_interaction_at DATETIME2"),
+    ("contacts", "telegram_user_id",
+        "telegram_user_id NVARCHAR(50)"),
+
+    # ── channels — webhook_secret desnormalizado p/ lookup direto ──────
+    ("channels", "webhook_secret",
+        "webhook_secret NVARCHAR(255)"),
 
     # ── subscriptions — campos Stripe estendidos ───────────────────────
     ("subscriptions", "stripe_product_id",
@@ -225,6 +231,32 @@ def run_auto_migrations(engine) -> None:
             except Exception:
                 pass
 
+        # ── Backfill: channels.webhook_secret (extrair de config JSON) ──
+        if _mssql_has_table(conn, "channels") and _mssql_has_column(conn, "channels", "webhook_secret"):
+            try:
+                conn.execute(text("""
+                    UPDATE channels
+                    SET webhook_secret = JSON_VALUE(config, '$.webhook_secret')
+                    WHERE webhook_secret IS NULL
+                      AND config IS NOT NULL
+                      AND JSON_VALUE(config, '$.webhook_secret') IS NOT NULL
+                """))
+            except Exception:
+                pass
+
+        # ── Backfill: contacts.telegram_user_id (extrair de custom_fields) ──
+        if _mssql_has_table(conn, "contacts") and _mssql_has_column(conn, "contacts", "telegram_user_id"):
+            try:
+                conn.execute(text("""
+                    UPDATE contacts
+                    SET telegram_user_id = CAST(JSON_VALUE(custom_fields, '$.telegram_user_id') AS NVARCHAR(50))
+                    WHERE telegram_user_id IS NULL
+                      AND custom_fields IS NOT NULL
+                      AND JSON_VALUE(custom_fields, '$.telegram_user_id') IS NOT NULL
+                """))
+            except Exception:
+                pass
+
     # ── Performance: criar índices (transação separada por índice) ─────
     _create_performance_indexes(engine)
 
@@ -239,6 +271,8 @@ _PERF_INDEXES = [
     ("ix_contacts_tenant_id",           "contacts",          "tenant_id"),
     ("ix_contacts_tenant_channel",      "contacts",          "tenant_id, default_channel_id"),
     ("ix_contacts_last_interaction",    "contacts",          "tenant_id, last_interaction_at"),
+    ("ix_contacts_telegram_uid",        "contacts",          "telegram_user_id"),
+    ("ix_contacts_tenant_tg_uid",       "contacts",          "tenant_id, telegram_user_id"),
 
     # ── Mensagens ──────────────────────────────────────────────────────
     ("ix_messages_tenant_id",           "messages",          "tenant_id"),
@@ -249,16 +283,19 @@ _PERF_INDEXES = [
     # ── Canais ─────────────────────────────────────────────────────────
     ("ix_channels_tenant_id",           "channels",          "tenant_id"),
     ("ix_channels_tenant_active",       "channels",          "tenant_id, is_active"),
+    ("ix_channels_webhook_secret",      "channels",          "webhook_secret"),
 
     # ── Fluxos ─────────────────────────────────────────────────────────
     ("ix_flows_tenant_id",              "flows",             "tenant_id"),
     ("ix_flow_steps_flow_id",           "flow_steps",        "flow_id"),
+    ("ix_flow_steps_flow_type",         "flow_steps",        "flow_id, type"),
 
     # ── Execuções de fluxo ─────────────────────────────────────────────
     ("ix_flow_exec_tenant_id",          "flow_executions",   "tenant_id"),
     ("ix_flow_exec_contact_id",         "flow_executions",   "contact_id"),
     ("ix_flow_exec_flow_id",            "flow_executions",   "flow_id"),
     ("ix_flow_exec_tenant_status",      "flow_executions",   "tenant_id, status"),
+    ("ix_flow_exec_contact_status",     "flow_executions",   "contact_id, status"),
 
     # ── Logs de execução ───────────────────────────────────────────────
     ("ix_flow_exec_logs_exec_id",       "flow_execution_logs", "flow_execution_id"),

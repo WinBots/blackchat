@@ -10,7 +10,7 @@ class Message(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False, index=True)
-    channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
+    channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True, index=True)
     flow_id = Column(Integer, ForeignKey("flows.id"), nullable=True)
     flow_execution_id = Column(Integer, ForeignKey("flow_executions.id"), nullable=True, index=True)
     step_id = Column(Integer, ForeignKey("flow_steps.id"), nullable=True)

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Body, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import json
 import logging
+import threading
 import time
 import httpx
 import random
@@ -28,6 +29,98 @@ from sqlalchemy import and_, or_, case, func, cast, String
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Cache em memória para trigger maps (evita re-query em rajadas de webhooks) ──
+_trigger_cache: Dict[str, Any] = {}  # {cache_key: {"ts": float, "data": {...}}}
+_TRIGGER_CACHE_TTL = 30  # segundos
+
+
+def _load_trigger_map(db: Session, tenant_id: int, channel_id: int):
+    """
+    Carrega TODOS os flows ativos + seus trigger steps em 2 queries (em vez de N+1).
+    Cache em memória de 30s evita re-query em rajadas de webhooks do mesmo tenant.
+
+    Resultado: {
+        "flows": [Flow, ...],
+        "trigger_by_flow": {flow_id: {"config": dict, "step": FlowStep}},
+        "keyword_to_flow": {"keyword_lower": Flow},
+        "ref_flows": [(Flow, ref_key, save_ref_field), ...],
+    }
+    """
+    cache_key = f"{tenant_id}:{channel_id}"
+    cached = _trigger_cache.get(cache_key)
+    if cached and (time.time() - cached["ts"]) < _TRIGGER_CACHE_TTL:
+        return cached["data"]
+
+    flows = db.query(Flow).filter(
+        Flow.tenant_id == tenant_id,
+        Flow.is_active == True,
+        ((Flow.channel_id == channel_id) | (Flow.channel_id == None))
+    ).all()
+
+    if not flows:
+        result = {"flows": [], "trigger_by_flow": {}, "keyword_to_flow": {}, "ref_flows": []}
+        _trigger_cache[cache_key] = {"ts": time.time(), "data": result}
+        return result
+
+    flow_ids = [f.id for f in flows]
+    flow_map = {f.id: f for f in flows}
+
+    # UMA query para TODOS os trigger steps dos flows ativos
+    trigger_steps = db.query(FlowStep).filter(
+        FlowStep.flow_id.in_(flow_ids),
+        FlowStep.type == "trigger"
+    ).all()
+
+    trigger_by_flow = {}
+    keyword_to_flow = {}
+    ref_flows = []
+
+    for ts in trigger_steps:
+        try:
+            cfg = json.loads(ts.config) if ts.config else {}
+        except Exception:
+            cfg = {}
+
+        flow = flow_map.get(ts.flow_id)
+        if not flow:
+            continue
+
+        trigger_by_flow[ts.flow_id] = {"config": cfg, "step": ts}
+        trigger_type = cfg.get("triggerType")
+
+        if trigger_type == "message":
+            for kw in cfg.get("keywords", []):
+                kw_text = kw if isinstance(kw, str) else kw.get("text", "")
+                if kw_text:
+                    kw_lower = kw_text.lower().strip()
+                    if kw_lower not in keyword_to_flow:
+                        keyword_to_flow[kw_lower] = flow
+
+        elif trigger_type == "telegram_ref_url":
+            ref_key = cfg.get("ref_key", "").strip()
+            save_ref_field = cfg.get("save_ref_field", "").strip()
+            if ref_key:
+                ref_flows.append((flow, ref_key, save_ref_field))
+
+    result = {
+        "flows": flows,
+        "trigger_by_flow": trigger_by_flow,
+        "keyword_to_flow": keyword_to_flow,
+        "ref_flows": ref_flows,
+    }
+    _trigger_cache[cache_key] = {"ts": time.time(), "data": result}
+    return result
+
+
+def invalidate_trigger_cache(tenant_id: int = None):
+    """Limpa o cache de triggers. Chamar ao salvar/alterar fluxos."""
+    if tenant_id:
+        keys_to_remove = [k for k in _trigger_cache if k.startswith(f"{tenant_id}:")]
+        for k in keys_to_remove:
+            _trigger_cache.pop(k, None)
+    else:
+        _trigger_cache.clear()
 
 
 def normalize_media_url(url: str) -> str:
@@ -56,9 +149,11 @@ def save_outbound_message(
     content: str,
     message_type: str = 'text',
     flow_execution_id: int = None,
-    step_id: int = None
+    step_id: int = None,
+    auto_commit: bool = True,
 ):
-    """Salva uma mensagem enviada pelo bot"""
+    """Salva uma mensagem enviada pelo bot.
+    Se auto_commit=False, apenas faz db.add() sem commit (caller agrupa)."""
     message = Message(
         tenant_id=tenant_id,
         contact_id=contact_id,
@@ -72,7 +167,8 @@ def save_outbound_message(
         status='sent'
     )
     db.add(message)
-    db.commit()
+    if auto_commit:
+        db.flush()  # gera msg.id sem round-trip de commit completo
     return message
 
 
@@ -1376,15 +1472,10 @@ def check_timed_out_executions():
         db.close()
 
 
-@router.post("/{webhook_secret}")
-def telegram_webhook(
-    webhook_secret: str,
-    background_tasks: BackgroundTasks,
-    update: dict = Body(...),
-    db: Session = Depends(get_db),
-):
+def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> dict:
     """
-    Webhook para receber updates do Telegram
+    Processa um update do Telegram de forma síncrona.
+    Chamado diretamente quando ARQ está offline (fallback), ou pelo worker process_webhook.
     """
     print("=" * 80)
     print(f"📨 WEBHOOK RECEBIDO: {webhook_secret}")
@@ -1392,19 +1483,26 @@ def telegram_webhook(
     print("=" * 80)
     logger.info(f"Recebido update do Telegram para webhook_secret={webhook_secret}")
     
-    # 1. Identificar o canal pelo webhook_secret
-    channels = db.query(Channel).filter(Channel.type == "telegram").all()
-    channel = None
-    
-    for ch in channels:
-        try:
-            config = json.loads(ch.config) if ch.config else {}
-            if config.get("webhook_secret") == webhook_secret:
-                channel = ch
-                break
-        except json.JSONDecodeError:
-            continue
-    
+    # 1. Identificar o canal pelo webhook_secret (query direta indexada)
+    channel = db.query(Channel).filter(
+        Channel.type == "telegram",
+        Channel.webhook_secret == webhook_secret
+    ).first()
+
+    # Fallback para canais sem webhook_secret desnormalizado (legado)
+    if not channel:
+        for ch in db.query(Channel).filter(Channel.type == "telegram", Channel.webhook_secret == None).all():
+            try:
+                config = json.loads(ch.config) if ch.config else {}
+                if config.get("webhook_secret") == webhook_secret:
+                    # Preencher coluna desnormalizada para próximas vezes
+                    ch.webhook_secret = webhook_secret
+                    db.commit()
+                    channel = ch
+                    break
+            except json.JSONDecodeError:
+                continue
+
     if not channel:
         logger.warning(f"Canal não encontrado para webhook_secret={webhook_secret}")
         raise HTTPException(status_code=404, detail="Canal não encontrado")
@@ -1537,16 +1635,19 @@ def telegram_webhook(
                 paused_exec.context = None
                 db.commit()
                 logger.info(f"   ▶ Continuando execução {paused_exec.id} a partir do step {target_step_id} (botão: {btn_label!r})")
-                background_tasks.add_task(
-                    run_flow_background,
-                    channel_id=channel.id,
-                    contact_id=paused_exec.contact_id,
-                    flow_id=paused_exec.flow_id,
-                    chat_id=cq_chat_id,
-                    bot_token=bot_token,
-                    execution_id=paused_exec.id,
-                    start_from_step_id=target_step_id
-                )
+                threading.Thread(
+                    target=run_flow_background,
+                    kwargs=dict(
+                        channel_id=channel.id,
+                        contact_id=paused_exec.contact_id,
+                        flow_id=paused_exec.flow_id,
+                        chat_id=cq_chat_id,
+                        bot_token=bot_token,
+                        execution_id=paused_exec.id,
+                        start_from_step_id=target_step_id,
+                    ),
+                    daemon=True,
+                ).start()
             else:
                 logger.warning(f"Nenhuma execução pausada encontrada para callback goto_step:{target_step_id} (botão: {btn_label!r})")
 
@@ -1742,80 +1843,46 @@ def telegram_webhook(
     
     logger.info(f"Mensagem de user_id={user_id}, chat_id={chat_id}, type={inbound_type}")
     
-    # 3. Criar/Atualizar Contact
+    # 3. Criar/Atualizar Contact — busca por coluna indexada telegram_user_id (1 query)
     contact = None
-    try:
-        # Preferir identificar o contato por user_id do Telegram.
-        # Muitos usuários não têm username, então não dá pra usar `Contact.username` como chave.
-        # Além disso, pode haver contatos duplicados antigos (username=None). Nesse caso,
-        # priorize o contact_id que tem FlowExecution esperando resposta.
-        user_id_patterns = [
-            f'%"user_id": {user_id}%',
-            f'%"user_id":{user_id}%'
-        ]
 
-        # NÃO restringir por channel_id aqui: um mesmo usuário do Telegram pode falar com
-        # mais de um bot (canais diferentes) no mesmo tenant.
-        recent_contact_ids = [
-            cid for (cid,) in db.query(Message.contact_id).filter(
-                Message.tenant_id == channel.tenant_id,
-                Message.direction == 'inbound',
-                or_(*[Message.extra_data.like(p) for p in user_id_patterns])
-            ).order_by(Message.created_at.desc()).limit(25).all()
-            if cid
-        ]
+    # Busca principal: coluna dedicada telegram_user_id (indexada, O(1))
+    if user_id:
+        contact = db.query(Contact).filter(
+            Contact.tenant_id == channel.tenant_id,
+            Contact.telegram_user_id == str(user_id)
+        ).first()
 
-        if recent_contact_ids:
-            waiting_exec = db.query(FlowExecution).filter(
-                FlowExecution.contact_id.in_(recent_contact_ids),
-                FlowExecution.status.in_(['waiting_response', 'waiting_input'])
-            ).order_by(FlowExecution.updated_at.desc()).first()
-
-            if waiting_exec:
-                contact = db.query(Contact).filter(Contact.id == waiting_exec.contact_id).first()
-            else:
-                # Sem execução esperando: usar o contato mais recente associado ao user_id
-                contact = db.query(Contact).filter(Contact.id == recent_contact_ids[0]).first()
-    except Exception as e:
-        logger.warning(f"Falha ao buscar contato por user_id em messages/execuções: {e}")
-
-    # Fallback: buscar direto no Contact.custom_fields (telegram_user_id).
-    # Isso evita duplicar contato quando o usuário não tem username.
-    if not contact:
+    # Fallback para contatos legados sem telegram_user_id preenchido
+    if not contact and user_id:
         try:
-            # Normaliza custom_fields para lidar com dupla serialização (mesmo padrão usado em contacts.py)
-            custom_json = case(
-                (func.json_type(Contact.custom_fields) == "object", Contact.custom_fields),
-                (
-                    (func.json_type(Contact.custom_fields) == "text")
-                    & (func.json_valid(func.json_extract(Contact.custom_fields, "$")) == 1)
-                    & (func.json_type(func.json_extract(Contact.custom_fields, "$")) == "object"),
-                    func.json_extract(Contact.custom_fields, "$"),
-                ),
-                else_=Contact.custom_fields,
-            )
-
-            extracted_user_id = func.json_extract(custom_json, "$.telegram_user_id")
-            contact = (
-                db.query(Contact)
-                .filter(
-                    Contact.tenant_id == channel.tenant_id,
-                    or_(
-                        extracted_user_id == user_id,
-                        cast(extracted_user_id, String) == str(user_id),
-                    ),
-                )
-                .order_by(Contact.updated_at.desc())
-                .first()
-            )
+            user_id_patterns = [
+                f'%"user_id": {user_id}%',
+                f'%"user_id":{user_id}%'
+            ]
+            recent_contact_ids = [
+                cid for (cid,) in db.query(Message.contact_id).filter(
+                    Message.tenant_id == channel.tenant_id,
+                    Message.direction == 'inbound',
+                    or_(*[Message.extra_data.like(p) for p in user_id_patterns])
+                ).order_by(Message.created_at.desc()).limit(5).all()
+                if cid
+            ]
+            if recent_contact_ids:
+                contact = db.query(Contact).filter(Contact.id == recent_contact_ids[0]).first()
+                # Preencher coluna dedicada para próximas buscas
+                if contact and not contact.telegram_user_id:
+                    contact.telegram_user_id = str(user_id)
         except Exception as e:
-            logger.warning(f"Falha ao buscar contato por telegram_user_id no custom_fields: {e}")
+            logger.warning(f"Falha no fallback de busca por user_id: {e}")
 
     if not contact and username:
         contact = db.query(Contact).filter(
             Contact.tenant_id == channel.tenant_id,
             Contact.username == username
         ).first()
+        if contact and user_id and not contact.telegram_user_id:
+            contact.telegram_user_id = str(user_id)
     
     if not contact:
         # Verificar limite de contatos ativos do plano antes de criar
@@ -1835,34 +1902,35 @@ def telegram_webhook(
             first_name=first_name,
             last_name=last_name,
             username=username,
-            default_channel_id=channel.id
+            default_channel_id=channel.id,
+            telegram_user_id=str(user_id) if user_id else None,
         )
         db.add(contact)
         db.commit()
         db.refresh(contact)
         logger.info(f"Contato criado: {contact.id} ({contact_full_name(contact)})")
     else:
-        # Atualizar dados se necessário
+        # Atualizar dados se necessário (tudo num commit só)
         contact.first_name = first_name or contact.first_name
         contact.last_name = last_name or contact.last_name
         contact.username = username or contact.username
-        # Garantir que o contato fique associado ao bot/canal que recebeu a mensagem.
-        # Isso faz o contato aparecer no filtro por canal e evita confusão em multi-bots.
+        if user_id:
+            contact.telegram_user_id = str(user_id)
         if contact.default_channel_id != channel.id:
             contact.default_channel_id = channel.id
+
+        # IDs Telegram no custom_fields (debug)
+        try:
+            custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
+            if custom_fields.get("telegram_user_id") != user_id or custom_fields.get("telegram_chat_id") != chat_id:
+                custom_fields["telegram_user_id"] = user_id
+                custom_fields["telegram_chat_id"] = chat_id
+                contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Falha ao atualizar custom_fields: {e}")
+
         db.commit()
         logger.info(f"Contato atualizado: {contact.id} ({contact_full_name(contact)})")
-
-    # Garantir que IDs do Telegram fiquem persistidos no custom_fields (útil para debug e futuras buscas)
-    try:
-        custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
-        if custom_fields.get("telegram_user_id") != user_id or custom_fields.get("telegram_chat_id") != chat_id:
-            custom_fields["telegram_user_id"] = user_id
-            custom_fields["telegram_chat_id"] = chat_id
-            contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
-            db.commit()
-    except Exception as e:
-        logger.warning(f"Falha ao atualizar custom_fields com IDs Telegram: {e}")
     
     # 3.1. Salvar mensagem recebida (inbound)
     extra_data = json.dumps(inbound_extra, ensure_ascii=False)
@@ -1971,44 +2039,15 @@ def telegram_webhook(
             active_execution = ex
             break
     
+    # Pré-carregar trigger_map UMA VEZ (2 queries) — usado em todo o matching abaixo
+    trigger_map = _load_trigger_map(db, channel.tenant_id, channel.id)
+
     if active_execution:
         # Se a mensagem é um gatilho explícito (keyword) de algum fluxo,
         # priorize iniciar o novo fluxo ao invés de tratar como "resposta".
         # (Usuário pode clicar/iniciar outro gatilho a qualquer momento.)
         try:
-            flows_for_trigger_check = db.query(Flow).filter(
-                Flow.tenant_id == channel.tenant_id,
-                Flow.is_active == True,
-                ((Flow.channel_id == channel.id) | (Flow.channel_id == None))
-            ).all()
-
-            keyword_match_flow = None
-            for f in flows_for_trigger_check:
-                trigger_step = db.query(FlowStep).filter(
-                    FlowStep.flow_id == f.id,
-                    FlowStep.type == "trigger"
-                ).first()
-                if not trigger_step:
-                    continue
-
-                trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
-                if trigger_config.get("triggerType") != "message":
-                    continue
-
-                keywords = trigger_config.get("keywords", [])
-                keyword_list = []
-                for kw in keywords:
-                    if isinstance(kw, str):
-                        keyword_list.append(kw)
-                    elif isinstance(kw, dict):
-                        keyword_list.append(kw.get("text", ""))
-
-                for kw in keyword_list:
-                    if kw and kw.lower().strip() == text_lower:
-                        keyword_match_flow = f
-                        break
-                if keyword_match_flow:
-                    break
+            keyword_match_flow = trigger_map["keyword_to_flow"].get(text_lower)
 
             if keyword_match_flow:
                 # Se a execução ativa está aguardando clique de botão (não texto),
@@ -2180,43 +2219,30 @@ def telegram_webhook(
                                 logger.info(f"Pós-resposta: redirecionando para flow {target_flow_id}")
                                 target_flow = db.query(Flow).filter(Flow.id == target_flow_id).first()
                                 if target_flow:
-                                    background_tasks.add_task(
-                                        run_flow_background,
-                                        channel.id,
-                                        contact.id,
-                                        target_flow_id,
-                                        saved_chat_id or chat_id,
-                                        saved_bot_token or bot_token,
-                                    )
+                                    threading.Thread(
+                                        target=run_flow_background,
+                                        args=(channel.id, contact.id, target_flow_id, saved_chat_id or chat_id, saved_bot_token or bot_token),
+                                        daemon=True,
+                                    ).start()
                                 return {"status": "ok", "message": "Flow redirected"}
                             elif redirect_result.get("action") == "redirect_step":
                                 target_step_id = redirect_result.get("step_id")
                                 logger.info(f"Pós-resposta: pulando para step {target_step_id}")
-                                background_tasks.add_task(
-                                    run_flow_background,
-                                    channel.id,
-                                    contact.id,
-                                    active_execution.flow_id,
-                                    saved_chat_id or chat_id,
-                                    saved_bot_token or bot_token,
-                                    active_execution.id,
-                                    target_step_id,
-                                )
+                                threading.Thread(
+                                    target=run_flow_background,
+                                    args=(channel.id, contact.id, active_execution.flow_id, saved_chat_id or chat_id, saved_bot_token or bot_token, active_execution.id, target_step_id),
+                                    daemon=True,
+                                ).start()
                                 return {"status": "ok", "message": "Flow step redirected"}
                     except Exception as e:
                         logger.error(f"Erro ao executar ações pós-resposta: {e}")
                 
                 # Continuar fluxo a partir do próximo step
-                background_tasks.add_task(
-                    run_flow_background,
-                    channel.id,
-                    contact.id,
-                    active_execution.flow_id,
-                    saved_chat_id or chat_id,
-                    saved_bot_token or bot_token,
-                    active_execution.id,
-                    next_step.id  # Próximo step
-                )
+                threading.Thread(
+                    target=run_flow_background,
+                    args=(channel.id, contact.id, active_execution.flow_id, saved_chat_id or chat_id, saved_bot_token or bot_token, active_execution.id, next_step.id),
+                    daemon=True,
+                ).start()
                 
                 print(f"   ✓ Fluxo continuando a partir do step {next_step.id}")
                 return {"status": "ok", "message": "Flow continued"}
@@ -2284,31 +2310,21 @@ def telegram_webhook(
                             next_step = steps[current_index + 1] if (current_index >= 0 and current_index + 1 < len(steps)) else None
 
                         if next_step:
-                            background_tasks.add_task(
-                                run_flow_background,
-                                channel.id,
-                                contact.id,
-                                active_exec.flow_id,
-                                chat_id,
-                                bot_token,
-                                active_exec.id,
-                                next_step.id
-                            )
+                            threading.Thread(
+                                target=run_flow_background,
+                                args=(channel.id, contact.id, active_exec.flow_id, chat_id, bot_token, active_exec.id, next_step.id),
+                                daemon=True,
+                            ).start()
                             return {"status": "ok", "message": "Flow continued (fallback)"}
                 except Exception as e:
                     logger.error(f"Erro no fallback de execucao ativa: {e}")
     
-    # 4. Buscar fluxos ativos deste canal/tenant (apenas se não houver fluxo ativo)
-    # IMPORTANTE: Filtrar por channel_id OU fluxos sem channel_id (legado)
-    flows = db.query(Flow).filter(
-        Flow.tenant_id == channel.tenant_id,
-        Flow.is_active == True,
-        ((Flow.channel_id == channel.id) | (Flow.channel_id == None))
-    ).all()
-    
+    # 4. Usar trigger_map já carregado (sem queries adicionais)
+    flows = trigger_map["flows"]
+
     print(f"\n[VERIFICACAO] Verificando {len(flows)} fluxo(s) ativo(s)")
     logger.info(f"Verificando {len(flows)} fluxo(s) ativo(s)")
-    
+
     selected_flow = None
     ref_flow_matched = None
     # `text_lower` já foi calculado acima a partir de `normalized_text`
@@ -2316,40 +2332,20 @@ def telegram_webhook(
     # Primeiro: verificar se há match de link de referência
     if ref_param and len(flows) > 0:
         print(f"\n[REF URL CHECK] Verificando match para ref_param: {ref_param}")
-        
-        for flow in flows:
-            try:
-                trigger_step = db.query(FlowStep).filter(
-                    FlowStep.flow_id == flow.id,
-                    FlowStep.type == "trigger"
-                ).first()
-                
-                if trigger_step:
-                    trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
-                    trigger_type = trigger_config.get("triggerType")
-                    
-                    if trigger_type == "telegram_ref_url":
-                        ref_key = trigger_config.get("ref_key", "").strip()
-                        save_ref_field = trigger_config.get("save_ref_field", "").strip()
-                        
-                        # Verificar match exato ou parcial
-                        if ref_param == ref_key or ref_param.startswith(ref_key):
-                            print(f"  ✅ MATCH! Fluxo '{flow.name}' (ref_key: {ref_key})")
-                            
-                            # Salvar parâmetro em campo personalizado (se configurado)
-                            if save_ref_field:
-                                custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
-                                custom_fields[save_ref_field] = ref_param
-                                contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
-                                db.commit()
-                                print(f"  💾 Parâmetro salvo em: {save_ref_field} = {ref_param}")
-                            
-                            ref_flow_matched = flow
-                            break
-            except Exception as e:
-                print(f"  [ERRO] Erro ao verificar ref URL no flow {flow.id}: {e}")
-                continue
-        
+
+        for flow, ref_key, save_ref_field in trigger_map["ref_flows"]:
+            if ref_param == ref_key or ref_param.startswith(ref_key):
+                print(f"  MATCH! Fluxo '{flow.name}' (ref_key: {ref_key})")
+
+                if save_ref_field:
+                    custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
+                    custom_fields[save_ref_field] = ref_param
+                    contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
+                    db.commit()
+
+                ref_flow_matched = flow
+                break
+
         if ref_flow_matched:
             selected_flow = ref_flow_matched
             print(f"\n[MATCH REF URL] Fluxo selecionado: {selected_flow.name}")
@@ -2359,20 +2355,7 @@ def telegram_webhook(
     # - Se existir exatamente 1 fluxo com triggerType=telegram_ref_url, iniciamos ele.
     # - Se existirem vários, orientamos a usar o link com parâmetro.
     if not selected_flow and is_start_command and not ref_param:
-        ref_url_flows: list[Flow] = []
-        for flow in flows:
-            try:
-                trigger_step = db.query(FlowStep).filter(
-                    FlowStep.flow_id == flow.id,
-                    FlowStep.type == "trigger"
-                ).first()
-                if not trigger_step:
-                    continue
-                trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
-                if trigger_config.get("triggerType") == "telegram_ref_url":
-                    ref_url_flows.append(flow)
-            except Exception:
-                continue
+        ref_url_flows = [f for f, _, _ in trigger_map["ref_flows"]]
 
         if len(ref_url_flows) == 1:
             selected_flow = ref_url_flows[0]
@@ -2395,123 +2378,27 @@ def telegram_webhook(
                 logger.warning(f"Falha ao responder /start sem ref: {e}")
             return {"status": "ok", "message": "Start without ref - guidance sent"}
     
-    # Se não houver match de ref URL, verificar keywords normais
+    # Verificar keyword ou trigger "any"/"first_message" usando trigger_map (sem N+1)
     if not selected_flow:
-        # Mapear keywords para detectar duplicatas
-        keyword_map = {}  # {keyword: [flow_id, flow_name]}
-        
-        # Mapear todas as keywords de todos os fluxos
-        for flow in flows:
-            try:
-                trigger_step = db.query(FlowStep).filter(
-                    FlowStep.flow_id == flow.id,
-                    FlowStep.type == "trigger"
-                ).first()
-                
-                if trigger_step:
-                    trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
-                    trigger_type = trigger_config.get("triggerType")
-                    
-                    # Ignorar triggers de ref URL (já processados)
-                    if trigger_type == "telegram_ref_url":
-                        continue
-                    
-                    if trigger_type == "message":
-                        keywords = trigger_config.get("keywords", [])
-                    
-                        for kw in keywords:
-                            kw_text = kw if isinstance(kw, str) else kw.get("text", "")
-                            if kw_text:
-                                kw_lower = kw_text.lower().strip()
-                                
-                                if kw_lower in keyword_map:
-                                    # Duplicata detectada!
-                                    existing = keyword_map[kw_lower]
-                                    print(f"\n[ALERTA DUPLICATA] Keyword '{kw_text}' encontrada em multiplos fluxos:")
-                                    print(f"  - Fluxo '{existing['name']}' (ID: {existing['id']})")
-                                    print(f"  - Fluxo '{flow.name}' (ID: {flow.id})")
-                                    print(f"  [INFO] Sera executado o primeiro da lista: '{existing['name']}'")
-                                    logger.warning(f"Keyword duplicada '{kw_text}': Flow {existing['id']} vs Flow {flow.id}")
-                                else:
-                                    keyword_map[kw_lower] = {
-                                        'id': flow.id,
-                                        'name': flow.name
-                                    }
-            except Exception as e:
-                print(f"  [ERRO] Erro ao mapear keywords do flow {flow.id}: {e}")
-                continue
-    
-    # Segundo passo: verificar cada fluxo para encontrar match (apenas se não houve match por ref URL)
+        # Lookup O(1) por keyword
+        kw_flow = trigger_map["keyword_to_flow"].get(text_lower)
+        if kw_flow:
+            selected_flow = kw_flow
+            print(f"  [SELECIONADO] Fluxo: '{kw_flow.name}' (keyword match)")
+            logger.info(f"Fluxo selecionado por keyword: {kw_flow.name}")
+
+    # Fallback: trigger "any" ou "first_message"
     if not selected_flow:
         for flow in flows:
-            try:
-                # NOTA: Lógica de fluxo padrão foi removida - apenas matches 100% de keywords ativam fluxos
-
-                # Buscar trigger step do fluxo
-                trigger_step = db.query(FlowStep).filter(
-                    FlowStep.flow_id == flow.id,
-                    FlowStep.type == "trigger"
-                ).first()
-
-                if not trigger_step:
-                    print(f"  [WARN] Flow '{flow.name}' sem trigger step, pulando")
-                    continue
-
-                # Verificar config do trigger
-                trigger_config = json.loads(trigger_step.config) if trigger_step.config else {}
-                trigger_type = trigger_config.get("triggerType")
-
-                print(f"  [FLOW] '{flow.name}' (ID: {flow.id}) | Trigger: {trigger_type}")
-
-                # Se for gatilho de mensagem com keywords
-                if trigger_type == "message":
-                    keywords = trigger_config.get("keywords", [])
-
-                    if not keywords:
-                        print(f"     [SKIP] Sem keywords configuradas")
-                        continue
-
-                    # Extrair lista de keywords
-                    keyword_list = []
-                    for kw in keywords:
-                        if isinstance(kw, str):
-                            keyword_list.append(kw)
-                        elif isinstance(kw, dict):
-                            keyword_list.append(kw.get("text", ""))
-
-                    print(f"     [KEYWORDS] {keyword_list}")
-
-                    # Verificar se alguma keyword bate com a mensagem
-                    keyword_matched = False
-                    for kw in keyword_list:
-                        if kw and kw.lower().strip() == text_lower:
-                            keyword_matched = True
-                            print(f"     [MATCH!] Keyword '{kw}' = Mensagem '{text}'")
-                            break
-
-                    if keyword_matched:
-                        selected_flow = flow
-                        print(f"  [SELECIONADO] Fluxo: '{flow.name}' (ID: {flow.id})")
-                        logger.info(f"Fluxo selecionado por keyword: {flow.name}")
-                        break
-                    else:
-                        print(f"     [NO-MATCH] '{text}' nao bate com keywords")
-
-                # Se for gatilho de "primeira mensagem" ou "sempre"
-                elif trigger_type == "any" or trigger_type == "first_message":
-                    selected_flow = flow
-                    print(f"  [SELECIONADO] Fluxo: '{flow.name}' (trigger: {trigger_type})")
-                    logger.info(f"Fluxo selecionado (always/first): {flow.name}")
-                    break
-
-            except json.JSONDecodeError as e:
-                print(f"  [ERRO] Config invalido para flow {flow.id}: {e}")
-                logger.warning(f"Config invalido para flow {flow.id}")
+            trig = trigger_map["trigger_by_flow"].get(flow.id)
+            if not trig:
                 continue
-            except Exception as e:
-                print(f"  [ERRO] Erro ao processar flow {flow.id}: {e}")
-                logger.error(f"Erro ao processar flow {flow.id}: {e}")
-                continue
+            trigger_type = trig["config"].get("triggerType")
+            if trigger_type in ("any", "first_message"):
+                selected_flow = flow
+                print(f"  [SELECIONADO] Fluxo: '{flow.name}' (trigger: {trigger_type})")
+                logger.info(f"Fluxo selecionado (always/first): {flow.name}")
+                break
     
     # Se nenhum fluxo deu match, NÃO FAZER NADA (sem fluxo padrão)
     if not selected_flow:
@@ -2541,14 +2428,42 @@ def telegram_webhook(
     print(f"\n[EXECUTANDO] Fluxo: {selected_flow.id} - {selected_flow.name}")
     logger.info(f"Executando fluxo: {selected_flow.id} - {selected_flow.name} (execution_id={flow_execution.id})")
     
-    background_tasks.add_task(
-        run_flow_background,
-        channel.id,
-        contact.id,
-        selected_flow.id,
-        chat_id,
-        bot_token,
-        flow_execution.id,  # Passar execution_id
-        None  # start_from_step_id (None = começar do início)
-    )
+    threading.Thread(
+        target=run_flow_background,
+        args=(channel.id, contact.id, selected_flow.id, chat_id, bot_token, flow_execution.id, None),
+        daemon=True,
+    ).start()
     return {"status": "ok", "message": "Flow queued"}
+
+
+@router.post("/{webhook_secret}")
+async def telegram_webhook(
+    webhook_secret: str,
+    update: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Webhook para receber updates do Telegram.
+
+    Fase 3: Enfileira o update no ARQ e retorna 200 imediatamente ao Telegram.
+    Fallback: se ARQ offline, processa síncronamente (comportamento original).
+    Idempotência: job_id = tg_{secret[:8]}_{update_id} evita reprocessamento de retries do Telegram.
+    """
+    from app.workers.arq_pool import enqueue
+
+    update_id = update.get("update_id")
+    job_id = f"tg_{webhook_secret[:8]}_{update_id}" if update_id else None
+
+    enqueued = await enqueue(
+        "process_webhook",
+        payload=update,
+        webhook_secret=webhook_secret,
+        _job_id=job_id,
+    )
+    if enqueued is not None:
+        # Job enfileirado — retorna 200 imediato, worker processa assincronamente
+        return {"ok": True}
+
+    # ARQ offline: fallback para processamento síncrono (comportamento original preservado)
+    logger.warning("ARQ offline — processando webhook síncronamente (fallback)")
+    return _handle_telegram_update(update, webhook_secret, db)

@@ -117,7 +117,7 @@ const auth = useAuth()
 const onSubmit = async () => {
   loading.value = true
   try {
-    const response = await api.post('/api/v1/auth/login/', {
+    const response = await api.post('/api/v1/auth/login', {
       email: email.value,
       password: password.value
     })
@@ -126,7 +126,11 @@ const onSubmit = async () => {
     router.push('/dashboard')
   } catch (err) {
     console.error('Erro no login:', err)
-    toast.error(err.response?.data?.detail || 'Erro ao fazer login. Verifique suas credenciais.')
+    const detail = err.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ')
+      : (detail || 'Erro ao fazer login. Verifique suas credenciais.')
+    toast.error(msg)
   } finally {
     loading.value = false
   }

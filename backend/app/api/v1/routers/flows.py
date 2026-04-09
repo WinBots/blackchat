@@ -18,6 +18,7 @@ from app.services.billing_service import LimitExceededError, check_flow_limit, g
 from app.cache.service import invalidate_flow, invalidate_tenant_flows
 from app.cache.redis_client import cache_get, cache_set, cache_delete
 from app.cache.keys import CacheKeys
+from app.api.v1.routers.telegram import invalidate_trigger_cache
 
 router = APIRouter()
 
@@ -258,6 +259,7 @@ def create_flow(
     db.commit()
     db.refresh(flow)
     cache_delete(CacheKeys.tenant_flows(tenant.id))
+    invalidate_trigger_cache(tenant.id)
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
@@ -348,6 +350,7 @@ def update_flow(
     db.refresh(flow)
     invalidate_flow(flow_id)
     cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
+    invalidate_trigger_cache(flow.tenant_id)
     return FlowOut(
         id=flow.id,
         tenant_id=flow.tenant_id,
@@ -437,6 +440,7 @@ def delete_flow(
     db.commit()
     invalidate_flow(flow_id)
     cache_delete(CacheKeys.tenant_flows(tenant.id))
+    invalidate_trigger_cache(tenant.id)
     return {"ok": True}
 
 
@@ -494,6 +498,7 @@ def create_step(
     db.refresh(step)
     invalidate_flow(flow_id)
     cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
+    invalidate_trigger_cache(flow.tenant_id)
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -535,6 +540,7 @@ def update_step(
     invalidate_flow(flow_id)
     if data.type == "trigger" or (data.config is not None and step.type == "trigger"):
         cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
+        invalidate_trigger_cache(flow.tenant_id)
     return FlowStepOut(
         id=step.id,
         flow_id=step.flow_id,  # type: ignore
@@ -565,6 +571,7 @@ def delete_step(
     invalidate_flow(flow_id)
     if is_trigger:
         cache_delete(CacheKeys.tenant_flows(flow.tenant_id))
+        invalidate_trigger_cache(flow.tenant_id)
     return {"ok": True}
 
 

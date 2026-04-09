@@ -18,7 +18,7 @@ class FlowExecution(Base):
     trigger_type = Column(String(50), nullable=False)  # 'manual', 'keyword', 'webhook', 'schedule'
     
     # Status da execução
-    status = Column(String(50), nullable=False, default='started')  # 'active', 'waiting_response', 'completed', 'failed', 'cancelled'
+    status = Column(String(50), nullable=False, default='started', index=True)  # 'active', 'waiting_response', 'completed', 'failed', 'cancelled'
     
     # Step atual (para fluxos que aguardam input)
     current_step_id = Column(Integer, ForeignKey("flow_steps.id"), nullable=True)

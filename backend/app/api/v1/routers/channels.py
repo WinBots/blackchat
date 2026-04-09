@@ -162,7 +162,8 @@ def update_telegram_config(
     # Ativar o canal ao conectar o bot
     channel.is_active = True
     
-    # Salvar no banco
+    # Salvar no banco (coluna desnormalizada + JSON completo)
+    channel.webhook_secret = config["webhook_secret"]
     channel.config = json.dumps(config)
     db.commit()
     db.refresh(channel)

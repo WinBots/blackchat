@@ -28,7 +28,11 @@ def get_redis():
 
     try:
         import redis
-        url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            from app.config import get_settings
+            url = get_settings().REDIS_URL
+        except Exception:
+            url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
         client = redis.Redis.from_url(
             url,
             decode_responses=True,

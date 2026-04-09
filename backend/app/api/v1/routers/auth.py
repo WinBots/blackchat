@@ -24,6 +24,7 @@ from app.services.email_sender import (
     send_welcome_email_background,
     send_password_reset_email_background,
 )
+from app.workers.arq_pool import enqueue as _arq_enqueue
 
 router = APIRouter()
 
@@ -64,7 +65,7 @@ class TenantOut(BaseModel):
 
 
 @router.post("/register", response_model=TokenResponse)
-def register(
+async def register(
     data: RegisterRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -144,13 +145,21 @@ def register(
     db.refresh(user)
     db.refresh(tenant)
 
-    # Email de boas-vindas (não bloqueia o registro)
-    background_tasks.add_task(
-        send_welcome_email_background,
+    # Email de boas-vindas — tenta via ARQ, fallback para BackgroundTasks
+    enqueued = await _arq_enqueue(
+        "send_email_job",
+        email_type="welcome",
         to_email=user.email,
         full_name=user.full_name,
         company_name=tenant.name,
     )
+    if enqueued is None:
+        background_tasks.add_task(
+            send_welcome_email_background,
+            to_email=user.email,
+            full_name=user.full_name,
+            company_name=tenant.name,
+        )
     
     # Criar token (com tenant_id para multi-workspace)
     access_token = create_access_token(data={"sub": user.id, "tid": tenant.id})
@@ -191,7 +200,7 @@ class ResetPasswordRequest(BaseModel):
 # ─── Recuperação de senha ─────────────────────────────────────────────────────
 
 @router.post("/forgot-password")
-def forgot_password(
+async def forgot_password(
     data: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -218,12 +227,20 @@ def forgot_password(
 
         settings = get_settings()
         reset_url = f"{settings.PUBLIC_BASE_URL}/#/reset-password?token={token}"
-        background_tasks.add_task(
-            send_password_reset_email_background,
+        enqueued = await _arq_enqueue(
+            "send_email_job",
+            email_type="password_reset",
             to_email=user.email,
             full_name=user.full_name,
             reset_url=reset_url,
         )
+        if enqueued is None:
+            background_tasks.add_task(
+                send_password_reset_email_background,
+                to_email=user.email,
+                full_name=user.full_name,
+                reset_url=reset_url,
+            )
 
     return {"message": "Se o e-mail estiver cadastrado, você receberá as instruções em breve."}
 

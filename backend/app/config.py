@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
 
     # Redis (cache — opcional; se indisponível o sistema continua via banco)
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
     # Email (SMTP) - ex: Titan/HostGator
     SMTP_HOST: str = ""

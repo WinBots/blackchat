@@ -158,6 +158,7 @@ class BulkMessageIn(BulkMessageFilters):
     text: str
     parse_mode: str = "MarkdownV2"
     dry_run: bool = False  # true = apenas simula/prevê alcance, sem enviar
+    background: bool = False  # true = enfileira job e retorna job_id imediato
 
 
 class BulkFlowStartIn(BulkMessageFilters):
@@ -166,6 +167,7 @@ class BulkFlowStartIn(BulkMessageFilters):
     """
     flow_id: Optional[int] = None
     dry_run: bool = False
+    background: bool = False  # true = enfileira job e retorna job_id imediato
 
 
 def _parse_iso_date_or_datetime(value: str) -> datetime:
@@ -1094,7 +1096,7 @@ def send_message_to_contact(
 
 
 @router.post("/bulk-send")
-def send_bulk_message(
+async def send_bulk_message(
     body: BulkMessageIn,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db),
@@ -1104,6 +1106,7 @@ def send_bulk_message(
 
     - Reutiliza os mesmos filtros da listagem de contatos (search, channel_id, tags)
     - Quando dry_run=True, apenas retorna a quantidade de contatos impactados
+    - Quando background=True, enfileira o job e retorna job_id imediato
     """
     from app.services.telegram_sender import send_telegram_message
 
@@ -1129,13 +1132,34 @@ def send_bulk_message(
     if total == 0:
         return {"total": 0, "sent": 0, "failed": 0, "errors": []}
 
-    # Limite de segurança para evitar estouro em um único request HTTP
+    # Limite de segurança
     MAX_BULK_SEND = 2000
     if total > MAX_BULK_SEND:
         raise HTTPException(
             status_code=400,
             detail=f"Segmento muito grande ({total} contatos). Refine os filtros ou reduza o público (limite {MAX_BULK_SEND}).",
         )
+
+    # ── Modo background: enfileira job e retorna imediato ─────────────────────
+    if body.background:
+        from app.workers.arq_pool import enqueue
+        import uuid
+
+        # Resolve contatos aqui (query rápida) e passa os IDs ao worker
+        contact_ids = [c.id for c in contacts]
+        job_id = f"bulk_msg_{tenant.id}_{uuid.uuid4().hex[:12]}"
+        enqueued = await enqueue(
+            "send_bulk_message_job",
+            tenant_id=tenant.id,
+            contact_ids=contact_ids,
+            text=body.text,
+            parse_mode=body.parse_mode,
+            _job_id=job_id,
+        )
+        if enqueued:
+            return {"job_id": job_id, "status": "queued", "total": total}
+        # Fallback: se ARQ offline, cai para execução síncrona abaixo
+        logger.warning("ARQ offline — executando bulk_send de forma síncrona")
 
     sent = 0
     failed = 0
@@ -1223,7 +1247,7 @@ def send_bulk_message(
 
 
 @router.post("/bulk-start-flow")
-def bulk_start_flow(
+async def bulk_start_flow(
     body: BulkFlowStartIn,
     background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
@@ -1234,6 +1258,7 @@ def bulk_start_flow(
 
     Usa os mesmos filtros da listagem de contatos (search, channel_id, tags).
     Quando dry_run=True, apenas retorna a quantidade de contatos impactados.
+    Quando background=True, enfileira o job e retorna job_id imediato.
     """
     logger.debug(
         "bulk_start_flow: dry_run=%s flow_id=%s field_conditions=%s",
@@ -1271,6 +1296,24 @@ def bulk_start_flow(
             detail=f"Segmento muito grande ({total} contatos). Refine os filtros ou reduza o público (limite {MAX_BULK_START}).",
         )
 
+    # ── Modo background: enfileira job e retorna imediato ─────────────────────
+    if body.background:
+        from app.workers.arq_pool import enqueue
+        import uuid
+
+        contact_ids = [c.id for c in contacts]
+        job_id = f"bulk_flow_{tenant.id}_{uuid.uuid4().hex[:12]}"
+        enqueued = await enqueue(
+            "run_bulk_flow_job",
+            tenant_id=tenant.id,
+            contact_ids=contact_ids,
+            flow_id=body.flow_id,
+            _job_id=job_id,
+        )
+        if enqueued:
+            return {"job_id": job_id, "status": "queued", "total": total}
+        logger.warning("ARQ offline — executando bulk_start_flow de forma síncrona")
+
     started = 0
     failed = 0
     errors: List[dict] = []
@@ -1278,10 +1321,9 @@ def bulk_start_flow(
     for contact in contacts:
         try:
             # Reutilizar a função existente de start_flow_for_contact para manter a lógica centralizada
-            _ = start_flow_for_contact(
+            _ = await start_flow_for_contact(
                 contact_id=contact.id,
                 flow_id=body.flow_id,
-                background_tasks=background_tasks,
                 tenant=tenant,
                 db=db,
             )
@@ -1299,6 +1341,25 @@ def bulk_start_flow(
         "failed": failed,
         "errors": errors,
     }
+
+@router.get("/jobs/{job_id}")
+def get_bulk_job_status(
+    job_id: str,
+    tenant: Tenant = Depends(get_current_tenant),
+):
+    """
+    Retorna o status de progresso de um job de bulk (bulk-send ou bulk-start-flow).
+    Use este endpoint para fazer polling após enfileirar com background=true.
+    """
+    from app.cache.redis_client import cache_get
+    data = cache_get(f"bulk_job:{job_id}")
+    if not data:
+        raise HTTPException(status_code=404, detail="Job não encontrado ou expirado.")
+    # Segurança: valida que o job pertence ao tenant
+    if data.get("tenant_id") != tenant.id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    return data
+
 
 @router.post("/{contact_id:int}/send-media")
 async def send_media_to_contact(
@@ -1442,15 +1503,15 @@ async def send_media_to_contact(
 
 
 @router.post("/{contact_id:int}/start-flow/{flow_id:int}")
-def start_flow_for_contact(
+async def start_flow_for_contact(
     contact_id: int,
     flow_id: int,
-    background_tasks: BackgroundTasks,
     tenant: Tenant = Depends(get_current_tenant),
     db: Session = Depends(get_db)
 ):
     """
-    Inicia um fluxo manualmente para um contato específico
+    Inicia um fluxo manualmente para um contato específico.
+    Fase 4: enfileira via ARQ (fallback: threading.Thread se ARQ offline).
     """
     logger.info(f"🚀 Iniciando fluxo manual: contact_id={contact_id}, flow_id={flow_id}")
     
@@ -1550,20 +1611,27 @@ def start_flow_for_contact(
     
     logger.info(f"✓ Execução registrada: FlowExecution ID={flow_execution.id}")
     
-    # Importar função de execução de fluxo
-    from app.api.v1.routers.telegram import run_flow_background
-    
-    # Executar fluxo em background
-    background_tasks.add_task(
-        run_flow_background,
-        channel.id,
-        contact.id,
-        flow.id,
-        chat_id,
-        bot_token,
-        flow_execution.id,  # Passar execution_id
-        None  # start_from_step_id (None = começar do início)
+    # Enfileirar via ARQ (Fase 4) com fallback para threading.Thread
+    from app.workers.arq_pool import enqueue
+    enqueued = await enqueue(
+        "run_flow_job",
+        channel_id=channel.id,
+        contact_id=contact.id,
+        flow_id=flow.id,
+        chat_id=chat_id,
+        bot_token=bot_token,
+        execution_id=flow_execution.id,
+        start_from_step_id=None,
     )
+    if not enqueued:
+        # ARQ offline: fallback síncrono via threading (comportamento original)
+        import threading as _t
+        from app.api.v1.routers.telegram import run_flow_background
+        _t.Thread(
+            target=run_flow_background,
+            args=(channel.id, contact.id, flow.id, chat_id, bot_token, flow_execution.id, None),
+            daemon=True,
+        ).start()
     
     logger.info(f"Fluxo '{flow.name}' (ID: {flow.id}) iniciado manualmente para contato '{contact.first_name}' (ID: {contact.id}), chat_id={chat_id}")
     

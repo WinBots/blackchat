@@ -13,6 +13,7 @@ class Channel(Base):
     type = Column(String(50), nullable=False)  # telegram, instagram
     name = Column(String(255), nullable=False)
     config = Column(Text, nullable=True)
+    webhook_secret = Column(String(255), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

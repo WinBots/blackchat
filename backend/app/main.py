@@ -76,6 +76,20 @@ app.include_router(debug.router, prefix="/api/v1/debug", tags=["debug"])
 app.include_router(dev_tools.router, prefix="/api/v1", tags=["dev-tools"])
 
 
+@app.on_event("startup")
+async def startup_arq_pool():
+    """Inicializa o pool ARQ para enfileirar jobs. Falha graciosamente se Redis offline."""
+    from app.workers.arq_pool import create_arq_pool
+    await create_arq_pool()
+
+
+@app.on_event("shutdown")
+async def shutdown_arq_pool():
+    """Fecha o pool ARQ no shutdown da API."""
+    from app.workers.arq_pool import close_arq_pool
+    await close_arq_pool()
+
+
 def _timeout_checker_loop():
     """Thread daemon que verifica execuções com timeout a cada 60 segundos."""
     time.sleep(10)  # aguarda o servidor inicializar completamente
