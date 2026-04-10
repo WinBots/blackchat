@@ -595,7 +595,7 @@ def find_next_step_by_output(flow_config: dict, current_step_id: int, output_id:
         return None
 
 
-def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id: int, bot_token: str, execution_id: int = None, start_from_step_id: int = None):
+def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id: int, bot_token: str, execution_id: int = None, start_from_step_id: int = None, callback_text: str = None):
     """
     Executa fluxo em background com suporte a pausar/continuar
     
@@ -893,6 +893,17 @@ def run_flow_background(channel_id: int, contact_id: int, flow_id: int, chat_id:
                                 logger.info(f"   ⏸️ Ação aguarda resposta do usuário para campo: {waiting_field}")
                                 break  # Não precisa verificar mais ações
                     
+                    # Se veio de callback (botão), usar o texto do botão como "ultima_mensagem"
+                    # em vez de pausar esperando o usuário digitar
+                    if should_wait_for_response and waiting_field and callback_text:
+                        logger.info(f"   ▶ set_field '{waiting_field}' = '{callback_text}' (via callback_text, sem pausar)")
+                        custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
+                        custom_fields[waiting_field] = callback_text
+                        contact.custom_fields = json.dumps(custom_fields, ensure_ascii=False)
+                        db.commit()
+                        should_wait_for_response = False
+                        waiting_field = None
+
                     # Se deve aguardar resposta, pausar ANTES de executar ações
                     if should_wait_for_response and waiting_field:
                         logger.info(f"   ⏸️ PAUSANDO fluxo para aguardar resposta do usuário")
@@ -1667,10 +1678,11 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                         bot_token=bot_token,
                         execution_id=paused_exec.id,
                         start_from_step_id=target_step_id,
+                        callback_text=btn_label or None,
                     ),
                     daemon=True,
                 ).start()
-                print(f"[FLOW] Thread disparada para exec_id={paused_exec.id} step={target_step_id}", flush=True)
+                print(f"[FLOW] Thread disparada para exec_id={paused_exec.id} step={target_step_id} callback_text={btn_label!r}", flush=True)
             else:
                 print(f"[FLOW] AVISO: Nenhuma execução pausada para goto_step:{target_step_id} btn={btn_label!r}", flush=True)
 
