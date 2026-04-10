@@ -173,11 +173,11 @@ def update_telegram_config(
         telegram_api_url = f"https://api.telegram.org/bot{payload.bot_token}/setWebhook"
         webhook_response = httpx.post(
             telegram_api_url,
-            json={"url": config["webhook_url"]},
+            json={"url": config["webhook_url"], "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"]},
             timeout=10.0
         )
         webhook_result = webhook_response.json()
-        
+
         if not webhook_result.get("ok"):
             logger.warning("Não foi possível registrar webhook no Telegram: %s", webhook_result.get("description"))
         else:
@@ -254,11 +254,11 @@ def update_channel(
                     telegram_api_url = f"https://api.telegram.org/bot{data.bot_token}/setWebhook"
                     webhook_response = httpx.post(
                         telegram_api_url,
-                        json={"url": webhook_url},
+                        json={"url": webhook_url, "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"]},
                         timeout=10.0
                     )
                     webhook_result = webhook_response.json()
-                    
+
                     if not webhook_result.get("ok"):
                         logger.warning("Não foi possível registrar webhook com novo token: %s", webhook_result.get("description"))
                     else:
@@ -294,7 +294,7 @@ def update_channel(
                     telegram_api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
                     webhook_response = httpx.post(
                         telegram_api_url,
-                        json={"url": webhook_url},
+                        json={"url": webhook_url, "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"]},
                         timeout=5.0,
                     )
                     webhook_result = webhook_response.json()
@@ -408,7 +408,7 @@ def telegram_sync_webhook(
         telegram_api_url = f"https://api.telegram.org/bot{bot_token}/setWebhook"
         res = httpx.post(
             telegram_api_url,
-            json={"url": expected_url},
+            json={"url": expected_url, "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"]},
             timeout=8.0,
         )
         tg = res.json()
