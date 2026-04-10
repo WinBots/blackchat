@@ -1477,6 +1477,11 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     Processa um update do Telegram de forma síncrona.
     Chamado diretamente quando ARQ está offline (fallback), ou pelo worker process_webhook.
     """
+    import time as _time
+    _t0 = _time.perf_counter()
+    def _checkpoint(label):
+        logger.info(f"[PERF] {label}: {_time.perf_counter() - _t0:.3f}s")
+
     print("=" * 80)
     print(f"📨 WEBHOOK RECEBIDO: {webhook_secret}")
     print(f"📦 Update: {update}")
@@ -1488,6 +1493,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
         Channel.type == "telegram",
         Channel.webhook_secret == webhook_secret
     ).first()
+    _checkpoint("1-query-channel")
 
     # Fallback para canais sem webhook_secret desnormalizado (legado)
     if not channel:
@@ -1543,6 +1549,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     # ============= CALLBACK QUERY (clique em botão inline) =============
     callback_query = update.get("callback_query")
     if callback_query and not message:
+        _checkpoint("cb-start")
         cq_id = callback_query.get("id")
         cq_data = callback_query.get("data", "")
         cq_from = callback_query.get("from", {})
@@ -1590,6 +1597,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                 logger.warning(f"callback_data inválido: {cq_data}")
                 return {"status": "ok"}
 
+            _checkpoint("cb-pre-message-query")
             # Buscar execução pausada do contato via mensagens inbound
             # Filtra apenas 'inbound' para garantir que são mensagens do usuário (com user_id no extra_data)
             user_id_patterns = [
@@ -1604,6 +1612,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                 ).order_by(Message.created_at.desc()).limit(25).all()
                 if cid
             ]
+            _checkpoint("cb-post-message-query")
             logger.info(f"   callback_query: cq_user_id={cq_user_id} recent_contact_ids={recent_contact_ids}")
 
             paused_exec = None
@@ -1630,10 +1639,12 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                 except Exception as fe:
                     logger.warning(f"   callback_query fallback error: {fe}")
 
+            _checkpoint("cb-post-paused-exec-search")
             if paused_exec:
                 paused_exec.status = 'running'
                 paused_exec.context = None
                 db.commit()
+                _checkpoint("cb-post-commit")
                 logger.info(f"   ▶ Continuando execução {paused_exec.id} a partir do step {target_step_id} (botão: {btn_label!r})")
                 threading.Thread(
                     target=run_flow_background,
@@ -1846,6 +1857,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     # 3. Criar/Atualizar Contact — busca por coluna indexada telegram_user_id (1 query)
     contact = None
 
+    _checkpoint("2-pre-contact-query")
     # Busca principal: coluna dedicada telegram_user_id (indexada, O(1))
     if user_id:
         contact = db.query(Contact).filter(
@@ -2039,8 +2051,10 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
             active_execution = ex
             break
     
+    _checkpoint("3-pre-trigger-map")
     # Pré-carregar trigger_map UMA VEZ (2 queries) — usado em todo o matching abaixo
     trigger_map = _load_trigger_map(db, channel.tenant_id, channel.id)
+    _checkpoint("4-post-trigger-map")
 
     if active_execution:
         # Se a mensagem é um gatilho explícito (keyword) de algum fluxo,
@@ -2424,15 +2438,17 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     db.add(flow_execution)
     db.commit()
     db.refresh(flow_execution)
-    
+    _checkpoint("5-flow-execution-created")
+
     print(f"\n[EXECUTANDO] Fluxo: {selected_flow.id} - {selected_flow.name}")
     logger.info(f"Executando fluxo: {selected_flow.id} - {selected_flow.name} (execution_id={flow_execution.id})")
-    
+
     threading.Thread(
         target=run_flow_background,
         args=(channel.id, contact.id, selected_flow.id, chat_id, bot_token, flow_execution.id, None),
         daemon=True,
     ).start()
+    _checkpoint("6-thread-started")
     return {"status": "ok", "message": "Flow queued"}
 
 
