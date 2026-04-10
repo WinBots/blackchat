@@ -1571,20 +1571,22 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
         except Exception:
             pass
 
-        # Responder o callback (remove o "relógio" no Telegram) e mostrar o texto selecionado
-        try:
-            import httpx
-            httpx.post(
-                f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
-                json={
-                    "callback_query_id": cq_id,
-                    "text": f"✅ {btn_label}" if btn_label else "✅",
-                    "show_alert": False,
-                },
-                timeout=5
-            )
-        except Exception:
-            pass
+        # Responder o callback em background (não bloqueia o processamento do fluxo)
+        def _answer_callback():
+            try:
+                import httpx as _httpx
+                _httpx.post(
+                    f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+                    json={
+                        "callback_query_id": cq_id,
+                        "text": f"✅ {btn_label}" if btn_label else "✅",
+                        "show_alert": False,
+                    },
+                    timeout=5
+                )
+            except Exception:
+                pass
+        threading.Thread(target=_answer_callback, daemon=True).start()
 
         # Nota: não enviamos btn_label como sendMessage porque isso viria do BOT (lado esquerdo),
         # o que confunde o usuário. O popup do answerCallbackQuery já é feedback suficiente.
