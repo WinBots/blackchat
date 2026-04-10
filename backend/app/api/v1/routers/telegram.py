@@ -1480,7 +1480,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     import time as _time
     _t0 = _time.perf_counter()
     def _checkpoint(label):
-        logger.info(f"[PERF] {label}: {_time.perf_counter() - _t0:.3f}s")
+        print(f"[PERF] {label}: {_time.perf_counter() - _t0:.3f}s", flush=True)
 
     print("=" * 80)
     print(f"📨 WEBHOOK RECEBIDO: {webhook_secret}")
