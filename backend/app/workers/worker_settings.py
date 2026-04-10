@@ -120,7 +120,11 @@ async def process_webhook(ctx: dict, payload: dict, webhook_secret: str) -> None
     Chamado pelo worker após o handler retornar 200 ao Telegram imediatamente.
     """
     from fastapi import HTTPException as _HTTPException
-    from app.api.v1.routers.telegram import _handle_telegram_update
+    from app.api.v1.routers.telegram import _handle_telegram_update, invalidate_trigger_cache
+
+    # Invalida cache de triggers para evitar DetachedInstanceError:
+    # o cache armazena objetos SQLAlchemy de sessões anteriores que já foram fechadas.
+    invalidate_trigger_cache()
 
     db = ctx["db_factory"]()
     try:
