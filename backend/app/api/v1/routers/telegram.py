@@ -1648,8 +1648,17 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                 db.commit()
                 _checkpoint("cb-post-commit")
                 logger.info(f"   ▶ Continuando execução {paused_exec.id} a partir do step {target_step_id} (botão: {btn_label!r})")
+                def _run_flow_safe(**kwargs):
+                    try:
+                        print(f"[FLOW] Iniciando run_flow_background exec_id={kwargs.get('execution_id')} step={kwargs.get('start_from_step_id')}", flush=True)
+                        run_flow_background(**kwargs)
+                        print(f"[FLOW] run_flow_background concluído exec_id={kwargs.get('execution_id')}", flush=True)
+                    except Exception as _e:
+                        import traceback
+                        print(f"[FLOW ERROR] {_e}\n{traceback.format_exc()}", flush=True)
+
                 threading.Thread(
-                    target=run_flow_background,
+                    target=_run_flow_safe,
                     kwargs=dict(
                         channel_id=channel.id,
                         contact_id=paused_exec.contact_id,
@@ -1661,8 +1670,9 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                     ),
                     daemon=True,
                 ).start()
+                print(f"[FLOW] Thread disparada para exec_id={paused_exec.id} step={target_step_id}", flush=True)
             else:
-                logger.warning(f"Nenhuma execução pausada encontrada para callback goto_step:{target_step_id} (botão: {btn_label!r})")
+                print(f"[FLOW] AVISO: Nenhuma execução pausada para goto_step:{target_step_id} btn={btn_label!r}", flush=True)
 
         return {"status": "ok"}
     # ============= FIM CALLBACK QUERY =============
