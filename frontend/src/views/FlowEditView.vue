@@ -1576,13 +1576,13 @@
           </svg>
 
           <!-- Empty state -->
-          <div v-if="steps.length === 0" class="flow-empty-state">
+          <div v-if="steps.length === 0" class="flow-empty-state" @mousedown.stop>
             <div class="empty-state-icon">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             </div>
             <h3>Canvas Vazio</h3>
             <p>Adicione um gatilho para iniciar o fluxo</p>
-            <button class="btn btn-primary" @click="showTriggerModal = true">
+            <button class="btn btn-primary" @click.stop="showTriggerModal = true">
               <i class="fa-solid fa-bolt"></i>
               Adicionar Gatilho
             </button>
