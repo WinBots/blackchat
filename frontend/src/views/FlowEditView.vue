@@ -99,7 +99,7 @@
           </p>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-secondary" @click="showTriggerModal = true">
+          <button class="btn btn-secondary" :class="{ 'btn-trigger-pulse': steps.length === 0 }" @click="showTriggerModal = true">
             <i class="fa-solid fa-bolt"></i>
             Adicionar Gatilho
           </button>
@@ -1494,16 +1494,15 @@
           @mousedown="startPan"
         >
         <!-- Empty state — fora do workspace para não ser arrastado com o canvas -->
-        <div v-if="steps.length === 0" class="flow-empty-state" @mousedown.stop>
+        <div v-if="steps.length === 0" class="flow-empty-state">
           <div class="empty-state-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           </div>
-          <h3>Canvas Vazio</h3>
-          <p>Adicione um gatilho para iniciar o fluxo</p>
-          <button class="btn btn-primary" @mousedown.stop @click.stop="showTriggerModal = true">
-            <i class="fa-solid fa-bolt"></i>
-            Adicionar Gatilho
-          </button>
+          <h3 class="empty-state-title">Seu fluxo está vazio</h3>
+          <p class="empty-state-desc">Clique em <strong>Adicionar Gatilho</strong> <i class="fa-solid fa-bolt" style="color:#10b981;font-size:0.85em;"></i> no topo para começar</p>
+          <div class="empty-state-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+          </div>
         </div>
 
         <!-- Overlay de loading da IA -->
@@ -6277,21 +6276,70 @@ onBeforeUnmount(() => {
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  color: var(--muted);
   pointer-events: none;
   user-select: none;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-.flow-empty-state h3,
-.flow-empty-state p,
 .flow-empty-state .empty-state-icon {
-  pointer-events: none;
+  color: #10b981;
+  opacity: 0.6;
+  animation: empty-float 3s ease-in-out infinite;
 }
 
-.flow-empty-state button {
-  pointer-events: all;
-  cursor: pointer;
+.empty-state-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.01em;
+}
+
+.empty-state-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.empty-state-desc strong {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.empty-state-arrow {
+  animation: empty-bounce 1.5s ease-in-out infinite;
+  transform: rotate(180deg);
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+@keyframes empty-float {
+  0%, 100% { transform: translateY(0px); opacity: 0.6; }
+  50% { transform: translateY(-6px); opacity: 1; }
+}
+
+@keyframes empty-bounce {
+  0%, 100% { transform: rotate(180deg) translateY(0px); }
+  50% { transform: rotate(180deg) translateY(-6px); }
+}
+
+/* Botão Adicionar Gatilho pulsante quando canvas vazio */
+.btn-trigger-pulse {
+  border-color: #10b981 !important;
+  color: #10b981 !important;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  animation: trigger-pulse 2s ease-in-out infinite;
+}
+
+@keyframes trigger-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 .flow-empty-state .empty-state-icon {
