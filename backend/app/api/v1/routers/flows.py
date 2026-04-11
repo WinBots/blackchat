@@ -159,10 +159,14 @@ def _check_keyword_conflict(
             conflict_list = ", ".join(f'"{k}"' for k in sorted(conflicts))
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    f"Keyword(s) {conflict_list} já usada(s) no fluxo \"{other_flow.name}\". "
-                    "Cada keyword deve ser única por canal."
-                ),
+                detail={
+                    "message": (
+                        f"Keyword(s) {conflict_list} já usada(s) no fluxo \"{other_flow.name}\". "
+                        "Cada keyword deve ser única por canal."
+                    ),
+                    "conflicting_keywords": sorted(conflicts),
+                    "conflicting_flow_name": other_flow.name,
+                },
             )
 
 

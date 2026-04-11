@@ -2034,6 +2034,74 @@
     </div>
   </div>
 
+  <!-- Modal: Conflito de Keywords -->
+  <div v-if="aiKeywordConflict" class="modal-overlay" @click.self="aiKeywordConflict = null">
+    <div class="modal-content kw-conflict-modal" @click.stop>
+      <div class="modal-header">
+        <div class="kw-conflict-header-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="modal-title">Palavras-chave em conflito</h3>
+          <p class="kw-conflict-subtitle">
+            As palavras abaixo já estão em uso no fluxo
+            <strong>"{{ aiKeywordConflict.conflictingFlowName }}"</strong>.
+            Altere-as para continuar.
+          </p>
+        </div>
+        <button class="modal-close" @click="aiKeywordConflict = null">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body kw-conflict-body">
+        <div
+          v-for="kw in aiKeywordConflict.conflictingKeywords"
+          :key="kw"
+          class="kw-conflict-row"
+        >
+          <div class="kw-conflict-original">
+            <span class="kw-conflict-label">Conflitante</span>
+            <span class="kw-chip kw-chip--conflict">{{ kw }}</span>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+            <polyline points="12 5 19 12 12 19"/>
+          </svg>
+          <div class="kw-conflict-new">
+            <span class="kw-conflict-label">Nova palavra-chave</span>
+            <input
+              class="kw-conflict-input"
+              :class="{ 'kw-conflict-input--same': (aiKeywordEdits[kw] || '').toLowerCase().trim() === kw }"
+              v-model="aiKeywordEdits[kw]"
+              :placeholder="`Substituto para '${kw}'`"
+            />
+          </div>
+        </div>
+        <p class="kw-conflict-hint">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Cada palavra-chave deve ser única dentro do canal para evitar ambiguidade no disparo dos fluxos.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="aiKeywordConflict = null">Cancelar</button>
+        <button
+          class="btn btn-primary"
+          @click="resolveKeywordConflict"
+          :disabled="Object.values(aiKeywordEdits).some(v => !v.trim() || aiKeywordConflict.conflictingKeywords.includes(v.toLowerCase().trim()))"
+        >
+          <i class="fa-solid fa-check"></i>
+          Aplicar com novas palavras-chave
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirm Dialog -->
   <ConfirmDialog
     :is-visible="confirmDialog.isVisible.value"
@@ -2584,12 +2652,63 @@ const applyAIFlow = async () => {
     toast.success(`Fluxo "${result.name}" aplicado com ${result.steps.length} blocos!`)
   } catch (err) {
     console.error('Erro ao aplicar fluxo IA:', err)
-    toast.error('Erro ao aplicar o fluxo gerado. Tente novamente.')
+    const detail = err?.response?.data?.detail
+    if (err?.response?.status === 409 && detail?.conflicting_keywords) {
+      // Abre modal para o usuário resolver o conflito de keywords
+      aiKeywordConflict.value = {
+        conflictingKeywords: detail.conflicting_keywords,
+        conflictingFlowName: detail.conflicting_flow_name,
+        pendingResult: result,
+      }
+    } else {
+      toast.error('Erro ao aplicar o fluxo gerado. Tente novamente.')
+    }
   } finally {
     isApplyingAI.value = false
   }
 }
 const isApplyingAI = ref(false)
+
+// Modal de conflito de keywords
+const aiKeywordConflict = ref(null) // { conflictingKeywords, conflictingFlowName, pendingResult }
+const aiKeywordEdits = ref({})      // { keyword: novoValor }
+
+watch(aiKeywordConflict, (val) => {
+  if (!val) return
+  // Pré-preenche os inputs com as keywords conflitantes
+  const edits = {}
+  for (const kw of val.conflictingKeywords) edits[kw] = kw
+  aiKeywordEdits.value = edits
+})
+
+const resolveKeywordConflict = async () => {
+  if (!aiKeywordConflict.value) return
+  const { pendingResult } = aiKeywordConflict.value
+  const edits = aiKeywordEdits.value
+
+  // Aplica as substituições no trigger step do resultado da IA
+  const updatedResult = {
+    ...pendingResult,
+    steps: pendingResult.steps.map(step => {
+      if (step.type !== 'trigger' || !step.config?.keywords) return step
+      return {
+        ...step,
+        config: {
+          ...step.config,
+          keywords: step.config.keywords.map(kw => {
+            const key = typeof kw === 'string' ? kw : kw.text || ''
+            return edits[key.toLowerCase().trim()] ?? kw
+          }),
+        },
+      }
+    }),
+  }
+
+  aiKeywordConflict.value = null
+  aiResult.value = updatedResult
+  await applyAIFlow()
+}
+
 const isAddingBlock = ref(false)
 const deletingStepId = ref(null)
 const blockSearch = ref('')
@@ -7067,6 +7186,105 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-xl);
   animation: slideDown 0.3s ease-out;
   pointer-events: none;
+}
+
+/* Modal de conflito de keywords */
+.kw-conflict-modal { max-width: 520px; }
+
+.kw-conflict-header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.kw-conflict-subtitle {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 2px 0 0;
+}
+.kw-conflict-subtitle strong { color: #e9d5ff; }
+
+.kw-conflict-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.kw-conflict-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.kw-conflict-original,
+.kw-conflict-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.kw-conflict-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4b5563;
+}
+
+.kw-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  width: fit-content;
+}
+.kw-chip--conflict {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.kw-conflict-input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.85rem;
+  color: #e5e7eb;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+.kw-conflict-input:focus { border-color: rgba(139, 92, 246, 0.5); }
+.kw-conflict-input--same {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.kw-conflict-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #4b5563;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.05);
 }
 
 /* Overlay de loading IA — padrão visual do sistema */
