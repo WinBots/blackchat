@@ -458,6 +458,31 @@ def personalize_text(text: str, contact: Contact | None):
     for placeholder, value in placeholders.items():
         result = result.replace(placeholder, value)
 
+    # Substituir campos personalizados: suporta {campo} e {{campo}}
+    import re
+    custom_fields = {}
+    if contact.custom_fields:
+        try:
+            custom_fields = json.loads(contact.custom_fields) if isinstance(contact.custom_fields, str) else (contact.custom_fields or {})
+        except Exception:
+            pass
+
+    if custom_fields:
+        # Primeiro substitui {{campo}} (dupla chave) para evitar conflito com {campo}
+        def replace_double(m):
+            key = m.group(1).strip()
+            return str(custom_fields.get(key, m.group(0)))
+
+        def replace_single(m):
+            key = m.group(1).strip()
+            # Só substitui se for um campo personalizado (não um placeholder do sistema já processado)
+            if key in custom_fields:
+                return str(custom_fields[key])
+            return m.group(0)
+
+        result = re.sub(r'\{\{(\w+)\}\}', replace_double, result)
+        result = re.sub(r'\{(\w+)\}', replace_single, result)
+
     return result
 
 
