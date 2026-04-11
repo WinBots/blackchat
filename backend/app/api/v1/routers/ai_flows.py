@@ -82,6 +82,26 @@ O fluxo é composto por dois campos principais:
 - `button`: `{ "id": "bX", "type": "button", "text": "texto acima", "buttons": [{ "text": "label", "action": "flow", "targetStepId": N }] }`
 - `image`: `{ "id": "bX", "type": "image", "url": "https://...", "caption": "legenda" }`
 - `delay`: `{ "id": "bX", "type": "delay", "seconds": 2 }` (simula digitação)
+- `data`: **USE ESTE para coletar dados do usuário** — envia o prompt e pausa o fluxo aguardando a resposta, salvando-a no campo especificado.
+  ```json
+  { "id": "bX", "type": "data", "field": "nome_do_campo", "prompt": "Qual é o seu nome?" }
+  ```
+  - `field`: nome do campo personalizado onde a resposta será salva (ex: `"horario"`, `"data_agendamento"`, `"nome"`, `"email"`)
+  - `prompt`: mensagem enviada ao usuário pedindo a informação
+
+**REGRA IMPORTANTE — quando coletar dados do usuário:**
+- Use **sempre** o bloco `data` dentro de um step `message` quando precisar pedir e salvar uma informação digitada pelo usuário.
+- **NÃO** use `action set_field com field_value: "{ultima_mensagem}"` para coletar dados — use o bloco `data`.
+- O bloco `data` automaticamente pausa o fluxo, aguarda a resposta e salva no campo. O próximo step só executa após o usuário responder.
+- Exemplo correto para coletar horário:
+  ```json
+  {
+    "id": "b1", "type": "text", "text": "Perfeito! Agora me informe o horário desejado."
+  },
+  {
+    "id": "b2", "type": "data", "field": "horario_agendamento", "prompt": "Digite o horário no formato HH:MM (ex: 14:30)"
+  }
+  ```
 
 Para botões de navegação interna: `"action": "flow"` com `"targetStepId": id_do_step_destino`
 Para links externos: `"action": "url"` com `"url": "https://..."`
@@ -113,7 +133,7 @@ Para links externos: `"action": "url"` com `"url": "https://..."`
     - Exemplo: `{ "type": "set_field", "field_name": "first_name", "field_value": "{ultima_mensagem}" }`
   - **Campos personalizados** (qualquer outro nome): armazenados como atributos extras do contato
     - Exemplo: `{ "type": "set_field", "field_name": "plano", "field_value": "pro" }`
-  - Para capturar a resposta do usuário use `"field_value": "{ultima_mensagem}"`
+  - Para capturar a resposta do usuário, prefira o bloco `data` dentro de um step `message` em vez de `set_field` com `{ultima_mensagem}`
 - `add_tag`: adiciona tag ao contato
 - `remove_tag`: remove tag do contato
 - `smart_delay`: pausa a execução — use SEMPRE `delay_value` (número) e `delay_unit` ("seconds"|"minutes"|"hours"|"days")
