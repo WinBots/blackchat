@@ -56,7 +56,7 @@ def seed(db):
         db.add(contact)
         db.flush()  # gera o id
 
-        tag = ContactTag(contact_id=contact.id, tag_name=TAG)
+        tag = ContactTag(tenant_id=TENANT_ID, contact_id=contact.id, tag_name=TAG)
         db.add(tag)
         created += 1
 
