@@ -1495,9 +1495,17 @@
         >
         <!-- Overlay de loading da IA -->
         <div v-if="isApplyingAI" class="ai-applying-overlay">
-          <div class="ai-applying-box">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            <span>Aplicando fluxo gerado pela IA...</span>
+          <div class="ai-applying-inner">
+            <div class="ai-applying-icon">
+              <svg class="ai-spinner" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            </div>
+            <p class="ai-applying-title">Aplicando fluxo</p>
+            <p class="ai-applying-sub">Criando blocos e organizando o canvas...</p>
+            <div class="ai-applying-bar">
+              <div class="ai-applying-bar-fill"></div>
+            </div>
           </div>
         </div>
         <div 
@@ -2415,6 +2423,89 @@ const runAIGenerate = async () => {
   }
 }
 
+/**
+ * Calcula layout hierárquico automático (esquerda → direita).
+ * Retorna um mapa { stepId: { x, y } } sem sobreposições.
+ *
+ * @param {Array}  stepIds     - IDs reais dos nós na ordem de criação
+ * @param {Array}  conns       - conexões já com IDs reais { from, to }
+ * @param {Object} stepTypeMap - { stepId: 'trigger'|'message'|'action'|... }
+ */
+const computeAutoLayout = (stepIds, conns, stepTypeMap) => {
+  const X_GAP = 380   // espaço horizontal entre colunas
+  const Y_GAP = 240   // espaço vertical entre nós na mesma coluna
+  const ORIGIN_X = 80
+  const ORIGIN_Y = 80
+
+  // 1. Monta adjacências
+  const children = {}  // id -> [id]
+  const parents  = {}  // id -> [id]
+  for (const id of stepIds) { children[id] = []; parents[id] = [] }
+  for (const c of conns) {
+    if (children[c.from]) children[c.from].push(c.to)
+    if (parents[c.to])    parents[c.to].push(c.from)
+  }
+
+  // 2. Atribui camadas via BFS (longest-path from roots)
+  const layer = {}
+  // Raízes: nós sem pais, ou do tipo trigger
+  const roots = stepIds.filter(id => parents[id].length === 0 || stepTypeMap[id] === 'trigger')
+  if (roots.length === 0 && stepIds.length > 0) roots.push(stepIds[0])
+
+  const queue = [...roots]
+  for (const id of roots) layer[id] = 0
+  // BFS — garante que cada nó fica na camada máxima de todos os pais
+  const visited = new Set(roots)
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head++]
+    for (const child of children[cur]) {
+      const proposed = (layer[cur] ?? 0) + 1
+      if (layer[child] === undefined || layer[child] < proposed) {
+        layer[child] = proposed
+      }
+      if (!visited.has(child)) {
+        visited.add(child)
+        queue.push(child)
+      }
+    }
+  }
+  // Nós não alcançados (ilhas) ficam na camada 0
+  for (const id of stepIds) {
+    if (layer[id] === undefined) layer[id] = 0
+  }
+
+  // 3. Agrupa nós por camada
+  const maxLayer = Math.max(...Object.values(layer))
+  const layers = Array.from({ length: maxLayer + 1 }, () => [])
+  for (const id of stepIds) layers[layer[id]].push(id)
+
+  // 4. Ordena nós dentro de cada camada pelo índice do pai (reduz cruzamentos)
+  for (let l = 1; l <= maxLayer; l++) {
+    layers[l].sort((a, b) => {
+      const pa = parents[a]?.[0] ? layers[l - 1].indexOf(parents[a][0]) : 0
+      const pb = parents[b]?.[0] ? layers[l - 1].indexOf(parents[b][0]) : 0
+      return pa - pb
+    })
+  }
+
+  // 5. Calcula posições centralizando cada camada em torno do centro vertical
+  const positions = {}
+  for (let l = 0; l <= maxLayer; l++) {
+    const nodes = layers[l]
+    const totalH = nodes.length * Y_GAP
+    const startY = ORIGIN_Y - totalH / 2 + Y_GAP / 2
+    nodes.forEach((id, i) => {
+      positions[id] = {
+        x: ORIGIN_X + l * X_GAP,
+        y: startY + i * Y_GAP,
+      }
+    })
+  }
+
+  return positions
+}
+
 const applyAIFlow = async () => {
   if (!aiResult.value) return
   const result = aiResult.value
@@ -2433,8 +2524,9 @@ const applyAIFlow = async () => {
     connections.value = []
     nodePositions.value = {}
 
-    // 2. Criar os novos steps (em sequência para garantir IDs retornados)
-    const idMap = {} // { ai_step_id -> real_step_id }
+    // 2. Criar os novos steps em sequência para garantir IDs retornados
+    const idMap = {}       // { ai_step_id -> real_step_id }
+    const stepTypeMap = {} // { real_step_id -> type }
     for (const step of result.steps) {
       const created = await createFlowStep(flowId.value, {
         type: step.type,
@@ -2442,16 +2534,13 @@ const applyAIFlow = async () => {
         config: step.config || {},
       })
       idMap[step.id] = created.id
+      stepTypeMap[created.id] = created.type
       steps.value.push(created)
       if (step.type === 'message') ensureMessageBlocks(created)
-      // Atualiza as posições progressivamente conforme cada bloco é criado
-      const aiPos = result.node_positions?.[String(step.id)]
-      if (aiPos) nodePositions.value[created.id] = aiPos
-      await nextTick()
     }
 
     // 3. Remapear connections com IDs reais
-    connections.value = result.connections
+    const mappedConns = result.connections
       .filter(c => idMap[c.from] && idMap[c.to])
       .map(c => ({
         id: `${idMap[c.from]}-${c.outputId || 'default'}-${idMap[c.to]}`,
@@ -2459,6 +2548,7 @@ const applyAIFlow = async () => {
         to: idMap[c.to],
         outputId: c.outputId || 'default',
       }))
+    connections.value = mappedConns
 
     // 4. Remapear targetStepId nos botões
     steps.value.forEach(step => {
@@ -2475,13 +2565,18 @@ const applyAIFlow = async () => {
       }
     })
 
-    // 5. Atualizar nome do fluxo se gerado pela IA
+    // 5. Calcular layout automático hierárquico
+    const realIds = steps.value.map(s => s.id)
+    const autoPositions = computeAutoLayout(realIds, mappedConns, stepTypeMap)
+    nodePositions.value = autoPositions
+
+    // 6. Atualizar nome do fluxo se gerado pela IA
     if (result.name && flow.value) {
       flow.value.name = result.name
       if (result.description) flow.value.description = result.description
     }
 
-    // 6. Salvar tudo
+    // 7. Salvar tudo (inclui nodePositions no config do flow)
     await saveWorkflow()
     await nextTick()
     fitToScreen()
@@ -6974,12 +7069,13 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* Overlay de loading IA */
+/* Overlay de loading IA — padrão visual do sistema */
 .ai-applying-overlay {
   position: absolute;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(15, 17, 22, 0.82);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6987,23 +7083,68 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.ai-applying-box {
+.ai-applying-inner {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  background: var(--bg-card, #1a1a2e);
-  border: 1px solid var(--border, #333);
-  border-radius: 12px;
-  padding: 18px 28px;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary, #fff);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  gap: 14px;
+  background: rgba(24, 26, 35, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 18px;
+  padding: 32px 40px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(139,92,246,0.1);
+  min-width: 280px;
+  text-align: center;
 }
 
-.ai-applying-box i {
-  font-size: 1.2rem;
-  color: var(--accent, #7c3aed);
+.ai-applying-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ai-pulse-ring 2s ease-in-out infinite;
+}
+
+.ai-applying-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e9d5ff;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.ai-applying-sub {
+  font-size: 0.78rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Barra de progresso indeterminada */
+.ai-applying-bar {
+  width: 180px;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(139, 92, 246, 0.12);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.ai-applying-bar-fill {
+  height: 100%;
+  width: 45%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa, #7c3aed);
+  background-size: 200% 100%;
+  animation: ai-bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes ai-bar-slide {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(340%); }
 }
 
 /* Estilos para Link de Referência */
