@@ -1486,13 +1486,20 @@
         </aside>
 
         <!-- Canvas de Fluxo -->
-        <div 
+        <div
           class="flow-canvas-container"
           :class="{ 'with-sidebar': selectedStep }"
           ref="containerRef"
           @wheel.prevent="handleWheel"
           @mousedown="startPan"
         >
+        <!-- Overlay de loading da IA -->
+        <div v-if="isApplyingAI" class="ai-applying-overlay">
+          <div class="ai-applying-box">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>Aplicando fluxo gerado pela IA...</span>
+          </div>
+        </div>
         <div 
           class="flow-canvas-workspace"
           ref="workspaceRef"
@@ -2412,8 +2419,9 @@ const applyAIFlow = async () => {
   if (!aiResult.value) return
   const result = aiResult.value
 
-  // Fecha o modal imediatamente para o usuário ver o canvas enquanto os blocos são criados
+  // Fecha o modal e ativa o loader do canvas
   closeAIModal()
+  isApplyingAI.value = true
   await nextTick()
 
   try {
@@ -2482,8 +2490,11 @@ const applyAIFlow = async () => {
   } catch (err) {
     console.error('Erro ao aplicar fluxo IA:', err)
     toast.error('Erro ao aplicar o fluxo gerado. Tente novamente.')
+  } finally {
+    isApplyingAI.value = false
   }
 }
+const isApplyingAI = ref(false)
 const isAddingBlock = ref(false)
 const deletingStepId = ref(null)
 const blockSearch = ref('')
@@ -4041,6 +4052,7 @@ const scheduleDragNodePosUpdate = () => {
 
 const startNodeDrag = (e, stepId) => {
   if (e.button !== 0) return
+  if (isApplyingAI.value) return
 
   e.stopPropagation() // não iniciar pan junto
 
@@ -4102,6 +4114,7 @@ const endNodeDrag = () => {
 // ==================== PAN ====================
 const startPan = (e) => {
   if (e.button !== 0) return
+  if (isApplyingAI.value) return
 
   // Não iniciar pan se estiver arrastando nó ou conexão
   if (draggingNodeId.value) return
@@ -6959,6 +6972,38 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-xl);
   animation: slideDown 0.3s ease-out;
   pointer-events: none;
+}
+
+/* Overlay de loading IA */
+.ai-applying-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  cursor: not-allowed;
+}
+
+.ai-applying-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  padding: 18px 28px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.ai-applying-box i {
+  font-size: 1.2rem;
+  color: var(--accent, #7c3aed);
 }
 
 /* Estilos para Link de Referência */
