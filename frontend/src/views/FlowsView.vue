@@ -553,11 +553,11 @@ const createNewFlow = async () => {
       trigger_config: triggerConfig
     })
 
-    // Criar step inicial de boas-vindas
+    // Criar step inicial de gatilho
     await createFlowStep(flow.id, {
-      type: 'message',
+      type: 'trigger',
       order_index: 1,
-      config: { text: `Olá! 👋 Bem-vindo ao ${newFlow.value.name}` }
+      config: { triggerType: 'message', keywords: [] }
     })
 
     await fetchFlows()
