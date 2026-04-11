@@ -7215,6 +7215,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .kw-conflict-row {
