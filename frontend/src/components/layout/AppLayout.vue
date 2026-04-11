@@ -121,6 +121,36 @@
           </RouterLink>
         </nav>
 
+        <!-- Widget de progresso de disparo em massa -->
+        <div v-if="broadcastProgress.job.value" class="broadcast-progress-widget">
+          <div class="bpw-header">
+            <div class="bpw-icon">
+              <svg v-if="broadcastProgress.isRunning.value" class="bpw-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div class="bpw-title">{{ broadcastProgress.job.value.flow_name }}</div>
+            <button class="bpw-dismiss" @click="broadcastProgress.dismiss()" title="Fechar">×</button>
+          </div>
+          <div class="bpw-bar-wrap">
+            <div class="bpw-bar-fill" :style="{ width: broadcastProgress.percent.value + '%' }"></div>
+          </div>
+          <div class="bpw-stats">
+            <span>
+              {{ (broadcastProgress.job.value.sent || 0) + (broadcastProgress.job.value.failed || 0) }}
+              /
+              {{ broadcastProgress.job.value.total }}
+            </span>
+            <span class="bpw-pct">{{ broadcastProgress.percent.value }}%</span>
+          </div>
+          <div v-if="broadcastProgress.isDone.value" class="bpw-done">
+            ✓ Concluído — {{ broadcastProgress.job.value.sent }} enviados, {{ broadcastProgress.job.value.failed }} falhas
+          </div>
+        </div>
+
         <!-- Usuário Logado na Sidebar -->
         <div class="sidebar-user">
           <div class="sidebar-user-avatar">U</div>
@@ -210,6 +240,9 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useBroadcastProgress } from '@/composables/useBroadcastProgress'
+
+const broadcastProgress = useBroadcastProgress()
 import { useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 
@@ -296,3 +329,93 @@ const pageDescription = computed(() => {
   return descriptions[route.path] || 'Automatize suas conversas no Telegram'
 })
 </script>
+
+<style scoped>
+/* Widget de progresso de disparo em massa */
+.broadcast-progress-widget {
+  margin: 0 12px 10px;
+  background: rgba(0, 255, 102, 0.05);
+  border: 1px solid rgba(0, 255, 102, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bpw-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bpw-icon {
+  color: #00ff66;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.bpw-spin {
+  animation: bpw-spin 1s linear infinite;
+}
+@keyframes bpw-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.bpw-title {
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bpw-dismiss {
+  background: none;
+  border: none;
+  color: #4b5563;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+.bpw-dismiss:hover { color: #e5e7eb; }
+
+.bpw-bar-wrap {
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+}
+
+.bpw-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #00cc52, #00ff66);
+  transition: width 0.6s ease;
+}
+
+.bpw-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.bpw-pct {
+  font-weight: 600;
+  color: #00ff66;
+}
+
+.bpw-done {
+  font-size: 0.72rem;
+  color: #6ee7b7;
+  padding-top: 2px;
+}
+</style>

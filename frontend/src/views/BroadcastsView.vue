@@ -543,8 +543,10 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { getContactsStats, previewBulkMessage, sendBulkMessage } from '@/api/contacts'
 import { listFlows } from '@/api/flows'
 import { useToast } from '@/composables/useToast'
+import { useBroadcastProgress } from '@/composables/useBroadcastProgress'
 
 const toast = useToast()
+const broadcastProgress = useBroadcastProgress()
 
 let ruleSeq = 1
 const segment = reactive({ match_mode: 'all', rules: [] })
@@ -730,8 +732,18 @@ const executeSend = async () => {
   confirmMode.value = false
   sending.value = true
   try {
-    const res = await sendBulkMessage(buildPayload())
-    toast.success(`Disparo concluído! Iniciados: ${res.started}/${res.total}. Falhas: ${res.failed}.`)
+    const payload = { ...buildPayload(), background: true }
+    const res = await sendBulkMessage(payload)
+
+    if (res.job_id) {
+      // Modo background: tracking via polling na sidebar
+      const flowName = selectedFlow.value?.name || 'Disparo em massa'
+      broadcastProgress.startTracking(res.job_id, res.total, flowName)
+      toast.success(`Disparo iniciado para ${res.total} contatos! Acompanhe na sidebar.`)
+    } else {
+      // Fallback síncrono (ARQ offline)
+      toast.success(`Disparo concluído! Iniciados: ${res.started}/${res.total}. Falhas: ${res.failed}.`)
+    }
   } catch (err) {
     console.error(err)
     const detail = err?.response?.data?.detail || 'Erro ao enviar mensagens em massa.'
