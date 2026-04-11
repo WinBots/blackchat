@@ -6279,6 +6279,12 @@ onBeforeUnmount(() => {
   text-align: center;
   color: var(--muted);
   pointer-events: none;
+  user-select: none;
+}
+
+.flow-empty-state button {
+  pointer-events: all;
+  cursor: pointer;
 }
 
 .flow-empty-state .empty-state-icon {
