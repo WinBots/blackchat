@@ -1501,7 +1501,7 @@
           <h3 class="empty-state-title">Seu fluxo está vazio</h3>
           <p class="empty-state-desc">Clique em <strong>Adicionar Gatilho</strong> <i class="fa-solid fa-bolt" style="color:#10b981;font-size:0.85em;"></i> no topo para começar</p>
           <div class="empty-state-arrow">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>
           </div>
         </div>
 
@@ -6324,8 +6324,8 @@ onBeforeUnmount(() => {
 }
 
 @keyframes empty-bounce {
-  0%, 100% { transform: rotate(180deg) translateY(0px); }
-  50% { transform: rotate(180deg) translateY(-6px); }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
 }
 
 /* Botão Adicionar Gatilho pulsante quando canvas vazio */
