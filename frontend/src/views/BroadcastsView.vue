@@ -737,8 +737,7 @@ const executeSend = async () => {
 
     if (res.job_id) {
       // Modo background: tracking via polling na sidebar
-      const flowName = selectedFlow.value?.name || 'Disparo em massa'
-      broadcastProgress.startTracking(res.job_id, res.total, flowName)
+      broadcastProgress.startTracking(res.job_id, res.total)
       toast.success(`Disparo iniciado para ${res.total} contatos! Acompanhe na sidebar.`)
     } else {
       // Fallback síncrono (ARQ offline)

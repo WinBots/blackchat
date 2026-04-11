@@ -132,7 +132,7 @@
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
             </div>
-            <div class="bpw-title">{{ broadcastProgress.job.value.flow_name }}</div>
+            <div class="bpw-title">Processando envio em massa</div>
             <button class="bpw-dismiss" @click="broadcastProgress.dismiss()" title="Fechar">×</button>
           </div>
           <div class="bpw-bar-wrap">

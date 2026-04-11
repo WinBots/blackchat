@@ -24,14 +24,13 @@ export function useBroadcastProgress() {
     return Math.min(100, Math.round((done / job.value.total) * 100))
   })
 
-  function startTracking(jobId, total, flowName) {
+  function startTracking(jobId, total) {
     job.value = {
       job_id: jobId,
       total,
       sent: 0,
       failed: 0,
       status: 'queued',
-      flow_name: flowName || 'Disparo em massa',
     }
     _schedulePoll()
   }
@@ -54,6 +53,9 @@ export function useBroadcastProgress() {
       }
       if (job.value.status === 'running' || job.value.status === 'queued') {
         _schedulePoll()
+      } else {
+        // Concluído — some automaticamente após 3 segundos
+        setTimeout(() => { job.value = null }, 3000)
       }
     } catch {
       // Job pode não ter iniciado ainda — tenta de novo
