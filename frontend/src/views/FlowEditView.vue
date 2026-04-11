@@ -4635,112 +4635,38 @@ const updateConnectionPaths = () => {
   if (!containerRef.value) return
   if (isPageLoading.value) return
 
-  // Coletar bounding boxes de todos os nós no espaço do workspace
-  const nodeBounds = {}
-  for (const step of steps.value) {
-    const el = nodeEls[step.id]
-    const pos = nodePositions.value[step.id] || { x: 0, y: 0 }
-    nodeBounds[step.id] = {
-      x: pos.x,
-      y: pos.y,
-      w: el ? el.offsetWidth  : 280,
-      h: el ? el.offsetHeight : 200,
-    }
-  }
-
-  // Verifica se um ponto (px, py) está dentro de um retângulo com margem
-  const insideRect = (px, py, rect, margin = 0) =>
-    px > rect.x - margin &&
-    px < rect.x + rect.w + margin &&
-    py > rect.y - margin &&
-    py < rect.y + rect.h + margin
-
-  // Retorna os bounds de obstáculos que não sejam o nó de origem/destino
-  const getObstacles = (fromId, toId) =>
-    Object.entries(nodeBounds)
-      .filter(([id]) => id !== String(fromId) && id !== String(toId))
-      .map(([, b]) => b)
-
   connectionPaths.value = connections.value.map(conn => {
     const fromPoint = getPortCenterWorkspace(conn.from, 'out', conn.outputId || 'default')
-    const toPoint   = getPortCenterWorkspace(conn.to, 'in')
+    const toPoint = getPortCenterWorkspace(conn.to, 'in')
+
     if (!fromPoint || !toPoint) return null
+
+    // Calcular direção e ajustar ponto final para dar espaço à seta
+    const dx = toPoint.x - fromPoint.x
+    const dy = toPoint.y - fromPoint.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    if (!distance) return null
+
+    // Deslocamento para dar espaço à seta no final
+    const offsetEnd = 15   // espaço para a seta
 
     const startX = fromPoint.x
     const startY = fromPoint.y
-    const endX   = toPoint.x
-    const endY   = toPoint.y
-    const dx     = endX - startX
-    const dy     = endY - startY
+    const endX = toPoint.x - (dx / distance) * offsetEnd
+    const endY = toPoint.y - (dy / distance) * offsetEnd
 
-    // Constantes de layout
-    const H_OUT   = 60   // saída horizontal do porto de origem
-    const H_IN    = 60   // entrada horizontal do porto de destino
-    const V_CLEAR = 50   // margem vertical ao contornar nós
-    const ARROW   = 14   // espaço para a ponta da seta
+    const controlOffset = Math.abs(dx) * 0.5
+    const c1x = startX + controlOffset
+    const c1y = startY
+    const c2x = endX - controlOffset
+    const c2y = endY
+    const path = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`
 
-    let path, midX, midY
-
-    if (dx > H_OUT + H_IN) {
-      // ── CONEXÃO PARA FRENTE (espaço suficiente) ──────────────────────────
-      // Elbow suave: sai horizontalmente → desce/sobe → entra horizontalmente
-      const exitX  = startX + H_OUT
-      const enterX = endX   - H_IN
-      const mid    = (exitX + enterX) / 2
-
-      // Verifica se algum obstáculo está no corredor vertical entre exitX e enterX
-      const obstacles = getObstacles(conn.from, conn.to)
-      const blocked = obstacles.some(b =>
-        b.x < enterX && b.x + b.w > exitX &&
-        ((startY < endY ? b.y < endY + V_CLEAR && b.y + b.h > startY - V_CLEAR
-                        : b.y < startY + V_CLEAR && b.y + b.h > endY - V_CLEAR))
-      )
-
-      if (!blocked || Math.abs(dy) > 10) {
-        // Caminho elbow com duas curvas bezier suaves
-        path = `M ${startX} ${startY} ` +
-               `C ${exitX} ${startY}, ${mid} ${startY}, ${mid} ${(startY + endY) / 2} ` +
-               `C ${mid} ${endY}, ${enterX} ${endY}, ${endX - ARROW} ${endY}`
-        midX = mid
-        midY = (startY + endY) / 2
-      } else {
-        // Desvio por cima dos obstáculos
-        const detourY = Math.min(startY, endY) - V_CLEAR * 2
-        path = `M ${startX} ${startY} ` +
-               `C ${exitX} ${startY}, ${exitX} ${detourY}, ${mid} ${detourY} ` +
-               `C ${enterX} ${detourY}, ${enterX} ${endY}, ${endX - ARROW} ${endY}`
-        midX = mid
-        midY = detourY
-      }
-
-    } else {
-      // ── CONEXÃO PARA TRÁS / CURTA ────────────────────────────────────────
-      // Contorna por fora: sai à direita do nó de origem, desce/sobe fora dos dois nós, entra pela esquerda do destino
-      const fromB = nodeBounds[conn.from]
-      const toB   = nodeBounds[conn.to]
-
-      // Margem lateral: ponto mais à direita de ambos os nós + folga
-      const rightEdge = Math.max(
-        fromB ? fromB.x + fromB.w : startX,
-        toB   ? toB.x   + toB.w  : endX
-      ) + 50
-
-      // Decidir se vai por cima ou por baixo baseado nos centros dos nós
-      const fromCenterY = fromB ? fromB.y + fromB.h / 2 : startY
-      const toCenterY   = toB   ? toB.y   + toB.h  / 2 : endY
-      const goAbove = fromCenterY > toCenterY
-      const detourY = goAbove
-        ? Math.min(fromB ? fromB.y : startY, toB ? toB.y : endY) - V_CLEAR * 2
-        : Math.max(fromB ? fromB.y + fromB.h : startY, toB ? toB.y + toB.h : endY) + V_CLEAR * 2
-
-      const r = 28 // suavidade das curvas nos cantos
-      path = `M ${startX} ${startY} ` +
-             `C ${startX + H_OUT} ${startY}, ${rightEdge} ${startY}, ${rightEdge} ${detourY} ` +
-             `C ${rightEdge} ${detourY}, ${endX - H_IN} ${detourY}, ${endX - H_IN} ${endY} ` +
-             `C ${endX - H_IN} ${endY}, ${endX - ARROW} ${endY}, ${endX - ARROW} ${endY}`
-      midX = (rightEdge + endX - H_IN) / 2
-      midY = detourY
-    }
+    // Ponto aproximado do meio da curva (t=0.5) para posicionar o botão de delete
+    const t = 0.5
+    const mt = 1 - t
+    const midX = (mt * mt * mt) * startX + (3 * mt * mt * t) * c1x + (3 * mt * t * t) * c2x + (t * t * t) * endX
+    const midY = (mt * mt * mt) * startY + (3 * mt * mt * t) * c1y + (3 * mt * t * t) * c2y + (t * t * t) * endY
 
     return { id: conn.id, path, midX, midY }
   }).filter(Boolean)
