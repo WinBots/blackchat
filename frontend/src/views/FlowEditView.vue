@@ -2038,25 +2038,17 @@
   <div v-if="aiKeywordConflict" class="modal-overlay" @click.self="aiKeywordConflict = null">
     <div class="modal-content kw-conflict-modal" @click.stop>
       <div class="modal-header">
-        <div class="kw-conflict-header-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
         <div>
           <h3 class="modal-title">Palavras-chave em conflito</h3>
           <p class="kw-conflict-subtitle">
-            As palavras abaixo já estão em uso no fluxo
-            <strong>"{{ aiKeywordConflict.conflictingFlowName }}"</strong>.
-            Altere-as para continuar.
+            Estas palavras já estão em uso no fluxo <strong>"{{ aiKeywordConflict.conflictingFlowName }}"</strong>. Substitua-as para continuar.
           </p>
         </div>
         <button class="modal-close" @click="aiKeywordConflict = null">
           <i class="fa-solid fa-times"></i>
         </button>
       </div>
+
       <div class="modal-body kw-conflict-body">
         <div
           v-for="kw in aiKeywordConflict.conflictingKeywords"
@@ -2067,7 +2059,7 @@
             <span class="kw-conflict-label">Conflitante</span>
             <span class="kw-chip kw-chip--conflict">{{ kw }}</span>
           </div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" flex-shrink="0">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
@@ -2077,25 +2069,26 @@
               class="kw-conflict-input"
               :class="{ 'kw-conflict-input--same': (aiKeywordEdits[kw] || '').toLowerCase().trim() === kw }"
               v-model="aiKeywordEdits[kw]"
-              :placeholder="`Substituto para '${kw}'`"
+              :placeholder="`ex: ${kw}-novo`"
             />
           </div>
         </div>
+
         <p class="kw-conflict-hint">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          Cada palavra-chave deve ser única dentro do canal para evitar ambiguidade no disparo dos fluxos.
+          Cada palavra-chave deve ser única por canal para evitar ambiguidade no disparo dos fluxos.
         </p>
       </div>
-      <div class="modal-footer">
+
+      <div class="modal-footer kw-conflict-footer">
         <button class="btn btn-secondary" @click="aiKeywordConflict = null">Cancelar</button>
         <button
-          class="btn btn-primary"
+          class="btn kw-btn-apply"
           @click="resolveKeywordConflict"
           :disabled="Object.values(aiKeywordEdits).some(v => !v.trim() || aiKeywordConflict.conflictingKeywords.includes(v.toLowerCase().trim()))"
         >
-          <i class="fa-solid fa-check"></i>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
           Aplicar com novas palavras-chave
         </button>
       </div>
@@ -4641,40 +4634,114 @@ const removeConnection = async (connId) => {
 const updateConnectionPaths = () => {
   if (!containerRef.value) return
   if (isPageLoading.value) return
-  
+
+  // Coletar bounding boxes de todos os nós no espaço do workspace
+  const nodeBounds = {}
+  for (const step of steps.value) {
+    const el = nodeEls[step.id]
+    const pos = nodePositions.value[step.id] || { x: 0, y: 0 }
+    nodeBounds[step.id] = {
+      x: pos.x,
+      y: pos.y,
+      w: el ? el.offsetWidth  : 280,
+      h: el ? el.offsetHeight : 200,
+    }
+  }
+
+  // Verifica se um ponto (px, py) está dentro de um retângulo com margem
+  const insideRect = (px, py, rect, margin = 0) =>
+    px > rect.x - margin &&
+    px < rect.x + rect.w + margin &&
+    py > rect.y - margin &&
+    py < rect.y + rect.h + margin
+
+  // Retorna os bounds de obstáculos que não sejam o nó de origem/destino
+  const getObstacles = (fromId, toId) =>
+    Object.entries(nodeBounds)
+      .filter(([id]) => id !== String(fromId) && id !== String(toId))
+      .map(([, b]) => b)
+
   connectionPaths.value = connections.value.map(conn => {
     const fromPoint = getPortCenterWorkspace(conn.from, 'out', conn.outputId || 'default')
-    const toPoint = getPortCenterWorkspace(conn.to, 'in')
-    
+    const toPoint   = getPortCenterWorkspace(conn.to, 'in')
     if (!fromPoint || !toPoint) return null
-    
-    // Calcular direção e ajustar ponto final para dar espaço à seta
-    const dx = toPoint.x - fromPoint.x
-    const dy = toPoint.y - fromPoint.y
-    const distance = Math.sqrt(dx * dx + dy * dy)
-    if (!distance) return null
-    
-    // Deslocamento para dar espaço à seta no final
-    const offsetEnd = 15   // espaço para a seta
-    
+
     const startX = fromPoint.x
     const startY = fromPoint.y
-    const endX = toPoint.x - (dx / distance) * offsetEnd
-    const endY = toPoint.y - (dy / distance) * offsetEnd
-    
-    const controlOffset = Math.abs(dx) * 0.5
-    const c1x = startX + controlOffset
-    const c1y = startY
-    const c2x = endX - controlOffset
-    const c2y = endY
-    const path = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`
+    const endX   = toPoint.x
+    const endY   = toPoint.y
+    const dx     = endX - startX
+    const dy     = endY - startY
 
-    // Ponto aproximado do meio da curva (t=0.5) para posicionar o botão de delete
-    const t = 0.5
-    const mt = 1 - t
-    const midX = (mt * mt * mt) * startX + (3 * mt * mt * t) * c1x + (3 * mt * t * t) * c2x + (t * t * t) * endX
-    const midY = (mt * mt * mt) * startY + (3 * mt * mt * t) * c1y + (3 * mt * t * t) * c2y + (t * t * t) * endY
-    
+    // Constantes de layout
+    const H_OUT   = 60   // saída horizontal do porto de origem
+    const H_IN    = 60   // entrada horizontal do porto de destino
+    const V_CLEAR = 50   // margem vertical ao contornar nós
+    const ARROW   = 14   // espaço para a ponta da seta
+
+    let path, midX, midY
+
+    if (dx > H_OUT + H_IN) {
+      // ── CONEXÃO PARA FRENTE (espaço suficiente) ──────────────────────────
+      // Elbow suave: sai horizontalmente → desce/sobe → entra horizontalmente
+      const exitX  = startX + H_OUT
+      const enterX = endX   - H_IN
+      const mid    = (exitX + enterX) / 2
+
+      // Verifica se algum obstáculo está no corredor vertical entre exitX e enterX
+      const obstacles = getObstacles(conn.from, conn.to)
+      const blocked = obstacles.some(b =>
+        b.x < enterX && b.x + b.w > exitX &&
+        ((startY < endY ? b.y < endY + V_CLEAR && b.y + b.h > startY - V_CLEAR
+                        : b.y < startY + V_CLEAR && b.y + b.h > endY - V_CLEAR))
+      )
+
+      if (!blocked || Math.abs(dy) > 10) {
+        // Caminho elbow com duas curvas bezier suaves
+        path = `M ${startX} ${startY} ` +
+               `C ${exitX} ${startY}, ${mid} ${startY}, ${mid} ${(startY + endY) / 2} ` +
+               `C ${mid} ${endY}, ${enterX} ${endY}, ${endX - ARROW} ${endY}`
+        midX = mid
+        midY = (startY + endY) / 2
+      } else {
+        // Desvio por cima dos obstáculos
+        const detourY = Math.min(startY, endY) - V_CLEAR * 2
+        path = `M ${startX} ${startY} ` +
+               `C ${exitX} ${startY}, ${exitX} ${detourY}, ${mid} ${detourY} ` +
+               `C ${enterX} ${detourY}, ${enterX} ${endY}, ${endX - ARROW} ${endY}`
+        midX = mid
+        midY = detourY
+      }
+
+    } else {
+      // ── CONEXÃO PARA TRÁS / CURTA ────────────────────────────────────────
+      // Contorna por fora: sai à direita do nó de origem, desce/sobe fora dos dois nós, entra pela esquerda do destino
+      const fromB = nodeBounds[conn.from]
+      const toB   = nodeBounds[conn.to]
+
+      // Margem lateral: ponto mais à direita de ambos os nós + folga
+      const rightEdge = Math.max(
+        fromB ? fromB.x + fromB.w : startX,
+        toB   ? toB.x   + toB.w  : endX
+      ) + 50
+
+      // Decidir se vai por cima ou por baixo baseado nos centros dos nós
+      const fromCenterY = fromB ? fromB.y + fromB.h / 2 : startY
+      const toCenterY   = toB   ? toB.y   + toB.h  / 2 : endY
+      const goAbove = fromCenterY > toCenterY
+      const detourY = goAbove
+        ? Math.min(fromB ? fromB.y : startY, toB ? toB.y : endY) - V_CLEAR * 2
+        : Math.max(fromB ? fromB.y + fromB.h : startY, toB ? toB.y + toB.h : endY) + V_CLEAR * 2
+
+      const r = 28 // suavidade das curvas nos cantos
+      path = `M ${startX} ${startY} ` +
+             `C ${startX + H_OUT} ${startY}, ${rightEdge} ${startY}, ${rightEdge} ${detourY} ` +
+             `C ${rightEdge} ${detourY}, ${endX - H_IN} ${detourY}, ${endX - H_IN} ${endY} ` +
+             `C ${endX - H_IN} ${endY}, ${endX - ARROW} ${endY}, ${endX - ARROW} ${endY}`
+      midX = (rightEdge + endX - H_IN) / 2
+      midY = detourY
+    }
+
     return { id: conn.id, path, midX, midY }
   }).filter(Boolean)
 }
@@ -7189,35 +7256,28 @@ onBeforeUnmount(() => {
 }
 
 /* Modal de conflito de keywords */
-.kw-conflict-modal { max-width: 520px; }
-
-.kw-conflict-header-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(251, 191, 36, 0.12);
-  border: 1px solid rgba(251, 191, 36, 0.25);
+.kw-conflict-modal {
+  max-width: 520px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fbbf24;
-  flex-shrink: 0;
+  flex-direction: column;
+  max-height: 90vh;
 }
 
 .kw-conflict-subtitle {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: #6b7280;
-  margin: 2px 0 0;
+  margin: 6px 0 0;
+  line-height: 1.5;
 }
-.kw-conflict-subtitle strong { color: #e9d5ff; }
+.kw-conflict-subtitle strong { color: #c4b5fd; }
 
 .kw-conflict-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-height: 340px;
+  gap: 12px;
   overflow-y: auto;
   padding-right: 4px;
+  flex: 1;
 }
 
 .kw-conflict-row {
@@ -7225,9 +7285,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 10px;
-  padding: 14px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 14px 16px;
 }
 
 .kw-conflict-original,
@@ -7236,13 +7296,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  min-width: 0;
 }
 
 .kw-conflict-label {
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: #4b5563;
 }
 
@@ -7254,10 +7315,14 @@ onBeforeUnmount(() => {
   font-size: 0.82rem;
   font-weight: 600;
   width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .kw-chip--conflict {
   background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   color: #f87171;
 }
 
@@ -7271,6 +7336,7 @@ onBeforeUnmount(() => {
   outline: none;
   transition: border-color 0.2s;
   width: 100%;
+  min-width: 0;
 }
 .kw-conflict-input:focus { border-color: rgba(139, 92, 246, 0.5); }
 .kw-conflict-input--same {
@@ -7279,15 +7345,46 @@ onBeforeUnmount(() => {
 }
 
 .kw-conflict-hint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   font-size: 0.75rem;
   color: #4b5563;
   padding: 10px 12px;
   background: rgba(255,255,255,0.02);
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.5;
+}
+
+.kw-conflict-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+
+.kw-btn-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.35);
+  color: #4ade80;
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.kw-btn-apply:hover:not(:disabled) {
+  background: rgba(0, 255, 102, 0.15);
+  border-color: rgba(0, 255, 102, 0.5);
+}
+.kw-btn-apply:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* Overlay de loading IA — padrão visual do sistema */
