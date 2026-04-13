@@ -17,6 +17,9 @@ class Tenant(Base):
     # Configurações gerais
     timezone = Column(String(64), nullable=True)
 
+    # API Token para integrações externas (ex: sistema de tracking)
+    api_token = Column(String(64), nullable=True, unique=True, index=True)
+
     # Billing / Stripe
     stripe_customer_id = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

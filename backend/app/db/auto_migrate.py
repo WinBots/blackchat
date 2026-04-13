@@ -93,6 +93,10 @@ _COLUMNS = [
     ("channels", "webhook_secret",
         "webhook_secret NVARCHAR(255)"),
 
+    # ── tenants — api_token para integração externa ────────────────────
+    ("tenants", "api_token",
+        "api_token NVARCHAR(64)"),
+
     # ── subscriptions — campos Stripe estendidos ───────────────────────
     ("subscriptions", "stripe_product_id",
         "stripe_product_id NVARCHAR(255)"),

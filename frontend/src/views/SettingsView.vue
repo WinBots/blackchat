@@ -1219,6 +1219,95 @@
               </div>
             </div>
 
+            <!-- ──── Integrações Tab ──────────────────────────────────── -->
+            <div v-else-if="activeTab === 'Integrações'" class="integrations-tab">
+
+              <!-- Blackchat API Token -->
+              <div class="integration-card">
+                <div class="integration-card-header">
+                  <div class="integration-card-icon">
+                    <i class="fa-solid fa-plug"></i>
+                  </div>
+                  <div>
+                    <h3 class="integration-card-title">API de Integrações</h3>
+                    <p class="integration-card-desc">
+                      Use este token para conectar sistemas externos ao Blackchat.
+                      Contatos enviados por integrações aparecerão automaticamente em Contatos e no Envio em Massa.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Token -->
+                <div class="integration-token-section">
+                  <label class="integration-label">Seu API Token</label>
+                  <div class="integration-token-box">
+                    <span v-if="integrationTokenLoading" class="integration-token-loading">Carregando...</span>
+                    <code v-else class="integration-token-value">{{ integrationToken }}</code>
+                    <button class="integration-copy-btn" @click="copyIntegrationToken" :disabled="!integrationToken">
+                      <i :class="integrationTokenCopied ? 'fa-solid fa-check' : 'fa-solid fa-copy'"></i>
+                      {{ integrationTokenCopied ? 'Copiado!' : 'Copiar' }}
+                    </button>
+                  </div>
+                  <p class="integration-token-hint">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    Mantenha este token em segredo. Ele dá acesso para criar contatos na sua conta.
+                  </p>
+                </div>
+
+                <!-- Regenerar -->
+                <div class="integration-regen-section">
+                  <button
+                    v-if="!showRegenerateConfirm"
+                    class="btn btn-secondary integration-regen-btn"
+                    @click="showRegenerateConfirm = true"
+                  >
+                    <i class="fa-solid fa-rotate"></i>
+                    Regenerar Token
+                  </button>
+                  <div v-else class="integration-regen-confirm">
+                    <p>⚠️ O token atual vai parar de funcionar imediatamente. Tem certeza?</p>
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                      <button class="btn btn-danger" @click="regenerateToken" :disabled="integrationTokenRegenerating">
+                        {{ integrationTokenRegenerating ? 'Regenerando...' : 'Sim, regenerar' }}
+                      </button>
+                      <button class="btn btn-secondary" @click="showRegenerateConfirm = false">Cancelar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Como usar -->
+              <div class="integration-card integration-docs-card">
+                <h3 class="integration-card-title">
+                  <i class="fa-solid fa-book"></i>
+                  Como Usar — Endpoint de Tracking
+                </h3>
+                <p class="integration-card-desc">Envie eventos de entrada/saída de grupo para o Blackchat:</p>
+
+                <div class="integration-code-block">
+                  <div class="integration-code-label">POST /api/v1/integrations/tracking</div>
+                  <pre class="integration-code">{{ trackingExample }}</pre>
+                </div>
+
+                <div class="integration-tags-info">
+                  <div class="integration-tag-item">
+                    <span class="tag-badge tag-entrou">entrou-grupo</span>
+                    <span>Aplicada quando <code>event: "entrou"</code></span>
+                  </div>
+                  <div class="integration-tag-item">
+                    <span class="tag-badge tag-saiu">saiu-grupo</span>
+                    <span>Aplicada quando <code>event: "saiu"</code></span>
+                  </div>
+                </div>
+
+                <p class="integration-card-desc" style="margin-top:12px;">
+                  O contato é criado automaticamente se não existir. As tags são atualizadas a cada evento.
+                  Use as tags em <strong>Contatos</strong> e no <strong>Envio em Massa</strong> para segmentar.
+                </p>
+              </div>
+
+            </div>
+
           </div>
         </section>
       </div>
@@ -1366,12 +1455,35 @@ const telegramItems = [
 const workspaceItems = [
   { label: 'Workspaces', iconClass: 'fa-solid fa-building fa-lg' }
 ]
+const integrationItems = [
+  { label: 'Integrações', iconClass: 'fa-solid fa-plug fa-lg' }
+]
 const menuSections = [
   { title: 'Conta', items: principalItems },
   { title: 'Financeiro', items: billingItems },
   { title: 'Canais', items: telegramItems },
-  { title: 'Workspaces', items: workspaceItems }
+  { title: 'Workspaces', items: workspaceItems },
+  { title: 'Integrações', items: integrationItems }
 ]
+
+// ─── Integrações state ────────────────────────────────────────────────────────
+const integrationToken = ref('')
+const integrationTokenLoading = ref(false)
+const integrationTokenCopied = ref(false)
+const integrationTokenRegenerating = ref(false)
+const showRegenerateConfirm = ref(false)
+
+const trackingExample = computed(() => `POST https://app.blackchatpro.com/api/v1/integrations/tracking
+Authorization: Bearer ${integrationToken.value || 'SEU_TOKEN_AQUI'}
+Content-Type: application/json
+
+{
+  "telegram_user_id": "123456789",
+  "first_name": "João",
+  "last_name": "Silva",
+  "username": "joaosilva",
+  "event": "entrou"   // ou "saiu"
+}`)
 
 // ─── Workspaces state ─────────────────────────────────────────────────────────
 const wsLoaded = ref(false)
@@ -2307,7 +2419,7 @@ const saveBotName = async () => {
 
 const selectTab = (label) => {
   activeTab.value = label
-  
+
   // Se selecionou Telegram, definir o step inicial
   if (label === 'Telegram') {
     if (telegramChannels.value.length > 0) {
@@ -2321,6 +2433,47 @@ const selectTab = (label) => {
   if (label === 'Workspaces') {
     loadWorkspaces()
   }
+
+  // Carregar token de integração ao abrir a aba
+  if (label === 'Integrações') {
+    loadIntegrationToken()
+  }
+}
+
+// ─── Funções de Integrações ───────────────────────────────────────────────────
+const loadIntegrationToken = async () => {
+  if (integrationToken.value) return
+  integrationTokenLoading.value = true
+  try {
+    const { getIntegrationToken } = await import('@/api/integrations')
+    const data = await getIntegrationToken()
+    integrationToken.value = data.api_token
+  } catch (e) {
+    console.error('Erro ao carregar token de integração:', e)
+  } finally {
+    integrationTokenLoading.value = false
+  }
+}
+
+const copyIntegrationToken = async () => {
+  await navigator.clipboard.writeText(integrationToken.value)
+  integrationTokenCopied.value = true
+  setTimeout(() => { integrationTokenCopied.value = false }, 2000)
+}
+
+const regenerateToken = async () => {
+  integrationTokenRegenerating.value = true
+  try {
+    const { regenerateIntegrationToken } = await import('@/api/integrations')
+    const data = await regenerateIntegrationToken()
+    integrationToken.value = data.api_token
+    showRegenerateConfirm.value = false
+    showStatus('Token regenerado com sucesso!')
+  } catch (e) {
+    showStatus('Erro ao regenerar token')
+  } finally {
+    integrationTokenRegenerating.value = false
+  }
 }
 
 // Mapa para normalizar o tab param da URL para o label exato da aba
@@ -2330,7 +2483,9 @@ const tabMap = {
   cobranca: 'Cobrança',
   planos: 'Planos',
   telegram: 'Telegram',
-  workspaces: 'Workspaces'
+  workspaces: 'Workspaces',
+  integrações: 'Integrações',
+  integracoes: 'Integrações'
 }
 
 // Carregar canais ao montar o componente
@@ -4395,6 +4550,202 @@ onMounted(async () => {
     font-size: 0.625rem;
     padding: 3px 8px;
   }
+}
+
+/* ─── Integrações Tab ─────────────────────────────────────────────────────── */
+.integrations-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.integration-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.integration-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.integration-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.integration-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.integration-card-desc {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.integration-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.integration-token-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.integration-token-value {
+  flex: 1;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #10b981;
+  word-break: break-all;
+}
+
+.integration-token-loading {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.integration-copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.integration-copy-btn:hover {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.integration-token-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.integration-regen-btn {
+  font-size: 0.85rem;
+}
+
+.integration-regen-confirm {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 0.875rem;
+  color: #fca5a5;
+}
+
+.integration-docs-card {
+  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.integration-code-block {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.integration-code-label {
+  padding: 8px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #1e293b;
+  font-family: monospace;
+}
+
+.integration-code {
+  margin: 0;
+  padding: 14px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-family: 'Courier New', monospace;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.integration-tags-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.integration-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.tag-badge {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tag-entrou {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tag-saiu {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 </style>
 

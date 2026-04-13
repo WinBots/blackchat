@@ -7,9 +7,9 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app.config import get_settings
 
 from app.api.v1.routers import (
-    auth, tenants, channels, flows, contacts, events, 
+    auth, tenants, channels, flows, contacts, events,
     telegram, instagram, instagram_connect, media, admin, public, debug, dev_tools, dashboard,
-    plans, subscription, billing, workspaces
+    plans, subscription, billing, workspaces, integrations
 )
 from app.api.v1.routers.stripe_config import router as stripe_config_router
 from app.core.auth import require_permission
@@ -74,6 +74,7 @@ app.include_router(instagram_connect.router, prefix="/api/v1/instagram", tags=["
                    dependencies=[Depends(require_permission("channels"))])
 app.include_router(debug.router, prefix="/api/v1/debug", tags=["debug"])
 app.include_router(dev_tools.router, prefix="/api/v1", tags=["dev-tools"])
+app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["integrations"])
 
 
 @app.on_event("startup")
