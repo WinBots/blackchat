@@ -4943,15 +4943,15 @@ const openFlowTest = () => {
   let url = `https://t.me/${username}`
 
   if (trigger?.config?.triggerType === 'telegram_ref_url' && trigger?.config?.ref_key) {
-    // Gatilho com deep link — abre direto com o parâmetro start
+    // Gatilho com deep link — abre direto com o parâmetro start (auto-ativa)
     url = `https://t.me/${username}?start=${trigger.config.ref_key}`
   } else if (trigger?.config?.keywords?.length > 0) {
-    // Gatilho por keyword — abre o bot (usuário precisará enviar a keyword)
-    url = `https://t.me/${username}`
-    toast.info(`Envie a mensagem: "${trigger.config.keywords[0]}" para iniciar o fluxo`)
+    // Gatilho por keyword — pré-preenche a mensagem, usuário só clica Enviar
+    const keyword = trigger.config.keywords[0]
+    url = `https://t.me/${username}?text=${encodeURIComponent(keyword)}`
   } else {
-    // Sem gatilho específico — abre o bot com /start
-    url = `https://t.me/${username}?start=test`
+    // Sem gatilho configurado — abre o bot normalmente
+    url = `https://t.me/${username}`
   }
 
   window.open(url, '_blank')
