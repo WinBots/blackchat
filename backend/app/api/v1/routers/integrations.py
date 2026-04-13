@@ -44,7 +44,10 @@ class TrackingEvent(BaseModel):
     first_name: str
     last_name: Optional[str] = ""
     username: Optional[str] = ""
-    event: str  # "entrou" | "saiu"
+    telegram_username: Optional[str] = ""  # alias usado por alguns sistemas externos
+    event: str  # "entrou" | "saiu" | "entry" | "exit"
+
+    model_config = {"extra": "ignore"}  # ignora campos desconhecidos como funnel_id, channel_id
 
 
 class TrackingOut(BaseModel):
@@ -153,14 +156,22 @@ def validate_token(
 def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -> TrackingOut:
     """Processa um único evento de tracking. Reutilizado pelo endpoint single e batch."""
 
+    # Normaliza evento: aceita inglês (entry/exit) e português (entrou/saiu)
+    EVENT_NORMALIZE = {
+        "entry": "entrou", "entrou": "entrou",
+        "exit":  "saiu",   "saiu":   "saiu",
+    }
     TAG_MAP = {
         "entrou": {"apply": "entrou-grupo", "remove": "saiu-grupo"},
         "saiu":   {"apply": "saiu-grupo",   "remove": "entrou-grupo"},
     }
 
-    event = payload.event.strip().lower()
+    event = EVENT_NORMALIZE.get(payload.event.strip().lower(), payload.event.strip().lower())
     tag_apply  = TAG_MAP[event]["apply"]
     tag_remove = TAG_MAP[event]["remove"]
+
+    # Normaliza username: aceita "username" ou "telegram_username"
+    username = payload.username or payload.telegram_username or ""
 
     # ── Buscar ou criar contato ─────────────────────────────────────────
     contact = db.query(Contact).filter(
@@ -174,7 +185,7 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
             tenant_id=tenant.id,
             first_name=payload.first_name,
             last_name=payload.last_name or None,
-            username=payload.username or None,
+            username=username or None,
             telegram_user_id=str(payload.telegram_user_id),
             custom_fields={},
             last_interaction_at=datetime.utcnow(),
@@ -187,8 +198,8 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
         contact.first_name = payload.first_name
         if payload.last_name:
             contact.last_name = payload.last_name
-        if payload.username:
-            contact.username = payload.username
+        if username:
+            contact.username = username
         contact.last_interaction_at = datetime.utcnow()
         db.add(contact)
 
@@ -244,8 +255,8 @@ def receive_tracking_event(
     tenant = _authenticate(authorization, db)
 
     event = payload.event.strip().lower()
-    if event not in ("entrou", "saiu"):
-        raise HTTPException(status_code=422, detail="Campo 'event' deve ser 'entrou' ou 'saiu'")
+    if event not in ("entrou", "saiu", "entry", "exit"):
+        raise HTTPException(status_code=422, detail="Campo 'event' deve ser 'entrou', 'saiu', 'entry' ou 'exit'")
     if not payload.telegram_user_id or not payload.first_name:
         raise HTTPException(status_code=422, detail="Campos 'telegram_user_id' e 'first_name' são obrigatórios")
 
@@ -282,7 +293,7 @@ def receive_tracking_batch(
     results = []
     for payload in events:
         event = payload.event.strip().lower()
-        if event not in ("entrou", "saiu"):
+        if event not in ("entrou", "saiu", "entry", "exit"):
             logger.warning("Evento inválido ignorado: %s", payload.event)
             continue
         if not payload.telegram_user_id or not payload.first_name:
