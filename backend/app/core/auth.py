@@ -124,6 +124,7 @@ def get_current_tenant(
             name=cached.get("name", ""),
             timezone=cached.get("timezone"),
             stripe_customer_id=cached.get("stripe_customer_id"),
+            api_token=cached.get("api_token"),
         )
         tenant._user_role = cached["role"]
         tenant._user_membership = None  # não necessário após validação
@@ -170,6 +171,7 @@ def get_current_tenant(
         "name": tenant.name,
         "timezone": tenant.timezone,
         "stripe_customer_id": tenant.stripe_customer_id,
+        "api_token": tenant.api_token,
         "role": role,
     }, CacheKeys.TENANT_AUTH_TTL)
 
