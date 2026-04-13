@@ -22,6 +22,7 @@ from app.db.session import get_db
 from app.db.models.tenant import Tenant
 from app.db.models.contact import Contact
 from app.db.models.tag import ContactTag
+from app.db.models.channel import Channel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -45,6 +46,7 @@ class TrackingEvent(BaseModel):
     last_name: Optional[str] = ""
     username: Optional[str] = ""
     telegram_username: Optional[str] = ""  # alias usado por alguns sistemas externos
+    bot_username: Optional[str] = ""       # bot que interagiu com o lead
     event: str  # "entrou" | "saiu" | "entry" | "exit"
 
     model_config = {"extra": "ignore"}  # ignora campos desconhecidos como funnel_id, channel_id
@@ -202,6 +204,26 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
             contact.username = username
         contact.last_interaction_at = datetime.utcnow()
         db.add(contact)
+
+    # ── Vincular canal pelo bot_username ────────────────────────────────
+    bot_username = (payload.bot_username or "").strip().lstrip("@").lower()
+    if bot_username and not contact.default_channel_id:
+        channels = db.query(Channel).filter(
+            Channel.tenant_id == tenant.id,
+            Channel.type == "telegram",
+            Channel.is_active == True  # noqa: E712
+        ).all()
+        for ch in channels:
+            try:
+                import json
+                cfg = json.loads(ch.config or "{}")
+                ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
+                if ch_bot and ch_bot == bot_username:
+                    contact.default_channel_id = ch.id
+                    db.add(contact)
+                    break
+            except Exception:
+                continue
 
     # ── Remover tag oposta ──────────────────────────────────────────────
     db.query(ContactTag).filter(
