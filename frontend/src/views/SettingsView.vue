@@ -2442,14 +2442,14 @@ const selectTab = (label) => {
 
 // ─── Funções de Integrações ───────────────────────────────────────────────────
 const loadIntegrationToken = async () => {
-  if (integrationToken.value) return
   integrationTokenLoading.value = true
   try {
     const { getIntegrationToken } = await import('@/api/integrations')
     const data = await getIntegrationToken()
-    integrationToken.value = data.api_token
+    integrationToken.value = data.api_token || ''
   } catch (e) {
     console.error('Erro ao carregar token de integração:', e)
+    integrationToken.value = ''
   } finally {
     integrationTokenLoading.value = false
   }
