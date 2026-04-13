@@ -54,6 +54,12 @@ class TrackingOut(BaseModel):
     tags: list[str]
 
 
+class BatchTrackingOut(BaseModel):
+    ok: bool
+    processed: int
+    results: list[TrackingOut]
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _generate_token() -> str:
@@ -144,46 +150,15 @@ def validate_token(
     return ValidateOut(valid=True, tenant_name=tenant.name)
 
 
-@router.post("/tracking", response_model=TrackingOut)
-def receive_tracking_event(
-    payload: TrackingEvent,
-    authorization: Optional[str] = Header(None),
-    db: Session = Depends(get_db),
-):
-    """
-    Recebe evento de entrada/saída de grupo do sistema de tracking externo.
-    Cria ou atualiza o contato e aplica as tags corretas.
-    Header: Authorization: Bearer bc_live_xxxx
-    """
-    # ── Autenticação por api_token ──────────────────────────────────────
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token não fornecido")
+def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -> TrackingOut:
+    """Processa um único evento de tracking. Reutilizado pelo endpoint single e batch."""
 
-    token = authorization.removeprefix("Bearer ").strip()
-    tenant = _get_tenant_by_token(token, db)
-
-    if not tenant:
-        raise HTTPException(status_code=401, detail="Token inválido")
-
-    # ── Validar evento ──────────────────────────────────────────────────
-    event = payload.event.strip().lower()
-    if event not in ("entrou", "saiu"):
-        raise HTTPException(
-            status_code=422,
-            detail="Campo 'event' deve ser 'entrou' ou 'saiu'"
-        )
-
-    if not payload.telegram_user_id or not payload.first_name:
-        raise HTTPException(
-            status_code=422,
-            detail="Campos 'telegram_user_id' e 'first_name' são obrigatórios"
-        )
-
-    # ── Tags a aplicar / remover ────────────────────────────────────────
     TAG_MAP = {
         "entrou": {"apply": "entrou-grupo", "remove": "saiu-grupo"},
         "saiu":   {"apply": "saiu-grupo",   "remove": "entrou-grupo"},
     }
+
+    event = payload.event.strip().lower()
     tag_apply  = TAG_MAP[event]["apply"]
     tag_remove = TAG_MAP[event]["remove"]
 
@@ -205,11 +180,10 @@ def receive_tracking_event(
             last_interaction_at=datetime.utcnow(),
         )
         db.add(contact)
-        db.flush()  # gera o id
+        db.flush()
         action = "created"
-        logger.info("Novo contato criado via tracking: %s (tenant %d)", payload.telegram_user_id, tenant.id)
+        logger.info("Novo contato via tracking: %s (tenant %d)", payload.telegram_user_id, tenant.id)
     else:
-        # Atualiza dados caso tenham mudado
         contact.first_name = payload.first_name
         if payload.last_name:
             contact.last_name = payload.last_name
@@ -224,41 +198,110 @@ def receive_tracking_event(
         ContactTag.tag_name == tag_remove
     ).delete(synchronize_session=False)
 
-    # ── Aplicar nova tag (ignora se já existir) ─────────────────────────
+    # ── Aplicar nova tag ────────────────────────────────────────────────
     existing_tag = db.query(ContactTag).filter(
         ContactTag.contact_id == contact.id,
         ContactTag.tag_name == tag_apply
     ).first()
 
     if not existing_tag:
-        new_tag = ContactTag(
+        db.add(ContactTag(
             tenant_id=tenant.id,
             contact_id=contact.id,
             tag_name=tag_apply,
-        )
-        db.add(new_tag)
+        ))
+
+    db.flush()
+
+    current_tags = [t.tag_name for t in db.query(ContactTag).filter(
+        ContactTag.contact_id == contact.id
+    ).all()]
+
+    return TrackingOut(ok=True, contact_id=contact.id, action=action, tags=current_tags)
+
+
+def _authenticate(authorization: Optional[str], db: Session) -> Tenant:
+    """Valida o Bearer token e retorna o tenant."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token não fornecido")
+    token = authorization.removeprefix("Bearer ").strip()
+    tenant = _get_tenant_by_token(token, db)
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    return tenant
+
+
+@router.post("/tracking", response_model=TrackingOut)
+def receive_tracking_event(
+    payload: TrackingEvent,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Recebe um único evento de entrada/saída de grupo.
+    Header: Authorization: Bearer bc_live_xxxx
+    """
+    tenant = _authenticate(authorization, db)
+
+    event = payload.event.strip().lower()
+    if event not in ("entrou", "saiu"):
+        raise HTTPException(status_code=422, detail="Campo 'event' deve ser 'entrou' ou 'saiu'")
+    if not payload.telegram_user_id or not payload.first_name:
+        raise HTTPException(status_code=422, detail="Campos 'telegram_user_id' e 'first_name' são obrigatórios")
+
+    try:
+        result = _process_single_event(payload, tenant, db)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        logger.warning("IntegrityError ao salvar tracking event para %s", payload.telegram_user_id)
+        raise HTTPException(status_code=500, detail="Erro ao salvar evento")
+
+    return result
+
+
+@router.post("/tracking/batch", response_model=BatchTrackingOut)
+def receive_tracking_batch(
+    events: list[TrackingEvent],
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Recebe múltiplos eventos de entrada/saída em uma única requisição.
+    Máximo de 500 eventos por batch.
+    Header: Authorization: Bearer bc_live_xxxx
+    """
+    tenant = _authenticate(authorization, db)
+
+    if not events:
+        raise HTTPException(status_code=422, detail="Lista de eventos não pode ser vazia")
+
+    if len(events) > 500:
+        raise HTTPException(status_code=422, detail="Máximo de 500 eventos por batch")
+
+    results = []
+    for payload in events:
+        event = payload.event.strip().lower()
+        if event not in ("entrou", "saiu"):
+            logger.warning("Evento inválido ignorado: %s", payload.event)
+            continue
+        if not payload.telegram_user_id or not payload.first_name:
+            logger.warning("Evento sem campos obrigatórios ignorado: %s", payload.telegram_user_id)
+            continue
+        try:
+            result = _process_single_event(payload, tenant, db)
+            results.append(result)
+        except Exception as e:
+            logger.warning("Erro ao processar evento batch para %s: %s", payload.telegram_user_id, e)
+            db.rollback()
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        logger.warning("IntegrityError ao salvar tracking event para %s", payload.telegram_user_id)
+        logger.error("IntegrityError no commit do batch (tenant %d)", tenant.id)
+        raise HTTPException(status_code=500, detail="Erro ao salvar batch")
 
-    db.refresh(contact)
+    logger.info("Batch processado: %d eventos (tenant %d)", len(results), tenant.id)
 
-    # Tags atuais do contato
-    current_tags = [t.tag_name for t in db.query(ContactTag).filter(
-        ContactTag.contact_id == contact.id
-    ).all()]
-
-    logger.info(
-        "Tracking event '%s' para contato %d (tenant %d) — tags: %s",
-        event, contact.id, tenant.id, current_tags
-    )
-
-    return TrackingOut(
-        ok=True,
-        contact_id=contact.id,
-        action=action,
-        tags=current_tags,
-    )
+    return BatchTrackingOut(ok=True, processed=len(results), results=results)
