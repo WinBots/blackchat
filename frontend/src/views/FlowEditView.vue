@@ -103,6 +103,12 @@
             <i class="fa-solid fa-bolt"></i>
             Adicionar Gatilho
           </button>
+          <button class="btn btn-test-flow" @click="openFlowTest" :disabled="steps.length === 0" title="Testar fluxo no Telegram">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Testar
+          </button>
           <button class="btn btn-secondary" @click="fitToScreen" title="Encaixar tudo na tela">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -4924,6 +4930,33 @@ const copyTelegramRefLink = (refKey) => {
   toast.success('Link copiado para área de transferência')
 }
 
+// Abre o Telegram para testar o fluxo
+const openFlowTest = () => {
+  const username = (botUsername.value || '').replace('@', '').trim()
+  if (!username || username === 'seu_bot') {
+    toast.warning('Configure o username do bot nas configurações do canal primeiro')
+    return
+  }
+
+  // Pega o trigger do fluxo
+  const trigger = steps.value.find(s => s.type === 'trigger')
+  let url = `https://t.me/${username}`
+
+  if (trigger?.config?.triggerType === 'telegram_ref_url' && trigger?.config?.ref_key) {
+    // Gatilho com deep link — abre direto com o parâmetro start
+    url = `https://t.me/${username}?start=${trigger.config.ref_key}`
+  } else if (trigger?.config?.keywords?.length > 0) {
+    // Gatilho por keyword — abre o bot (usuário precisará enviar a keyword)
+    url = `https://t.me/${username}`
+    toast.info(`Envie a mensagem: "${trigger.config.keywords[0]}" para iniciar o fluxo`)
+  } else {
+    // Sem gatilho específico — abre o bot com /start
+    url = `https://t.me/${username}?start=test`
+  }
+
+  window.open(url, '_blank')
+}
+
 // Função auxiliar para selecionar todo o texto do input ao clicar
 const selectAllText = (event) => {
   event.target.select()
@@ -6326,6 +6359,33 @@ onBeforeUnmount(() => {
 @keyframes empty-bounce {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-6px); }
+}
+
+/* Botão Testar fluxo */
+.btn-test-flow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1.5px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-test-flow:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+.btn-test-flow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* Botão Adicionar Gatilho pulsante quando canvas vazio */
