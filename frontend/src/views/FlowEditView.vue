@@ -93,7 +93,14 @@
               {{ flow.is_active ? 'Ativo' : 'Inativo' }}
             </span>
           </div>
-          <h2 class="page-title">{{ flow.name }}</h2>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <h2 class="page-title">{{ flow.name }}</h2>
+            <button class="btn-flow-settings" @click="showFlowSettingsModal = true" title="Configurações do fluxo">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
           <p class="page-description">
             Arraste os blocos livremente • Conecte saídas (↘) com entradas (↖) • Use scroll para zoom
           </p>
@@ -1975,6 +1982,66 @@
     </div>
   </div>
 
+  <!-- Modal de Configurações do Fluxo -->
+  <div v-if="showFlowSettingsModal" class="modal-overlay" @click.self="showFlowSettingsModal = false">
+    <div class="modal-content" style="max-width: 480px;" @click.stop>
+      <div class="modal-header">
+        <h3 class="modal-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px;vertical-align:middle"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Configurações do Fluxo
+        </h3>
+        <button class="modal-close" @click="showFlowSettingsModal = false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="padding: 24px; display:flex; flex-direction:column; gap:20px;">
+
+        <!-- Nome do fluxo -->
+        <div>
+          <label class="sidebar-label">Nome do Fluxo</label>
+          <input
+            v-model="flow.name"
+            class="form-input"
+            placeholder="Nome do fluxo"
+            style="width:100%;margin-top:6px;"
+          />
+        </div>
+
+        <!-- Trocar Bot/Canal -->
+        <div>
+          <label class="sidebar-label">Bot Telegram Vinculado</label>
+          <p style="font-size:0.8rem;color:var(--muted);margin:4px 0 10px;">
+            Troque o bot vinculado a este fluxo. O fluxo continuará funcionando normalmente com o novo bot.
+          </p>
+          <select
+            v-model="selectedChannelId"
+            class="form-input"
+            style="width:100%;"
+          >
+            <option value="" disabled>Selecione um bot...</option>
+            <option
+              v-for="ch in channelsCache.filter(c => c.type === 'telegram')"
+              :key="ch.id"
+              :value="ch.id"
+            >
+              @{{ ch.bot_username || ch.name }} — {{ ch.name }}
+            </option>
+          </select>
+          <p v-if="botUsername && botUsername !== 'seu_bot'" style="font-size:0.8rem;color:#10b981;margin-top:6px;">
+            <i class="fa-brands fa-telegram"></i> Atual: @{{ botUsername }}
+          </p>
+        </div>
+
+      </div>
+      <div class="modal-footer" style="padding:16px 24px;display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" @click="showFlowSettingsModal = false">Cancelar</button>
+        <button class="btn btn-primary" @click="saveFlowSettings" :disabled="isSavingSettings">
+          {{ isSavingSettings ? 'Salvando...' : 'Salvar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal de Gatilhos -->
   <div v-if="showTriggerModal" class="modal-overlay" @click="showTriggerModal = false">
     <div class="modal-content" style="max-width: 780px;" @click.stop>
@@ -2416,6 +2483,40 @@ const startSidebarResize = (e) => {
 }
 const showTriggerModal = ref(false)
 const showAddBlockModal = ref(false)
+const showFlowSettingsModal = ref(false)
+const isSavingSettings = ref(false)
+const selectedChannelId = ref('')
+
+watch(showFlowSettingsModal, (val) => {
+  if (val) selectedChannelId.value = flow.value?.channel_id ? String(flow.value.channel_id) : ''
+})
+
+const saveFlowSettings = async () => {
+  isSavingSettings.value = true
+  try {
+    const payload = { name: flow.value.name }
+    if (selectedChannelId.value) {
+      payload.channel_id = Number(selectedChannelId.value)
+    }
+    await updateFlow(flowId.value, payload)
+
+    // Atualiza botUsername se canal foi trocado
+    if (selectedChannelId.value) {
+      const newChannel = channelsCache.value.find(c => Number(c.id) === Number(selectedChannelId.value))
+      if (newChannel?.bot_username) {
+        botUsername.value = newChannel.bot_username.replace('@', '')
+      }
+      flow.value.channel_id = Number(selectedChannelId.value)
+    }
+
+    toast.success('Configurações salvas com sucesso!')
+    showFlowSettingsModal.value = false
+  } catch (e) {
+    toast.error('Erro ao salvar configurações')
+  } finally {
+    isSavingSettings.value = false
+  }
+}
 
 // ── IA: Gerar fluxo ──────────────────────────────────────────
 const showAIModal = ref(false)
@@ -6359,6 +6460,28 @@ onBeforeUnmount(() => {
 @keyframes empty-bounce {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-6px); }
+}
+
+/* Botão engrenagem configurações do fluxo */
+.btn-flow-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-flow-settings:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(16, 185, 129, 0.08);
 }
 
 /* Botão Testar fluxo */
