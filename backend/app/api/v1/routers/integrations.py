@@ -175,6 +175,8 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
     # Normaliza username: aceita "username" ou "telegram_username"
     username = payload.username or payload.telegram_username or ""
 
+    logger.info("Tracking payload: event=%s bot_username=%s telegram_user_id=%s", event, payload.bot_username, payload.telegram_user_id)
+
     # ── Buscar ou criar contato ─────────────────────────────────────────
     contact = db.query(Contact).filter(
         Contact.tenant_id == tenant.id,
