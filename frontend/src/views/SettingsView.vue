@@ -1289,6 +1289,57 @@
                   <pre class="integration-code">{{ trackingExample }}</pre>
                 </div>
 
+                <!-- Tabela de campos -->
+                <div class="integration-fields-table">
+                  <div class="integration-fields-title"><i class="fa-solid fa-table-list"></i> Campos disponíveis</div>
+                  <table class="fields-table">
+                    <thead>
+                      <tr>
+                        <th>Campo</th>
+                        <th>Obrigatório</th>
+                        <th>Descrição</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td><code>telegram_user_id</code></td>
+                        <td><span class="badge-required">Sim</span></td>
+                        <td>ID numérico do usuário no Telegram</td>
+                      </tr>
+                      <tr>
+                        <td><code>first_name</code></td>
+                        <td><span class="badge-required">Sim</span></td>
+                        <td>Primeiro nome do usuário</td>
+                      </tr>
+                      <tr>
+                        <td><code>event</code></td>
+                        <td><span class="badge-required">Sim</span></td>
+                        <td><code>entrou</code>, <code>saiu</code>, <code>entry</code> ou <code>exit</code></td>
+                      </tr>
+                      <tr>
+                        <td><code>last_name</code></td>
+                        <td><span class="badge-optional">Não</span></td>
+                        <td>Sobrenome do usuário</td>
+                      </tr>
+                      <tr>
+                        <td><code>username</code></td>
+                        <td><span class="badge-optional">Não</span></td>
+                        <td>Username do Telegram (sem @)</td>
+                      </tr>
+                      <tr>
+                        <td><code>telegram_username</code></td>
+                        <td><span class="badge-optional">Não</span></td>
+                        <td>Alias para <code>username</code> — aceito para compatibilidade</td>
+                      </tr>
+                      <tr>
+                        <td><code>bot_username</code></td>
+                        <td><span class="badge-optional">Não</span></td>
+                        <td>Username do bot pelo qual o lead entrou no grupo (sem @)</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
                 <div class="integration-tags-info">
                   <div class="integration-tag-item">
                     <span class="tag-badge tag-entrou">entrou-grupo</span>
@@ -1303,6 +1354,7 @@
                 <p class="integration-card-desc" style="margin-top:12px;">
                   O contato é criado automaticamente se não existir. As tags são atualizadas a cada evento.
                   Use as tags em <strong>Contatos</strong> e no <strong>Envio em Massa</strong> para segmentar.
+                  Campos extras não listados acima são ignorados silenciosamente.
                 </p>
               </div>
 
@@ -1478,11 +1530,12 @@ Authorization: Bearer ${integrationToken.value || 'SEU_TOKEN_AQUI'}
 Content-Type: application/json
 
 {
-  "telegram_user_id": "123456789",
-  "first_name": "João",
-  "last_name": "Silva",
-  "username": "joaosilva",
-  "event": "entrou"   // ou "saiu"
+  "telegram_user_id": "123456789",  // obrigatório
+  "first_name": "João",             // obrigatório
+  "event": "entrou",                // obrigatório: entrou | saiu | entry | exit
+  "last_name": "Silva",             // opcional
+  "username": "joaosilva",          // opcional (sem @)
+  "bot_username": "meu_bot"         // opcional: bot pelo qual o lead entrou
 }`)
 
 // ─── Workspaces state ─────────────────────────────────────────────────────────
@@ -4712,6 +4765,72 @@ onMounted(async () => {
   line-height: 1.6;
   white-space: pre;
   overflow-x: auto;
+}
+
+.integration-fields-table {
+  margin: 16px 0;
+}
+
+.integration-fields-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fields-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.fields-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  color: #64748b;
+  font-weight: 600;
+  border-bottom: 1px solid #1e293b;
+}
+
+.fields-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: #94a3b8;
+  vertical-align: top;
+}
+
+.fields-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fields-table code {
+  background: rgba(99,102,241,0.15);
+  color: #a5b4fc;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.badge-required {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge-optional {
+  background: rgba(100, 116, 139, 0.15);
+  color: #94a3b8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .integration-tags-info {
