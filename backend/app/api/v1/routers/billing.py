@@ -575,7 +575,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
             wh_event = StripeWebhookEvent(
                 stripe_event_id=stripe_event_id,
                 event_type=event_type,
-                payload_json=json.dumps(event)[:10000],
+                payload_json=json.dumps(raw_event)[:10000],
                 status="received",
                 stripe_mode=event_mode,
             )
