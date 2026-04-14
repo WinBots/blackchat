@@ -1370,7 +1370,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import { listChannels, createChannel, updateChannel, updateTelegramConfig, deleteChannel } from '@/api/channels'
+import { listChannels, getChannel, createChannel, updateChannel, updateTelegramConfig, deleteChannel } from '@/api/channels'
 import { useToast } from '@/composables/useToast'
 import { useAuth } from '@/composables/useAuth'
 import { listPlans } from '@/api/plans'
@@ -1952,6 +1952,8 @@ const copyWebhookUrl = () => {
 
 // Funções auxiliares para exibir dados dos bots
 const getBotUsername = (channel) => {
+  // A API retorna bot_username diretamente (config não é exposto por segurança)
+  if (channel.bot_username) return channel.bot_username
   try {
     const config = typeof channel.config === 'string'
       ? JSON.parse(channel.config)
@@ -2356,34 +2358,46 @@ const openNewBotForm = () => {
 }
 
 // Funções para editar nome do bot
-const openEditBotModal = (channel) => {
-  // Reset validação
+const openEditBotModal = async (channel) => {
   editTokenValidation.value = null
   validatingEditToken.value = false
 
-  let config = {}
-  try {
-    config = typeof channel.config === 'string'
-      ? JSON.parse(channel.config || '{}')
-      : channel.config || {}
-  } catch (e) {
-    config = {}
-  }
-
+  // Pré-popula com o que já temos (bot_username vem da listagem)
   editBotForm.value = {
     channelId: channel.id,
     name: channel.name,
-    bot_token: config.bot_token || '',
-    bot_username: (config.bot_username || '').replace('@', ''),
-    admin_telegram_chat_id: config.admin_telegram_chat_id || '',
+    bot_token: '',
+    bot_username: (channel.bot_username || '').replace('@', ''),
+    admin_telegram_chat_id: '',
     originalName: channel.name,
-    originalToken: config.bot_token || '',
-    originalUsername: (config.bot_username || '').replace('@', ''),
-    originalAdminChatId: config.admin_telegram_chat_id || '',
+    originalToken: '',
+    originalUsername: (channel.bot_username || '').replace('@', ''),
+    originalAdminChatId: '',
     showToken: false,
-    saving: false
+    saving: false,
   }
   showEditBotModal.value = true
+
+  // Busca config completo (com token) do backend
+  try {
+    const full = await getChannel(channel.id)
+    let config = {}
+    try {
+      config = typeof full.config === 'string' ? JSON.parse(full.config || '{}') : full.config || {}
+    } catch (e) { config = {} }
+
+    editBotForm.value = {
+      ...editBotForm.value,
+      bot_token: config.bot_token || '',
+      bot_username: (config.bot_username || channel.bot_username || '').replace('@', ''),
+      admin_telegram_chat_id: config.admin_telegram_chat_id || '',
+      originalToken: config.bot_token || '',
+      originalUsername: (config.bot_username || channel.bot_username || '').replace('@', ''),
+      originalAdminChatId: config.admin_telegram_chat_id || '',
+    }
+  } catch (e) {
+    console.error('Erro ao buscar config do canal:', e)
+  }
 }
 
 const closeEditBotModal = () => {

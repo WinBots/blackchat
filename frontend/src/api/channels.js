@@ -8,6 +8,11 @@ export async function listChannels() {
   return res.data
 }
 
+export async function getChannel(channelId) {
+  const res = await api.get(`/api/v1/channels/${channelId}`)
+  return res.data
+}
+
 export async function createChannel(payload) {
   const res = await api.post('/api/v1/channels/', payload)
   return res.data

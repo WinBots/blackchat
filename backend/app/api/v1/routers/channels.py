@@ -106,6 +106,19 @@ def list_channels(
     return result
 
 
+@router.get("/{channel_id}", response_model=ChannelOut)
+def get_channel(
+    channel_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Retorna um canal pelo ID (inclui config completo para edição)."""
+    ch = db.query(Channel).filter(Channel.id == channel_id, Channel.tenant_id == tenant.id).first()
+    if not ch:
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+    return ch
+
+
 @router.post("/", response_model=ChannelOut)
 def create_channel(
     data: ChannelCreate,
