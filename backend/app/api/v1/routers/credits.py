@@ -104,7 +104,9 @@ def purchase_credits(
             line_items=[{
                 "price_data": {
                     "currency": "brl",
-                    "product": creds.credits_product_id,
+                    "product_data": {
+                        "name": f"Créditos IA Blackchat ({body.amount} créditos)",
+                    },
                     "unit_amount": unit_amount,
                 },
                 "quantity": 1,
