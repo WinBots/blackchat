@@ -28,6 +28,7 @@ class StripeCredentials:
     webhook_secret: Optional[str]
     pro_price_id: Optional[str]        # None = Pro não configurado
     enterprise_product_id: Optional[str]  # None = Enterprise não configurado
+    credits_product_id: Optional[str]  # None = Credits não configurado
 
 
 def _get_config(db: Session) -> StripeConfig:
@@ -55,17 +56,19 @@ def get_credentials(db: Session) -> StripeCredentials:
     mode = (cfg.mode_active or "test").lower()
 
     if mode == "live":
-        secret_key    = cfg.live_secret_key
-        pub_key       = cfg.live_publishable_key
-        whsec         = cfg.live_webhook_secret
-        pro_price_id  = cfg.live_pro_price_id
-        ent_prod_id   = cfg.live_enterprise_product_id
+        secret_key      = cfg.live_secret_key
+        pub_key         = cfg.live_publishable_key
+        whsec           = cfg.live_webhook_secret
+        pro_price_id    = cfg.live_pro_price_id
+        ent_prod_id     = cfg.live_enterprise_product_id
+        credits_prod_id = cfg.live_credits_product_id
     else:
-        secret_key    = cfg.test_secret_key
-        pub_key       = cfg.test_publishable_key
-        whsec         = cfg.test_webhook_secret
-        pro_price_id  = cfg.test_pro_price_id
-        ent_prod_id   = cfg.test_enterprise_product_id
+        secret_key      = cfg.test_secret_key
+        pub_key         = cfg.test_publishable_key
+        whsec           = cfg.test_webhook_secret
+        pro_price_id    = cfg.test_pro_price_id
+        ent_prod_id     = cfg.test_enterprise_product_id
+        credits_prod_id = cfg.test_credits_product_id
 
     if not (secret_key or "").strip():
         raise ValueError(
@@ -80,6 +83,7 @@ def get_credentials(db: Session) -> StripeCredentials:
         webhook_secret=(whsec or "").strip() or None,
         pro_price_id=(pro_price_id or "").strip() or None,
         enterprise_product_id=(ent_prod_id or "").strip() or None,
+        credits_product_id=(credits_prod_id or "").strip() or None,
     )
 
 
@@ -92,6 +96,20 @@ def require_pro_credentials(db: Session) -> StripeCredentials:
             detail=(
                 f"Price ID do plano Pro ([{creds.mode}] mode) não está configurado. "
                 "Acesse Super Admin → Stripe para adicionar o Price ID."
+            ),
+        )
+    return creds
+
+
+def require_credits_credentials(db: Session) -> StripeCredentials:
+    """Garante que credits_product_id está configurado. Levanta HTTPException se não."""
+    creds = _safe_get_creds(db)
+    if not creds.credits_product_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Product ID de Créditos IA ([{creds.mode}] mode) não está configurado. "
+                "Acesse Super Admin → Stripe para adicionar o Product ID."
             ),
         )
     return creds

@@ -566,6 +566,36 @@ async def advance_sequences_job(ctx: dict) -> None:
         db.close()
 
 
+async def reset_credits_job(ctx: dict) -> None:
+    """
+    Cron job diário: reseta créditos do plano para tenants cujo plan_reset_date == hoje.
+    Executa todo dia às 00:05 UTC.
+    """
+    from datetime import date as _date
+    from app.db.session import SessionLocal
+    from app.db.models.tenant_credits import TenantCredits
+    from app.services.credits_service import reset_credits_for_tenant
+
+    db = SessionLocal()
+    try:
+        today = _date.today()
+        due = db.query(TenantCredits).filter(
+            TenantCredits.plan_reset_date <= today,
+            TenantCredits.plan_monthly_allocation > 0,
+        ).all()
+
+        logger.info("reset_credits_job: %d tenants para resetar", len(due))
+        for tc in due:
+            try:
+                reset_credits_for_tenant(tc.tenant_id, db)
+            except Exception as e:
+                logger.error("reset_credits_job: erro tenant=%d: %s", tc.tenant_id, e)
+    except Exception as e:
+        logger.error("reset_credits_job: erro geral: %s", e)
+    finally:
+        db.close()
+
+
 async def send_email_job(
     ctx: dict,
     email_type: str,
@@ -645,8 +675,11 @@ class WorkerSettings:
     job_timeout = 600
     max_tries = 2
     log_results_ms = 1000
-    # Cron: avança sequências a cada minuto (second=0 → no início de cada minuto)
-    cron_jobs = [__import__("arq").cron(advance_sequences_job, second=0)]
+    # Cron: avança sequências a cada minuto | reseta créditos todo dia às 00:05 UTC
+    cron_jobs = [
+        __import__("arq").cron(advance_sequences_job, second=0),
+        __import__("arq").cron(reset_credits_job, hour=0, minute=5, second=0),
+    ]
 
 
 class WebhookWorkerSettings(WorkerSettings):
@@ -679,4 +712,7 @@ class SequenceWorkerSettings(WorkerSettings):
     max_jobs = 5
     job_timeout = 120
     max_tries = 3
-    cron_jobs = [__import__("arq").cron(advance_sequences_job, second=0)]
+    cron_jobs = [
+        __import__("arq").cron(advance_sequences_job, second=0),
+        __import__("arq").cron(reset_credits_job, hour=0, minute=5, second=0),
+    ]

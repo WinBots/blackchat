@@ -140,11 +140,14 @@
             <svg v-else class="loading-spinner" width="16" height="16" viewBox="0 0 24 24"></svg>
             {{ isSaving ? 'Salvando...' : 'Salvar' }}
           </button>
-          <button class="btn btn-ai-generate" @click="showAIModal = true" title="Gerar fluxo com IA">
+          <button class="btn btn-ai-generate" @click="showAIModal = true; loadAICredits()" title="Gerar fluxo com IA">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
             Gerar com IA
+            <span v-if="aiCredits !== null" class="ai-credits-badge" :class="{ 'ai-credits-badge--empty': aiCredits.total === 0 }">
+              {{ aiCredits.total }}
+            </span>
           </button>
           <button class="btn-add-block-circle" @click="showAddBlockModal = true; blockSearch = ''; activeBlockCat = 'inicio'">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -2199,6 +2202,21 @@
 
       <!-- Conteúdo: estado inicial (prompt) -->
       <div v-if="!aiResult" class="ai-modal-body">
+
+        <!-- Saldo de créditos -->
+        <div v-if="aiCredits !== null" class="ai-credits-info" :class="{ 'ai-credits-info--empty': aiCredits.total === 0 }">
+          <span v-if="aiCredits.total > 0">
+            <i class="fa-solid fa-bolt"></i>
+            <strong>{{ aiCredits.total }}</strong> crédito{{ aiCredits.total !== 1 ? 's' : '' }} disponível{{ aiCredits.total !== 1 ? 'is' : '' }}
+            <span v-if="aiCredits.plan > 0" class="ai-credits-detail">({{ aiCredits.plan }} do plano + {{ aiCredits.purchased }} comprados)</span>
+          </span>
+          <span v-else>
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            Sem créditos disponíveis —
+            <a href="/settings?tab=Cobran%C3%A7a" class="ai-credits-buy-link">Comprar créditos</a>
+          </span>
+        </div>
+
         <p class="ai-modal-hint">
           Descreva o fluxo que deseja criar. Quanto mais detalhes, melhor o resultado.
         </p>
@@ -2338,7 +2356,7 @@
           <button
             class="ai-btn-generate"
             @click="runAIGenerate"
-            :disabled="aiGenerating || !aiPrompt.trim() || aiPrompt.length > 2000"
+            :disabled="aiGenerating || !aiPrompt.trim() || aiPrompt.length > 2000 || (aiCredits !== null && aiCredits.total === 0)"
           >
             <svg v-if="!aiGenerating" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
@@ -2524,6 +2542,17 @@ const aiPrompt = ref('')
 const aiGenerating = ref(false)
 const aiResult = ref(null)
 const aiError = ref(null)
+const aiCredits = ref(null)  // { plan: X, purchased: Y, total: Z }
+
+const loadAICredits = async () => {
+  try {
+    const { getCreditsBalance } = await import('@/api/credits')
+    const data = await getCreditsBalance()
+    aiCredits.value = { plan: data.plan_balance, purchased: data.purchased_balance, total: data.total }
+  } catch (e) {
+    // silencia — não bloqueia a UI
+  }
+}
 
 // Etapas do loader progressivo
 const aiLoadingSteps = [
@@ -2581,9 +2610,17 @@ const runAIGenerate = async () => {
   _startAILoadingProgress()
   try {
     aiResult.value = await generateFlowWithAI(aiPrompt.value.trim())
+    // Atualiza saldo após consumo
+    loadAICredits()
   } catch (err) {
     const detail = err?.response?.data?.detail
-    aiError.value = detail || 'Erro ao gerar fluxo. Verifique se a API Key está configurada e tente novamente.'
+    if (err?.response?.status === 402) {
+      aiError.value = 'Você não tem créditos disponíveis. Acesse Configurações → Cobrança para comprar mais créditos.'
+    } else {
+      aiError.value = detail || 'Erro ao gerar fluxo. Verifique se a API Key está configurada e tente novamente.'
+    }
+    // Recarrega saldo mesmo em erro (pode ter sido consumido antes do erro da IA)
+    loadAICredits()
   } finally {
     _stopAILoadingProgress()
     aiGenerating.value = false
@@ -8585,6 +8622,52 @@ onBeforeUnmount(() => {
 }
 .btn-ai-generate svg {
   flex-shrink: 0;
+}
+
+.ai-credits-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: rgba(167, 139, 250, 0.3);
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  margin-left: 2px;
+}
+.ai-credits-badge--empty {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.ai-credits-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #c4b5fd;
+  margin-bottom: 12px;
+}
+.ai-credits-info--empty {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+.ai-credits-detail {
+  opacity: 0.7;
+  font-size: 0.75rem;
+}
+.ai-credits-buy-link {
+  color: #a78bfa;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* ─── Modal IA ───────────────────────────────────────────── */

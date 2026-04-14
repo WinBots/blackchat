@@ -18,6 +18,7 @@ from app.db.models.stripe_config import StripeConfig
 from app.db.models.subscription_history import SubscriptionHistory
 from app.db.models.limit_event import LimitEvent
 from app.db.models.password_reset_token import PasswordResetToken
+from app.db.models.tenant_credits import TenantCredits, CreditTransaction
 
 __all__ = [
     'Tenant',
@@ -42,4 +43,6 @@ __all__ = [
     'SubscriptionHistory',
     'LimitEvent',
     'PasswordResetToken',
+    'TenantCredits',
+    'CreditTransaction',
 ]

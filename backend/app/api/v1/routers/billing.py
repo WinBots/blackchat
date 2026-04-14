@@ -589,7 +589,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     data_object = (event.get("data") or {}).get("object") or {}
 
     try:
-        _process_event(event_type, data_object, db, background_tasks, event_mode)
+        _process_event(event_type, data_object, db, background_tasks, event_mode, stripe_event_id=stripe_event_id)
 
         if wh_event:
             wh_event.status = "processed"
@@ -620,7 +620,7 @@ def _get_tenant_owner(db: Session, tenant_id: int):
     return None, None
 
 
-def _process_event(event_type: str, data_object: dict, db: Session, bg: BackgroundTasks, event_mode: str = "test") -> None:
+def _process_event(event_type: str, data_object: dict, db: Session, bg: BackgroundTasks, event_mode: str = "test", stripe_event_id: str = "") -> None:
     """Processa o evento Stripe e atualiza a assinatura local."""
 
     # ── checkout.session.completed ────────────────────────────────────────────
@@ -630,6 +630,19 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
         if metadata.get("app") != "blackchatpro":
             logger.info("[webhook] checkout.session.completed ignorado (app=%s)", metadata.get("app"))
             return
+
+        # ── Compra de créditos IA ─────────────────────────────────────────
+        if metadata.get("type") == "credits_purchase":
+            tenant_id = _safe_int(metadata.get("tenant_id"))
+            credits_amount = _safe_int(metadata.get("credits_amount"))
+            evt_id = stripe_event_id or data_object.get("id") or ""
+            logger.info("[webhook] credits_purchase tenant_id=%s amount=%s", tenant_id, credits_amount)
+            if tenant_id and credits_amount:
+                from app.services.credits_service import add_purchased_credits
+                add_purchased_credits(tenant_id, credits_amount, evt_id, db)
+                logger.info("[webhook] %d créditos adicionados ao tenant %d", credits_amount, tenant_id)
+            return
+
         tenant_id = _safe_int(metadata.get("tenant_id"))
         plan_id   = _safe_int(metadata.get("plan_id"))
         interval  = metadata.get("interval", "monthly")
@@ -669,6 +682,18 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                     sub.stripe_product_id = ent_product_id
                 # Ativa a assinatura independente do status anterior
                 sub.status = SubscriptionStatus.ACTIVE
+                # Aloca créditos IA do plano
+                if plan:
+                    from app.services.credits_service import allocate_plan_credits, PLAN_CREDITS
+                    from datetime import date as _date
+                    from app.services.credits_service import _next_reset_date
+                    allocation = PLAN_CREDITS.get(plan.name, 0)
+                    if allocation > 0:
+                        reset_date = _next_reset_date(
+                            sub.current_period_end.date() if sub.current_period_end else _date.today()
+                        )
+                        allocate_plan_credits(tenant_id, allocation, reset_date, db)
+                        logger.info("[webhook] %d créditos alocados para tenant %d plano %s", allocation, tenant_id, plan.name)
                 # Invalida cache da subscription deste tenant
                 invalidate_subscription(tenant_id)
                 # E-mail de plano ativado

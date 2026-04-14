@@ -301,6 +301,16 @@ def generate_flow_with_ai(
     """
     Gera um fluxo completo a partir de um prompt em linguagem natural usando Claude.
     """
+    # Consome 1 crédito antes de chamar o Claude
+    from app.services.credits_service import consume_credit
+    try:
+        consume_credit(tenant.id, "ai_flow_generate", db)
+    except ValueError:
+        raise HTTPException(
+            status_code=402,
+            detail="Você não tem créditos disponíveis. Compre créditos ou aguarde a renovação do seu plano."
+        )
+
     # Salva o que precisamos e libera a conexão DB *antes* da chamada ao Claude.
     # Sem isso, a sessão fica aberta durante os ~30s da API externa e o SQL Server
     # mata a conexão TCP ociosa, causando erros 10060 nos requests seguintes.
