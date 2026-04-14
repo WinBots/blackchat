@@ -559,8 +559,8 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
         logger.warning("[webhook] webhook_secret TEST não configurado — aceitando sem validação (somente em teste)")
         event = raw_event
 
-    stripe_event_id = event.get("id", "")
-    event_type = event.get("type", "")
+    stripe_event_id = event["id"] if hasattr(event, "__getitem__") else getattr(event, "id", "")
+    event_type = event["type"] if hasattr(event, "__getitem__") else getattr(event, "type", "")
 
     # ── Idempotência ─────────────────────────────────────────────────────────
     if stripe_event_id:
@@ -586,7 +586,10 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     else:
         wh_event = None
 
-    data_object = (event.get("data") or {}).get("object") or {}
+    try:
+        data_object = event["data"]["object"]
+    except (KeyError, TypeError):
+        data_object = {}
 
     try:
         _process_event(event_type, data_object, db, background_tasks, event_mode, stripe_event_id=stripe_event_id)
