@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 PLAN_CREDITS = {
     "free":       1,
     "pro":        10,
-    "unlimited":  25,  # Enterprise
+    "unlimited":  25,
+    "enterprise": 25,
 }
 
 
