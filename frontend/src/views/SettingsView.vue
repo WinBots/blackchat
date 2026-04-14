@@ -380,91 +380,91 @@
 
               <!-- Tela 0: Lista de Bots Conectados -->
               <div v-else-if="telegramStep === 'list'" class="telegram-bots-list">
-                <div class="telegram-list-header">
-                  <div>
-                    <h2 class="telegram-section-title">Bots do Telegram Conectados</h2>
-                    <p class="telegram-section-subtitle">
-                      {{ telegramChannels.length }} bot(s) • 
-                      <span class="text-success">{{ telegramChannels.filter(c => c.is_active).length }} ativo(s)</span> • 
-                      <span class="text-muted">{{ telegramChannels.filter(c => !c.is_active).length }} inativo(s)</span>
-                    </p>
+                <div class="tg-list-header">
+                  <div class="tg-list-header-info">
+                    <h2 class="tg-list-title">
+                      <i class="fa-brands fa-telegram"></i>
+                      Bots Conectados
+                    </h2>
+                    <div class="tg-list-stats">
+                      <span class="tg-stat tg-stat--active">
+                        <span class="tg-stat-dot tg-stat-dot--active"></span>
+                        {{ telegramChannels.filter(c => c.is_active).length }} ativo(s)
+                      </span>
+                      <span class="tg-stat tg-stat--inactive">
+                        <span class="tg-stat-dot tg-stat-dot--inactive"></span>
+                        {{ telegramChannels.filter(c => !c.is_active).length }} inativo(s)
+                      </span>
+                    </div>
                   </div>
-                  <button class="btn btn-primary" @click="telegramStep = 'intro'">
+                  <button class="tg-btn-new" @click="telegramStep = 'intro'">
                     <i class="fa-solid fa-plus"></i>
-                    Conectar Novo Bot
+                    Novo Bot
                   </button>
                 </div>
 
                 <!-- Mensagem quando não há bots -->
-                <div v-if="telegramChannels.length === 0" class="no-bots-message">
-                  <div class="no-bots-icon">
+                <div v-if="telegramChannels.length === 0" class="tg-empty">
+                  <div class="tg-empty-icon">
                     <i class="fa-brands fa-telegram"></i>
                   </div>
-                  <h3>Nenhum bot conectado</h3>
-                  <p>Conecte seu primeiro bot do Telegram para começar a criar fluxos de automação</p>
-                  <button class="btn btn-primary btn-lg" @click="telegramStep = 'intro'" style="margin-top: 20px;">
+                  <h3 class="tg-empty-title">Nenhum bot conectado</h3>
+                  <p class="tg-empty-desc">Conecte seu primeiro bot do Telegram para criar fluxos de automação</p>
+                  <button class="tg-btn-new" @click="telegramStep = 'intro'" style="margin-top: 16px;">
                     <i class="fa-solid fa-plus"></i>
                     Conectar Primeiro Bot
                   </button>
                 </div>
 
-                <!-- Grid de Bots -->
-                <div v-else class="telegram-bots-grid">
-                  <div 
-                    v-for="channel in telegramChannels" 
-                    :key="channel.id" 
-                    class="bot-card"
-                    :class="channel.is_active ? 'bot-card-active' : 'bot-card-inactive'"
+                <!-- Lista de Bots -->
+                <div v-else class="tg-bots-list">
+                  <div
+                    v-for="channel in telegramChannels"
+                    :key="channel.id"
+                    class="tg-bot-row"
+                    :class="{ 'tg-bot-row--inactive': !channel.is_active }"
                   >
-                    <div class="bot-card-main">
-                      <!-- Icon e Info Principal -->
-                      <div class="bot-card-left">
-                        <div class="bot-card-icon">
-                          <i class="fa-brands fa-telegram"></i>
-                        </div>
-                        <div class="bot-card-info-main">
-                          <h3 class="bot-card-title">{{ channel.name }}</h3>
-                          <div v-if="getBotUsername(channel)" class="bot-card-username">
-                            <i class="fa-solid fa-at"></i>
-                            <span>{{ getBotUsername(channel) }}</span>
-                          </div>
-                          <div v-else class="bot-card-username-missing">
-                            <i class="fa-solid fa-exclamation-circle"></i>
-                            <span>Username não configurado</span>
-                          </div>
-                        </div>
-                      </div>
+                    <!-- Ícone -->
+                    <div class="tg-bot-avatar" :class="{ 'tg-bot-avatar--inactive': !channel.is_active }">
+                      <i class="fa-brands fa-telegram"></i>
+                    </div>
 
-                      <!-- Toggle -->
-                      <div class="bot-card-right">
-                        <label class="toggle-switch" :title="channel.is_active ? 'Desativar bot' : 'Ativar bot'">
-                          <input 
-                            type="checkbox" 
-                            :checked="channel.is_active"
-                            @change="toggleBotStatus(channel)"
-                          />
-                          <span class="toggle-slider"></span>
-                        </label>
+                    <!-- Info -->
+                    <div class="tg-bot-info">
+                      <div class="tg-bot-name">{{ channel.name }}</div>
+                      <div v-if="getBotUsername(channel)" class="tg-bot-username">
+                        @{{ getBotUsername(channel) }}
+                      </div>
+                      <div v-else class="tg-bot-username tg-bot-username--missing">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        Username não configurado
                       </div>
                     </div>
 
-                    <!-- Actions -->
-                    <div class="bot-card-actions">
-                      <button 
-                        class="btn-card-action"
-                        @click="openEditBotModal(channel)"
-                        title="Editar"
-                      >
+                    <!-- Status badge -->
+                    <div class="tg-bot-status">
+                      <span class="tg-status-badge" :class="channel.is_active ? 'tg-status-badge--active' : 'tg-status-badge--inactive'">
+                        {{ channel.is_active ? 'Ativo' : 'Inativo' }}
+                      </span>
+                    </div>
+
+                    <!-- Toggle -->
+                    <label class="tg-toggle" :title="channel.is_active ? 'Desativar' : 'Ativar'">
+                      <input
+                        type="checkbox"
+                        :checked="channel.is_active"
+                        @change="toggleBotStatus(channel)"
+                      />
+                      <span class="tg-toggle-slider"></span>
+                    </label>
+
+                    <!-- Ações -->
+                    <div class="tg-bot-actions">
+                      <button class="tg-action-btn" @click="openEditBotModal(channel)" title="Editar">
                         <i class="fa-solid fa-pen"></i>
-                        <span>Editar</span>
                       </button>
-                      <button 
-                        class="btn-card-action btn-card-danger"
-                        @click="disconnectBot(channel)"
-                        title="Desconectar"
-                      >
+                      <button class="tg-action-btn tg-action-btn--danger" @click="disconnectBot(channel)" title="Desconectar">
                         <i class="fa-solid fa-plug-circle-xmark"></i>
-                        <span>Desconectar</span>
                       </button>
                     </div>
                   </div>
@@ -1953,14 +1953,11 @@ const copyWebhookUrl = () => {
 // Funções auxiliares para exibir dados dos bots
 const getBotUsername = (channel) => {
   try {
-    const config = typeof channel.config === 'string' 
-      ? JSON.parse(channel.config) 
+    const config = typeof channel.config === 'string'
+      ? JSON.parse(channel.config)
       : channel.config || {}
-    const username = config.bot_username || ''
-    console.log('Bot username para canal', channel.name, ':', username)
-    return username
+    return config.bot_username || config.username || ''
   } catch (e) {
-    console.error('Erro ao obter username:', e)
     return ''
   }
 }
@@ -2886,123 +2883,283 @@ onMounted(async () => {
 }
 
 /* Card do Bot - Design Compacto */
-.bot-card {
-  background: var(--bg-primary);
-  border: 2px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-.bot-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 136, 204, 0.1);
-}
-
-/* Card Ativo - Borda Verde */
-.bot-card-active {
-  border-color: #10b981;
-  background: var(--bg-primary);
-}
-
-.bot-card-active:hover {
-  border-color: #059669;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
-}
-
-/* Card Inativo - Borda Vermelha */
-.bot-card-inactive {
-  border-color: #ef4444;
-  background: var(--bg-secondary);
-}
-
-.bot-card-inactive:hover {
-  border-color: #dc2626;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
-}
-
-.bot-card-inactive .bot-card-icon {
-  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
-}
-
-.bot-card-inactive .bot-card-title {
-  color: var(--text-secondary);
-}
-
-/* Main Content */
-.bot-card-main {
+/* ── Telegram Bots List redesign ───────────────────────────────────────────── */
+.tg-list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
+  margin-bottom: 20px;
   gap: 12px;
 }
 
-.bot-card-left {
+.tg-list-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tg-list-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tg-list-title i {
+  color: #229ED9;
+}
+
+.tg-list-stats {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
-  min-width: 0;
 }
 
-.bot-card-icon {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #0088cc 0%, #229ED9 100%);
-  border-radius: 9px;
+.tg-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.tg-stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tg-stat-dot--active { background: #00cc52; }
+.tg-stat-dot--inactive { background: #ef4444; }
+
+.tg-btn-new {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: rgba(0, 204, 82, 0.1);
+  border: 1px solid rgba(0, 204, 82, 0.3);
+  border-radius: 8px;
+  color: #00cc52;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tg-btn-new:hover {
+  background: rgba(0, 204, 82, 0.18);
+  border-color: rgba(0, 204, 82, 0.5);
+}
+
+.tg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  text-align: center;
+  gap: 8px;
+}
+
+.tg-empty-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(34, 158, 217, 0.1);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  color: #229ED9;
+  margin-bottom: 8px;
+}
+
+.tg-empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.tg-empty-desc {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 320px;
+}
+
+.tg-bots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-bot-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.tg-bot-row:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(34,158,217,0.2);
+}
+
+.tg-bot-row--inactive {
+  opacity: 0.6;
+}
+
+.tg-bot-avatar {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, #0088cc, #229ED9);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
+  font-size: 17px;
   flex-shrink: 0;
 }
 
-.bot-card-icon i {
-  font-size: 20px;
+.tg-bot-avatar--inactive {
+  background: linear-gradient(135deg, #374151, #4b5563);
 }
 
-.bot-card-info-main {
+.tg-bot-info {
   flex: 1;
   min-width: 0;
 }
 
-.bot-card-title {
-  font-size: 0.9375rem;
+.tg-bot-name {
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 4px 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.bot-card-username {
+.tg-bot-username {
+  font-size: 0.775rem;
+  color: #229ED9;
+  margin-top: 2px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: #0088cc;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  gap: 4px;
 }
 
-.bot-card-username i {
-  font-size: 0.75rem;
-  opacity: 0.8;
-}
-
-.bot-card-username-missing {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.tg-bot-username--missing {
   color: var(--text-tertiary);
-  font-size: 0.8125rem;
   font-style: italic;
 }
 
-.bot-card-username-missing i {
-  font-size: 0.75rem;
+.tg-bot-status { flex-shrink: 0; }
+
+.tg-status-badge {
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
+.tg-status-badge--active {
+  background: rgba(0, 204, 82, 0.12);
+  color: #00cc52;
+  border: 1px solid rgba(0, 204, 82, 0.25);
+}
+
+.tg-status-badge--inactive {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.tg-toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.tg-toggle input { opacity: 0; width: 0; height: 0; }
+
+.tg-toggle-slider {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 22px;
+  transition: all 0.3s;
+}
+
+.tg-toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: #94a3b8;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.tg-toggle input:checked + .tg-toggle-slider {
+  background: rgba(0, 204, 82, 0.2);
+  border-color: rgba(0, 204, 82, 0.4);
+}
+
+.tg-toggle input:checked + .tg-toggle-slider::before {
+  transform: translateX(18px);
+  background: #00cc52;
+}
+
+.tg-bot-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tg-action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.tg-action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.tg-action-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+/* ── Legacy bot-card kept for toggle-switch used elsewhere ─────────────────── */
 .bot-card-right {
   display: flex;
   align-items: center;
