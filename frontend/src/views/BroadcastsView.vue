@@ -485,6 +485,18 @@
               <span>Selecione uma automação ativa para disparar</span>
             </div>
 
+            <!-- Aviso de contatos ignorados por bot diferente -->
+            <div v-if="previewState.skipped_bot_mismatch > 0 && selectedFlow" class="dispatch-bot-warning">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <span>
+                <strong>{{ previewState.skipped_bot_mismatch }} contato(s) serão ignorados</strong> — bot diferente do fluxo
+                <span v-if="previewState.flow_bot_username">(@{{ previewState.flow_bot_username }})</span>
+              </span>
+            </div>
+
             <!-- Confirmação inline -->
             <div v-if="confirmMode && !sending" class="dispatch-confirm-bar">
               <div class="dispatch-confirm-msg">
@@ -493,6 +505,9 @@
                   <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
                 Disparar para <strong>{{ previewState.total }}</strong> contato(s)?
+                <span v-if="previewState.skipped_bot_mismatch > 0" class="confirm-skip-note">
+                  · {{ previewState.skipped_bot_mismatch }} ignorado(s) por bot incompatível
+                </span>
               </div>
               <div class="dispatch-confirm-actions">
                 <button type="button" class="btn-cancel-confirm" @click="cancelConfirm">Cancelar</button>
@@ -551,7 +566,7 @@ const broadcastProgress = useBroadcastProgress()
 let ruleSeq = 1
 const segment = reactive({ match_mode: 'all', rules: [] })
 const newRuleKind = ref('tags')
-const previewState = reactive({ loading: false, total: null, sample: [] })
+const previewState = reactive({ loading: false, total: null, sample: [], skipped_bot_mismatch: 0, flow_bot_username: null })
 const sending = ref(false)
 const confirmMode = ref(false)
 const channels = ref([])
@@ -703,6 +718,8 @@ const runPreview = async () => {
     const res = await previewBulkMessage(buildPayload())
     previewState.total = res.total ?? 0
     previewState.sample = res.sample || []
+    previewState.skipped_bot_mismatch = res.skipped_bot_mismatch ?? 0
+    previewState.flow_bot_username = res.flow_bot_username ?? null
   } catch (err) {
     console.error(err)
     toast.error('Erro ao calcular o alcance do disparo.')
@@ -1427,6 +1444,27 @@ onMounted(async () => {
 .dispatch-summary strong { color: #00FF66; }
 .dispatch-summary--muted { color: #A7ADB3; }
 .dispatch-summary--muted svg { color: #A7ADB3; }
+
+.dispatch-bot-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 8px 12px;
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-radius: 7px;
+  font-size: 0.78rem;
+  color: #fbbf24;
+  line-height: 1.4;
+}
+.dispatch-bot-warning svg { flex-shrink: 0; margin-top: 1px; }
+.dispatch-bot-warning strong { color: #fde68a; }
+
+.confirm-skip-note {
+  color: #fbbf24;
+  font-size: 0.75rem;
+  font-weight: normal;
+}
 
 .btn-dispatch {
   position: relative;

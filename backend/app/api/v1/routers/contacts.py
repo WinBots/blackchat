@@ -1269,6 +1269,43 @@ async def bulk_start_flow(
     query = _apply_segment_filters(db.query(Contact), body=body, tenant=tenant, db=db)
 
     contacts: List[Contact] = query.all()
+    total_segment = len(contacts)
+
+    # ── Filtro por bot do fluxo ───────────────────────────────────────────────
+    # Se o fluxo tem canal vinculado, filtra contatos cujo canal/bot bate com o fluxo.
+    flow_bot_username = None
+    flow_channel_id = None
+    skipped_bot_mismatch = 0
+
+    if body.flow_id:
+        flow = db.query(Flow).filter(Flow.id == body.flow_id, Flow.tenant_id == tenant.id).first()
+        if flow and flow.channel_id:
+            flow_channel_id = flow.channel_id
+            ch = db.query(Channel).filter(Channel.id == flow.channel_id).first()
+            if ch:
+                try:
+                    cfg = json.loads(ch.config or "{}")
+                    flow_bot_username = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
+                except Exception:
+                    pass
+
+            if flow_channel_id:
+                compatible = []
+                for c in contacts:
+                    # Critério 1: canal padrão do contato bate com o canal do fluxo
+                    if c.default_channel_id == flow_channel_id:
+                        compatible.append(c)
+                        continue
+                    # Critério 2: _source_bot nos custom_fields bate com o bot do fluxo
+                    if flow_bot_username:
+                        source_bot = (c.custom_fields or {}).get("_source_bot", "").strip().lstrip("@").lower()
+                        if source_bot and source_bot == flow_bot_username:
+                            compatible.append(c)
+                            continue
+                    skipped_bot_mismatch += 1
+
+                contacts = compatible
+
     total = len(contacts)
 
     if body.dry_run:
@@ -1281,7 +1318,13 @@ async def bulk_start_flow(
             }
             for c in contacts[:20]
         ]
-        return {"total": total, "sample": sample}
+        return {
+            "total": total,
+            "total_segment": total_segment,
+            "skipped_bot_mismatch": skipped_bot_mismatch,
+            "flow_bot_username": flow_bot_username,
+            "sample": sample,
+        }
 
     if not body.flow_id:
         raise HTTPException(status_code=400, detail="flow_id é obrigatório para disparar (dry_run=false).")
@@ -1311,7 +1354,7 @@ async def bulk_start_flow(
             _job_id=job_id,
         )
         if enqueued:
-            return {"job_id": job_id, "status": "queued", "total": total}
+            return {"job_id": job_id, "status": "queued", "total": total, "skipped_bot_mismatch": skipped_bot_mismatch}
         logger.warning("ARQ offline — executando bulk_start_flow de forma síncrona")
 
     started = 0
@@ -1339,6 +1382,7 @@ async def bulk_start_flow(
         "total": total,
         "started": started,
         "failed": failed,
+        "skipped_bot_mismatch": skipped_bot_mismatch,
         "errors": errors,
     }
 
