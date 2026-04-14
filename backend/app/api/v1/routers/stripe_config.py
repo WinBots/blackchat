@@ -37,6 +37,7 @@ class StripeConfigOut(BaseModel):
     test_webhook_secret_masked:   Optional[str] = None
     test_pro_price_id:            Optional[str] = None
     test_enterprise_product_id:   Optional[str] = None
+    test_credits_product_id:      Optional[str] = None
 
     # Indica se as chaves sensíveis estão preenchidas (sem expor o valor)
     test_secret_key_set:      bool = False
@@ -48,6 +49,7 @@ class StripeConfigOut(BaseModel):
     live_webhook_secret_masked:   Optional[str] = None
     live_pro_price_id:            Optional[str] = None
     live_enterprise_product_id:   Optional[str] = None
+    live_credits_product_id:      Optional[str] = None
 
     live_secret_key_set:      bool = False
     live_webhook_secret_set:  bool = False
@@ -60,12 +62,14 @@ class StripeConfigIn(BaseModel):
     test_webhook_secret:         Optional[str] = None
     test_pro_price_id:           Optional[str] = None
     test_enterprise_product_id:  Optional[str] = None
+    test_credits_product_id:     Optional[str] = None
 
     live_secret_key:             Optional[str] = None
     live_publishable_key:        Optional[str] = None
     live_webhook_secret:         Optional[str] = None
     live_pro_price_id:           Optional[str] = None
     live_enterprise_product_id:  Optional[str] = None
+    live_credits_product_id:     Optional[str] = None
 
 
 class StripeModeIn(BaseModel):
@@ -95,6 +99,7 @@ def _to_out(cfg: StripeConfig) -> StripeConfigOut:
         test_webhook_secret_masked=mask_key(cfg.test_webhook_secret),
         test_pro_price_id=cfg.test_pro_price_id,
         test_enterprise_product_id=cfg.test_enterprise_product_id,
+        test_credits_product_id=cfg.test_credits_product_id,
         test_secret_key_set=bool((cfg.test_secret_key or "").strip()),
         test_webhook_secret_set=bool((cfg.test_webhook_secret or "").strip()),
 
@@ -103,6 +108,7 @@ def _to_out(cfg: StripeConfig) -> StripeConfigOut:
         live_webhook_secret_masked=mask_key(cfg.live_webhook_secret),
         live_pro_price_id=cfg.live_pro_price_id,
         live_enterprise_product_id=cfg.live_enterprise_product_id,
+        live_credits_product_id=cfg.live_credits_product_id,
         live_secret_key_set=bool((cfg.live_secret_key or "").strip()),
         live_webhook_secret_set=bool((cfg.live_webhook_secret or "").strip()),
     )
@@ -140,11 +146,13 @@ def update_stripe_config(
         "test_webhook_secret":        "test_webhook_secret",
         "test_pro_price_id":          "test_pro_price_id",
         "test_enterprise_product_id": "test_enterprise_product_id",
+        "test_credits_product_id":    "test_credits_product_id",
         "live_secret_key":            "live_secret_key",
         "live_publishable_key":       "live_publishable_key",
         "live_webhook_secret":        "live_webhook_secret",
         "live_pro_price_id":          "live_pro_price_id",
         "live_enterprise_product_id": "live_enterprise_product_id",
+        "live_credits_product_id":    "live_credits_product_id",
     }
 
     data = body.model_dump(exclude_unset=True)

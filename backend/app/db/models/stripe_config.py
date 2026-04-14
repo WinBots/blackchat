@@ -25,6 +25,8 @@ class StripeConfig(Base):
     test_pro_price_id      = Column(String(255), nullable=True)
     # Enterprise (teste): product_id do produto BlackChat Enterprise
     test_enterprise_product_id = Column(String(255), nullable=True)
+    # Credits (teste): product_id do produto Blackchat IA Credits
+    test_credits_product_id = Column(String(255), nullable=True)
 
     # ── Chaves Live ───────────────────────────────────────────────────
     live_secret_key        = Column(Text, nullable=True)   # sk_live_...
@@ -34,5 +36,7 @@ class StripeConfig(Base):
     live_pro_price_id      = Column(String(255), nullable=True)
     # Enterprise (live): product_id do produto BlackChat Enterprise
     live_enterprise_product_id = Column(String(255), nullable=True)
+    # Credits (live): product_id do produto Blackchat IA Credits
+    live_credits_product_id = Column(String(255), nullable=True)
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -109,6 +109,16 @@ _COLUMNS = [
     ("stripe_webhook_events", "stripe_mode",
         "stripe_mode NVARCHAR(10)"),
 
+    # ── stripe_config — produto de créditos IA ─────────────────────────
+    ("stripe_config", "test_credits_product_id",
+        "test_credits_product_id NVARCHAR(255)"),
+    ("stripe_config", "live_credits_product_id",
+        "live_credits_product_id NVARCHAR(255)"),
+
+    # ── tenant_credits — créditos IA por workspace ─────────────────────
+    # (tabela criada via _ENSURE_TABLES_SQL; colunas extras aqui se necessário)
+
+
     # ── tenant_users — multi-workspace ─────────────────────────────────
     ("tenant_users", "is_default",
         "is_default BIT DEFAULT 0"),
@@ -137,6 +147,37 @@ _ENSURE_TABLES_SQL = {
             live_pro_price_id NVARCHAR(255),
             live_enterprise_product_id NVARCHAR(255),
             updated_at DATETIME2
+        );
+    """,
+    "tenant_credits": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'tenant_credits')
+        CREATE TABLE tenant_credits (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            tenant_id INT NOT NULL UNIQUE,
+            plan_balance INT NOT NULL DEFAULT 0,
+            plan_monthly_allocation INT NOT NULL DEFAULT 0,
+            plan_reset_date DATE,
+            purchased_balance INT NOT NULL DEFAULT 0,
+            created_at DATETIME2 DEFAULT GETUTCDATE(),
+            updated_at DATETIME2 DEFAULT GETUTCDATE()
+        );
+    """,
+    "credit_transactions": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'credit_transactions')
+        CREATE TABLE credit_transactions (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            tenant_id INT NOT NULL,
+            type NVARCHAR(50) NOT NULL,
+            source NVARCHAR(50),
+            amount INT NOT NULL,
+            reason NVARCHAR(255),
+            plan_balance_before INT,
+            plan_balance_after INT,
+            purchased_balance_before INT,
+            purchased_balance_after INT,
+            created_by NVARCHAR(255),
+            stripe_event_id NVARCHAR(255),
+            created_at DATETIME2 DEFAULT GETUTCDATE()
         );
     """,
     "subscription_history": """
