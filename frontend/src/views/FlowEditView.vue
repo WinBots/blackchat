@@ -2213,8 +2213,11 @@
           <span v-else>
             <i class="fa-solid fa-triangle-exclamation"></i>
             Sem créditos disponíveis —
-            <a href="/settings?tab=Cobran%C3%A7a" class="ai-credits-buy-link">Comprar créditos</a>
+            <button class="ai-credits-buy-link" @click="openBuyCreditsModal">Comprar créditos</button>
           </span>
+          <button v-if="aiCredits.total >= 0" class="ai-credits-buy-btn" @click="openBuyCreditsModal">
+            <i class="fa-solid fa-plus"></i> Comprar mais
+          </button>
         </div>
 
         <p class="ai-modal-hint">
@@ -2377,6 +2380,59 @@
         </template>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── Modal: Comprar Créditos IA ──────────────────────────── -->
+  <div v-if="showBuyCreditsModal" class="ai-modal-overlay" @click.self="showBuyCreditsModal = false">
+    <div class="ai-modal buy-credits-modal">
+      <div class="ai-modal-header">
+        <div class="ai-modal-title">
+          <i class="fa-solid fa-bolt" style="color:#a78bfa"></i>
+          Comprar Créditos IA
+        </div>
+        <button class="ai-modal-close" @click="showBuyCreditsModal = false" :disabled="buyCreditsLoading">×</button>
+      </div>
+
+      <div class="ai-modal-body">
+        <p class="ai-modal-hint" style="margin-bottom:20px">
+          Cada crédito permite gerar 1 fluxo com IA. Créditos comprados não expiram.
+        </p>
+
+        <!-- Slider de quantidade -->
+        <div class="buy-credits-slider-wrap">
+          <div class="buy-credits-amount-display">
+            <span class="buy-credits-number">{{ buyCreditsAmount }}</span>
+            <span class="buy-credits-label">créditos</span>
+          </div>
+          <input
+            type="range"
+            class="buy-credits-slider"
+            v-model.number="buyCreditsAmount"
+            :min="10" :max="100" :step="10"
+          />
+          <div class="buy-credits-marks">
+            <span>10</span><span>20</span><span>30</span><span>40</span><span>50</span>
+            <span>60</span><span>70</span><span>80</span><span>90</span><span>100</span>
+          </div>
+        </div>
+
+        <!-- Resumo de preço -->
+        <div class="buy-credits-summary">
+          <div class="buy-credits-price">
+            <span class="buy-credits-price-value">R$ {{ (buyCreditsAmount * 1.25).toFixed(2).replace('.', ',') }}</span>
+            <span class="buy-credits-price-detail">R$ 1,25 por crédito · pagamento único</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-modal-footer">
+        <button class="ai-btn-cancel" @click="showBuyCreditsModal = false" :disabled="buyCreditsLoading">Cancelar</button>
+        <button class="ai-btn-generate" @click="goToBuyCredits" :disabled="buyCreditsLoading">
+          <i v-if="!buyCreditsLoading" class="fa-solid fa-credit-card"></i>
+          <span>{{ buyCreditsLoading ? 'Abrindo pagamento...' : `Pagar R$ ${(buyCreditsAmount * 1.25).toFixed(2).replace('.', ',')}` }}</span>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2544,6 +2600,29 @@ const aiResult = ref(null)
 const aiError = ref(null)
 const aiCredits = ref(null)  // { plan: X, purchased: Y, total: Z }
 
+// ── Comprar créditos ──────────────────────────────────────
+const showBuyCreditsModal = ref(false)
+const buyCreditsAmount = ref(10)
+const buyCreditsLoading = ref(false)
+
+const openBuyCreditsModal = () => {
+  buyCreditsAmount.value = 10
+  showBuyCreditsModal.value = true
+}
+
+const goToBuyCredits = async () => {
+  buyCreditsLoading.value = true
+  try {
+    const { purchaseCredits } = await import('@/api/credits')
+    const data = await purchaseCredits(buyCreditsAmount.value)
+    window.location.href = data.checkout_url
+  } catch (e) {
+    const detail = e?.response?.data?.detail
+    alert(detail || 'Erro ao criar sessão de pagamento. Tente novamente.')
+    buyCreditsLoading.value = false
+  }
+}
+
 const loadAICredits = async () => {
   try {
     const { getCreditsBalance } = await import('@/api/credits')
@@ -2615,7 +2694,8 @@ const runAIGenerate = async () => {
   } catch (err) {
     const detail = err?.response?.data?.detail
     if (err?.response?.status === 402) {
-      aiError.value = 'Você não tem créditos disponíveis. Acesse Configurações → Cobrança para comprar mais créditos.'
+      aiError.value = 'Você não tem créditos disponíveis.'
+      showBuyCreditsModal.value = true
     } else {
       aiError.value = detail || 'Erro ao gerar fluxo. Verifique se a API Key está configurada e tente novamente.'
     }
@@ -8665,9 +8745,80 @@ onBeforeUnmount(() => {
   font-size: 0.75rem;
 }
 .ai-credits-buy-link {
+  background: none;
+  border: none;
+  padding: 0;
   color: #a78bfa;
   text-decoration: underline;
   cursor: pointer;
+  font-size: inherit;
+}
+.ai-credits-buy-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid rgba(167,139,250,0.3);
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ai-credits-buy-btn:hover { background: rgba(167,139,250,0.1); }
+
+/* ── Modal comprar créditos ── */
+.buy-credits-modal { max-width: 420px; }
+
+.buy-credits-slider-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.buy-credits-amount-display {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.buy-credits-number {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #a78bfa;
+  line-height: 1;
+}
+.buy-credits-label {
+  font-size: 1rem;
+  color: #94a3b8;
+}
+.buy-credits-slider {
+  width: 100%;
+  accent-color: #a78bfa;
+  cursor: pointer;
+}
+.buy-credits-marks {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+.buy-credits-summary {
+  background: rgba(167,139,250,0.06);
+  border: 1px solid rgba(167,139,250,0.15);
+  border-radius: 10px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.buy-credits-price { display: flex; flex-direction: column; gap: 4px; }
+.buy-credits-price-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.buy-credits-price-detail {
+  font-size: 0.75rem;
+  color: #64748b;
 }
 
 /* ─── Modal IA ───────────────────────────────────────────── */
