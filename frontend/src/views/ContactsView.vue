@@ -2248,12 +2248,14 @@ const systemFieldsForModal = computed(() => {
   const c = contactToShowFields.value
   if (!c) return []
 
+  const sourceBot = c.customFields?.['_source_bot'] || null
   const items = [
     { key: 'id', label: 'ID', value: c.id },
     { key: 'name', label: 'Nome', value: c.name },
     { key: 'username', label: 'Username', value: c.username },
     { key: 'channel', label: 'Canal', value: c.channel },
     { key: 'default_channel_id', label: 'Channel ID', value: c.default_channel_id },
+    ...(sourceBot ? [{ key: '_source_bot', label: 'Bot de origem', value: `@${sourceBot}` }] : []),
     { key: 'created_at', label: 'Criado em', value: c.created_at },
     { key: 'tags', label: 'Tags', value: (c.tags || []).length ? (c.tags || []).join(', ') : '—' },
   ]
@@ -2267,7 +2269,8 @@ const systemFieldsForModal = computed(() => {
 const customFieldsForModal = computed(() => {
   const c = contactToShowFields.value
   const fields = c?.customFields && typeof c.customFields === 'object' ? c.customFields : {}
-  const keys = Object.keys(fields).sort((a, b) => a.localeCompare(b))
+  const SYSTEM_KEYS = ['_source_bot']
+  const keys = Object.keys(fields).filter(k => !SYSTEM_KEYS.includes(k)).sort((a, b) => a.localeCompare(b))
   return keys.map(key => ({
     key,
     value: formatFieldValueForModal(fields[key]),

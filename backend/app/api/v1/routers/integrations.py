@@ -254,20 +254,6 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
             tag_name=tag_apply,
         ))
 
-    # ── Tag automática de bot de origem ────────────────────────────────
-    if bot_username:
-        bot_tag = f"bot:{bot_username}"
-        existing_bot_tag = db.query(ContactTag).filter(
-            ContactTag.contact_id == contact.id,
-            ContactTag.tag_name == bot_tag
-        ).first()
-        if not existing_bot_tag:
-            db.add(ContactTag(
-                tenant_id=tenant.id,
-                contact_id=contact.id,
-                tag_name=bot_tag,
-            ))
-
     db.flush()
 
     current_tags = [t.tag_name for t in db.query(ContactTag).filter(
