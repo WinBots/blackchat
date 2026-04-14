@@ -207,25 +207,33 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
         contact.last_interaction_at = datetime.utcnow()
         db.add(contact)
 
-    # ── Vincular canal pelo bot_username ────────────────────────────────
+    # ── Vincular canal e salvar bot_username ────────────────────────────
+    import json as _json
     bot_username = (payload.bot_username or "").strip().lstrip("@").lower()
-    if bot_username and not contact.default_channel_id:
-        channels = db.query(Channel).filter(
-            Channel.tenant_id == tenant.id,
-            Channel.type == "telegram",
-            Channel.is_active == True  # noqa: E712
-        ).all()
-        for ch in channels:
-            try:
-                import json
-                cfg = json.loads(ch.config or "{}")
-                ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
-                if ch_bot and ch_bot == bot_username:
-                    contact.default_channel_id = ch.id
-                    db.add(contact)
-                    break
-            except Exception:
-                continue
+    if bot_username:
+        # Salva bot de origem nos custom_fields para exibição
+        custom = dict(contact.custom_fields or {})
+        custom["_source_bot"] = bot_username
+        contact.custom_fields = custom
+        db.add(contact)
+
+        # Tenta vincular ao canal cadastrado
+        if not contact.default_channel_id:
+            channels = db.query(Channel).filter(
+                Channel.tenant_id == tenant.id,
+                Channel.type == "telegram",
+                Channel.is_active == True  # noqa: E712
+            ).all()
+            for ch in channels:
+                try:
+                    cfg = _json.loads(ch.config or "{}")
+                    ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
+                    if ch_bot and ch_bot == bot_username:
+                        contact.default_channel_id = ch.id
+                        db.add(contact)
+                        break
+                except Exception:
+                    continue
 
     # ── Remover tag oposta ──────────────────────────────────────────────
     db.query(ContactTag).filter(
@@ -245,6 +253,20 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
             contact_id=contact.id,
             tag_name=tag_apply,
         ))
+
+    # ── Tag automática de bot de origem ────────────────────────────────
+    if bot_username:
+        bot_tag = f"bot:{bot_username}"
+        existing_bot_tag = db.query(ContactTag).filter(
+            ContactTag.contact_id == contact.id,
+            ContactTag.tag_name == bot_tag
+        ).first()
+        if not existing_bot_tag:
+            db.add(ContactTag(
+                tenant_id=tenant.id,
+                contact_id=contact.id,
+                tag_name=bot_tag,
+            ))
 
     db.flush()
 
