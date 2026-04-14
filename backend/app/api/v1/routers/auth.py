@@ -1,7 +1,10 @@
 """
 Router de autenticação
 """
+import logging
 import secrets
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
@@ -144,6 +147,16 @@ async def register(
     db.commit()
     db.refresh(user)
     db.refresh(tenant)
+
+    # Alocar créditos do plano inicial (free)
+    try:
+        from app.services.credits_service import allocate_plan_credits, PLAN_CREDITS
+        plan_key = free_plan.name.lower() if free_plan else "free"
+        initial_credits = PLAN_CREDITS.get(plan_key, PLAN_CREDITS.get("free", 0))
+        if initial_credits > 0:
+            allocate_plan_credits(tenant.id, initial_credits, None, db)
+    except Exception as e:
+        logger.warning("Falha ao alocar créditos iniciais para tenant %d: %s", tenant.id, e)
 
     # Email de boas-vindas — tenta via ARQ, fallback para BackgroundTasks
     enqueued = await _arq_enqueue(
