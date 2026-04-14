@@ -586,10 +586,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     else:
         wh_event = None
 
-    try:
-        data_object = event["data"]["object"]
-    except (KeyError, TypeError):
-        data_object = {}
+    data_object = (raw_event.get("data") or {}).get("object") or {}
 
     try:
         _process_event(event_type, data_object, db, background_tasks, event_mode, stripe_event_id=stripe_event_id)
