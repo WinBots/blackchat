@@ -1355,6 +1355,86 @@
                 </p>
               </div>
 
+              <!-- Automações de Tracking por Bot -->
+              <div class="integration-card">
+                <div class="integration-card-header">
+                  <div class="integration-card-icon" style="background: rgba(139,92,246,0.15); color: #a78bfa;">
+                    <i class="fa-solid fa-bolt"></i>
+                  </div>
+                  <div>
+                    <h3 class="integration-card-title">Automações de Tracking</h3>
+                    <p class="integration-card-desc">Dispare um fluxo automaticamente quando um lead entrar ou sair de um grupo. Configurado por bot.</p>
+                  </div>
+                </div>
+
+                <div v-if="automationsLoading" class="automation-loading">
+                  <i class="fa-solid fa-spinner fa-spin"></i> Carregando bots...
+                </div>
+
+                <div v-else-if="trackingAutomations.length === 0" class="automation-empty">
+                  <i class="fa-brands fa-telegram"></i>
+                  Nenhum bot conectado. Conecte um bot na aba <strong>Telegram</strong> primeiro.
+                </div>
+
+                <div v-else class="automation-list">
+                  <div v-for="auto in trackingAutomations" :key="auto.channel_id" class="automation-row">
+                    <!-- Bot info -->
+                    <div class="automation-bot-info">
+                      <div class="automation-bot-avatar">
+                        <i class="fa-brands fa-telegram"></i>
+                      </div>
+                      <div>
+                        <div class="automation-bot-name">{{ auto.channel_name }}</div>
+                        <div v-if="auto.bot_username" class="automation-bot-username">@{{ auto.bot_username }}</div>
+                      </div>
+                    </div>
+
+                    <!-- Selects de fluxo -->
+                    <div class="automation-selects">
+                      <div class="automation-select-group">
+                        <label class="automation-select-label">
+                          <span class="automation-event-badge automation-event-badge--entrou">entrou</span>
+                          Fluxo ao entrar
+                        </label>
+                        <select
+                          class="automation-select"
+                          :value="auto.flow_id_entrou || ''"
+                          @change="onAutomationChange(auto, 'entrou', $event.target.value)"
+                        >
+                          <option value="">— Nenhum (desativado) —</option>
+                          <option v-for="f in availableFlows" :key="f.id" :value="f.id">{{ f.name }}</option>
+                        </select>
+                      </div>
+
+                      <div class="automation-select-group">
+                        <label class="automation-select-label">
+                          <span class="automation-event-badge automation-event-badge--saiu">saiu</span>
+                          Fluxo ao sair
+                        </label>
+                        <select
+                          class="automation-select"
+                          :value="auto.flow_id_saiu || ''"
+                          @change="onAutomationChange(auto, 'saiu', $event.target.value)"
+                        >
+                          <option value="">— Nenhum (desativado) —</option>
+                          <option v-for="f in availableFlows" :key="f.id" :value="f.id">{{ f.name }}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <!-- Botão salvar -->
+                    <button
+                      class="automation-save-btn"
+                      :disabled="auto.saving"
+                      @click="saveAutomation(auto)"
+                    >
+                      <i :class="auto.saving ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check'"></i>
+                      {{ auto.saving ? 'Salvando...' : 'Salvar' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
           </div>
@@ -1472,6 +1552,51 @@ const validatingToken = ref(false)
 const tokenValidationResult = ref(null)
 const loading = ref(false)
 const loadingTelegram = ref(true)
+
+// ─── Tracking Automations ──────────────────────────────────────────────────────
+const trackingAutomations = ref([])
+const automationsLoading = ref(false)
+const availableFlows = ref([])
+
+const loadTrackingAutomations = async () => {
+  automationsLoading.value = true
+  try {
+    const { getTrackingAutomations } = await import('@/api/integrations')
+    const { listFlows } = await import('@/api/flows')
+    const [automations, flows] = await Promise.all([getTrackingAutomations(), listFlows()])
+    availableFlows.value = (Array.isArray(flows) ? flows : []).filter(f => f.is_active)
+    trackingAutomations.value = (automations || []).map(a => ({ ...a, saving: false }))
+  } catch (e) {
+    console.error('Erro ao carregar automações:', e)
+  } finally {
+    automationsLoading.value = false
+  }
+}
+
+const onAutomationChange = (auto, eventType, flowId) => {
+  if (eventType === 'entrou') {
+    auto.flow_id_entrou = flowId ? parseInt(flowId) : null
+  } else {
+    auto.flow_id_saiu = flowId ? parseInt(flowId) : null
+  }
+}
+
+const saveAutomation = async (auto) => {
+  auto.saving = true
+  try {
+    const { saveTrackingAutomation } = await import('@/api/integrations')
+    await saveTrackingAutomation({
+      channel_id: auto.channel_id,
+      flow_id_entrou: auto.flow_id_entrou || null,
+      flow_id_saiu: auto.flow_id_saiu || null,
+    })
+    toast.success('Automação salva!')
+  } catch (e) {
+    toast.error('Erro ao salvar automação.')
+  } finally {
+    auto.saving = false
+  }
+}
 
 // Estados para edição de bot
 const showEditBotModal = ref(false)
@@ -2498,6 +2623,7 @@ const selectTab = (label) => {
   // Carregar token de integração ao abrir a aba
   if (label === 'Integrações') {
     loadIntegrationToken()
+    loadTrackingAutomations()
   }
 }
 
@@ -5129,6 +5255,160 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* ── Tracking Automations ──────────────────────────────────────────────────── */
+.automation-loading, .automation-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.automation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.automation-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.automation-bot-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 160px;
+  flex-shrink: 0;
+}
+
+.automation-bot-avatar {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #0088cc, #229ED9);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.automation-bot-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.automation-bot-username {
+  font-size: 0.75rem;
+  color: #229ED9;
+  margin-top: 2px;
+}
+
+.automation-selects {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.automation-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 180px;
+  flex: 1;
+}
+
+.automation-select-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.automation-event-badge {
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.automation-event-badge--entrou {
+  background: rgba(0, 204, 82, 0.12);
+  color: #00cc52;
+  border: 1px solid rgba(0, 204, 82, 0.25);
+}
+
+.automation-event-badge--saiu {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.automation-select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 7px;
+  color: var(--text-primary);
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.automation-select:focus {
+  border-color: rgba(99,102,241,0.4);
+}
+
+.automation-select option {
+  background: #1a1a2e;
+  color: var(--text-primary);
+}
+
+.automation-save-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 7px;
+  color: #a78bfa;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-end;
+  white-space: nowrap;
+}
+
+.automation-save-btn:hover:not(:disabled) {
+  background: rgba(99,102,241,0.2);
+  border-color: rgba(99,102,241,0.4);
+}
+
+.automation-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .integration-tag-item {

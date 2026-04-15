@@ -180,6 +180,19 @@ _ENSURE_TABLES_SQL = {
             created_at DATETIME2 DEFAULT GETUTCDATE()
         );
     """,
+    "tracking_automations": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'tracking_automations')
+        CREATE TABLE tracking_automations (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            tenant_id INT NOT NULL,
+            channel_id INT NOT NULL,
+            event NVARCHAR(20) NOT NULL,
+            flow_id INT NULL,
+            created_at DATETIME2 DEFAULT GETUTCDATE(),
+            updated_at DATETIME2 DEFAULT GETUTCDATE(),
+            CONSTRAINT uq_tracking_automation UNIQUE (tenant_id, channel_id, event)
+        );
+    """,
     "subscription_history": """
         IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'subscription_history')
         CREATE TABLE subscription_history (

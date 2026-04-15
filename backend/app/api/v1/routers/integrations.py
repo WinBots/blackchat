@@ -23,6 +23,8 @@ from app.db.models.tenant import Tenant
 from app.db.models.contact import Contact
 from app.db.models.tag import ContactTag
 from app.db.models.channel import Channel
+from app.db.models.flow import Flow
+from app.db.models.tracking_automation import TrackingAutomation
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -63,6 +65,20 @@ class BatchTrackingOut(BaseModel):
     ok: bool
     processed: int
     results: list[TrackingOut]
+
+
+class AutomationIn(BaseModel):
+    channel_id: int
+    flow_id_entrou: Optional[int] = None   # None = desativado
+    flow_id_saiu: Optional[int] = None
+
+
+class AutomationOut(BaseModel):
+    channel_id: int
+    channel_name: str
+    bot_username: Optional[str] = None
+    flow_id_entrou: Optional[int] = None
+    flow_id_saiu: Optional[int] = None
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -260,6 +276,67 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
         ContactTag.contact_id == contact.id
     ).all()]
 
+    # ── Automação de tracking: dispara fluxo configurado para o bot/evento ──
+    if contact.default_channel_id:
+        automation = db.query(TrackingAutomation).filter(
+            TrackingAutomation.tenant_id == tenant.id,
+            TrackingAutomation.channel_id == contact.default_channel_id,
+            TrackingAutomation.event == event,
+        ).first()
+        if automation and automation.flow_id:
+            try:
+                from app.db.models.flow_execution import FlowExecution
+                import json as _j
+                flow = db.query(Flow).filter(
+                    Flow.id == automation.flow_id,
+                    Flow.tenant_id == tenant.id,
+                    Flow.is_active == True,  # noqa: E712
+                ).first()
+                ch_obj = db.query(Channel).filter(Channel.id == contact.default_channel_id).first()
+                if flow and ch_obj and contact.telegram_user_id:
+                    existing_exec = db.query(FlowExecution).filter(
+                        FlowExecution.contact_id == contact.id,
+                        FlowExecution.flow_id == flow.id,
+                        FlowExecution.status == "active",
+                    ).first()
+                    if not existing_exec:
+                        cfg = _j.loads(ch_obj.config or "{}")
+                        bot_token_cfg = cfg.get("bot_token", "")
+                        exec_obj = FlowExecution(
+                            tenant_id=tenant.id,
+                            contact_id=contact.id,
+                            flow_id=flow.id,
+                            trigger_type="tracking",
+                            status="active",
+                        )
+                        db.add(exec_obj)
+                        db.flush()
+
+                        import asyncio
+                        from app.workers.arq_pool import enqueue
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.ensure_future(enqueue(
+                                    "run_flow_job",
+                                    channel_id=ch_obj.id,
+                                    contact_id=contact.id,
+                                    flow_id=flow.id,
+                                    chat_id=contact.telegram_user_id,
+                                    bot_token=bot_token_cfg,
+                                    execution_id=exec_obj.id,
+                                    start_from_step_id=None,
+                                ))
+                        except Exception:
+                            pass
+
+                        logger.info(
+                            "Automação tracking: fluxo %d disparado para contato %d (evento=%s)",
+                            flow.id, contact.id, event,
+                        )
+            except Exception as exc:
+                logger.warning("Erro ao disparar automação tracking: %s", exc)
+
     return TrackingOut(ok=True, contact_id=contact.id, action=action, tags=current_tags)
 
 
@@ -348,3 +425,98 @@ def receive_tracking_batch(
     logger.info("Batch processado: %d eventos (tenant %d)", len(results), tenant.id)
 
     return BatchTrackingOut(ok=True, processed=len(results), results=results)
+
+
+# ─── Automações de Tracking (por bot/canal) ────────────────────────────────────
+
+import json as _json_mod
+
+@router.get("/automations", response_model=list[AutomationOut])
+def list_automations(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Retorna automações de tracking configuradas por canal (bot)."""
+    channels = db.query(Channel).filter(
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).all()
+
+    result = []
+    for ch in channels:
+        bot_username = None
+        try:
+            cfg = _json_mod.loads(ch.config or "{}")
+            bot_username = cfg.get("bot_username") or cfg.get("username") or None
+        except Exception:
+            pass
+
+        flow_id_entrou = None
+        flow_id_saiu = None
+        automations = db.query(TrackingAutomation).filter(
+            TrackingAutomation.tenant_id == tenant.id,
+            TrackingAutomation.channel_id == ch.id,
+        ).all()
+        for a in automations:
+            if a.event == "entrou":
+                flow_id_entrou = a.flow_id
+            elif a.event == "saiu":
+                flow_id_saiu = a.flow_id
+
+        result.append(AutomationOut(
+            channel_id=ch.id,
+            channel_name=ch.name,
+            bot_username=bot_username,
+            flow_id_entrou=flow_id_entrou,
+            flow_id_saiu=flow_id_saiu,
+        ))
+
+    return result
+
+
+@router.put("/automations", response_model=AutomationOut)
+def save_automation(
+    body: AutomationIn,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Salva (cria ou atualiza) automações de tracking para um canal."""
+    ch = db.query(Channel).filter(
+        Channel.id == body.channel_id,
+        Channel.tenant_id == tenant.id,
+    ).first()
+    if not ch:
+        raise HTTPException(status_code=404, detail="Canal não encontrado")
+
+    for event, flow_id in [("entrou", body.flow_id_entrou), ("saiu", body.flow_id_saiu)]:
+        existing = db.query(TrackingAutomation).filter(
+            TrackingAutomation.tenant_id == tenant.id,
+            TrackingAutomation.channel_id == body.channel_id,
+            TrackingAutomation.event == event,
+        ).first()
+        if existing:
+            existing.flow_id = flow_id
+        else:
+            db.add(TrackingAutomation(
+                tenant_id=tenant.id,
+                channel_id=body.channel_id,
+                event=event,
+                flow_id=flow_id,
+            ))
+
+    db.commit()
+
+    bot_username = None
+    try:
+        cfg = _json_mod.loads(ch.config or "{}")
+        bot_username = cfg.get("bot_username") or cfg.get("username") or None
+    except Exception:
+        pass
+
+    return AutomationOut(
+        channel_id=ch.id,
+        channel_name=ch.name,
+        bot_username=bot_username,
+        flow_id_entrou=body.flow_id_entrou,
+        flow_id_saiu=body.flow_id_saiu,
+    )
