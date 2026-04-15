@@ -120,34 +120,29 @@
 
               <!-- ── Real content ───────────────────────────────────── -->
               <template v-else>
-              <div class="settings-subscriptions-head">
-                <div>
-                  <p class="settings-subscriptions-title">Situação da conta</p>
-                  <span class="settings-subscriptions-tag" v-if="subscriptionStatusLabel">{{ subscriptionStatusLabel }}</span>
+              <div class="billing-section-header">
+                <div class="billing-section-header-left">
+                  <span class="billing-section-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+                  <div>
+                    <div class="billing-section-title">Situação da conta</div>
+                    <div class="billing-section-sub">Resumo da sua assinatura atual</div>
+                  </div>
                 </div>
+                <span v-if="subscriptionStatusLabel" class="settings-subscriptions-tag" :class="{
+                  'tag--active': subscriptionData?.status === 'active' || subscriptionData?.status === 'trial',
+                  'tag--inactive': subscriptionData?.status === 'canceled' || subscriptionData?.status === 'expired',
+                  'tag--warning': subscriptionData?.status === 'past_due'
+                }">{{ subscriptionStatusLabel }}</span>
               </div>
 
-              <div class="settings-subscriptions-table">
-                <div class="settings-subscriptions-row settings-subscriptions-row--head">
-                  <span>Item</span>
-                  <span>Valor</span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
+              <div class="billing-info-cards">
+                <div class="billing-info-card">
+                  <div class="billing-info-label">Plano atual</div>
+                  <div class="billing-info-value">{{ subscriptionData?.plan?.display_name || '—' }}</div>
                 </div>
-                <div class="settings-subscriptions-row">
-                  <span><strong>Plano atual</strong></span>
-                  <span>{{ subscriptionData?.plan?.display_name || '—' }}</span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <div class="settings-subscriptions-row">
-                  <span><strong>Período</strong></span>
-                  <span>{{ subscriptionPeriodLabel }}</span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                <div class="billing-info-card">
+                  <div class="billing-info-label">Período</div>
+                  <div class="billing-info-value billing-info-value--sm">{{ subscriptionPeriodLabel }}</div>
                 </div>
               </div>
 
@@ -182,11 +177,13 @@
                 <p class="vpm-estimate-note">Estimativa com base nos contatos ativos dos últimos 30 dias. O valor real pode variar no fechamento do ciclo.</p>
               </div>
 
-              <div class="settings-subscriptions-actions">
-                <button class="btn btn-outline" type="button" :disabled="billingPortalDisabled" @click="openBillingPortal">
+              <div class="billing-actions">
+                <button class="billing-action-btn billing-action-btn--outline" type="button" :disabled="billingPortalDisabled" @click="openBillingPortal">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i>
                   {{ billingLoading ? 'Abrindo...' : 'Gerenciar cobrança' }}
                 </button>
-                <button class="btn btn-primary" type="button" @click="selectTab('Planos')">
+                <button class="billing-action-btn billing-action-btn--primary" type="button" @click="selectTab('Planos')">
+                  <i class="fa-solid fa-layer-group"></i>
                   Ver planos
                 </button>
               </div>
@@ -3235,6 +3232,130 @@ onMounted(async () => {
   background: rgba(251, 191, 36, 0.15);
   color: #f59e0b;
   border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* ── Billing section redesign ──────────────────────────────────────────────── */
+.billing-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.billing-section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.billing-section-icon {
+  width: 40px;
+  height: 40px;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #818cf8;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.billing-section-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.billing-section-sub {
+  font-size: 0.775rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.billing-info-cards {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.billing-info-card {
+  flex: 1;
+  min-width: 140px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.billing-info-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.billing-info-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.billing-info-value--sm {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.billing-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.billing-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.billing-action-btn--outline {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+}
+
+.billing-action-btn--outline:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  color: var(--text-primary);
+  border-color: rgba(255,255,255,0.18);
+}
+
+.billing-action-btn--outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.billing-action-btn--primary {
+  background: rgba(0, 204, 82, 0.12);
+  border-color: rgba(0, 204, 82, 0.3);
+  color: #00cc52;
+}
+
+.billing-action-btn--primary:hover {
+  background: rgba(0, 204, 82, 0.2);
+  border-color: rgba(0, 204, 82, 0.5);
 }
 
 .plan-yearly-badge {
