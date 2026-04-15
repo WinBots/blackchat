@@ -318,28 +318,19 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
                         db.add(exec_obj)
                         db.flush()
 
-                        import asyncio
-                        from app.workers.arq_pool import enqueue
-                        try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_running():
-                                asyncio.ensure_future(enqueue(
-                                    "run_flow_job",
-                                    channel_id=ch_obj.id,
-                                    contact_id=contact.id,
-                                    flow_id=flow.id,
-                                    chat_id=contact.telegram_user_id,
-                                    bot_token=bot_token_cfg,
-                                    execution_id=exec_obj.id,
-                                    start_from_step_id=None,
-                                ))
-                        except Exception:
-                            pass
-
                         logger.info(
                             "Automação tracking: fluxo %d disparado para contato %d (evento=%s)",
                             flow.id, contact.id, event,
                         )
+
+                        # Dispara via threading (endpoint é síncrono)
+                        import threading as _t
+                        from app.api.v1.routers.telegram import run_flow_background
+                        _t.Thread(
+                            target=run_flow_background,
+                            args=(ch_obj.id, contact.id, flow.id, contact.telegram_user_id, bot_token_cfg, exec_obj.id, None),
+                            daemon=True,
+                        ).start()
             except Exception as exc:
                 logger.warning("Erro ao disparar automação tracking: %s", exc)
 
