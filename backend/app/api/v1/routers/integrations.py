@@ -228,7 +228,13 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
     bot_username = (payload.bot_username or "").strip().lstrip("@").lower()
     if bot_username:
         # Salva bot de origem nos custom_fields para exibição
-        custom = dict(contact.custom_fields or {})
+        raw_cf = contact.custom_fields
+        if isinstance(raw_cf, str):
+            try:
+                raw_cf = _json.loads(raw_cf) if raw_cf else {}
+            except Exception:
+                raw_cf = {}
+        custom = dict(raw_cf) if isinstance(raw_cf, dict) else {}
         custom["_source_bot"] = bot_username
         contact.custom_fields = custom
         db.add(contact)
