@@ -1402,7 +1402,7 @@
                           @change="onAutomationChange(auto, 'entrou', $event.target.value)"
                         >
                           <option value="">— Nenhum (desativado) —</option>
-                          <option v-for="f in availableFlows" :key="f.id" :value="f.id">{{ f.name }}</option>
+                          <option v-for="f in flowsForChannel(auto.channel_id)" :key="f.id" :value="f.id">{{ f.name }}</option>
                         </select>
                       </div>
 
@@ -1417,7 +1417,7 @@
                           @change="onAutomationChange(auto, 'saiu', $event.target.value)"
                         >
                           <option value="">— Nenhum (desativado) —</option>
-                          <option v-for="f in availableFlows" :key="f.id" :value="f.id">{{ f.name }}</option>
+                          <option v-for="f in flowsForChannel(auto.channel_id)" :key="f.id" :value="f.id">{{ f.name }}</option>
                         </select>
                       </div>
                     </div>
@@ -1571,6 +1571,11 @@ const loadTrackingAutomations = async () => {
   } finally {
     automationsLoading.value = false
   }
+}
+
+const flowsForChannel = (channelId) => {
+  // Mostra apenas fluxos atrelados ao mesmo canal, ou fluxos sem canal definido
+  return availableFlows.value.filter(f => !f.channel_id || f.channel_id === channelId)
 }
 
 const onAutomationChange = (auto, eventType, flowId) => {
