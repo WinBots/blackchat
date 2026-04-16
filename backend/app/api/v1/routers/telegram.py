@@ -2099,7 +2099,42 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
 
             active_execution = ex
             break
-    
+
+        # Fallback: busca execução waiting_response em outros contatos com o mesmo telegram_user_id
+        # (acontece quando o usuário tem duplicatas por bots diferentes)
+        if not active_execution and user_id:
+            try:
+                sibling_ids = [
+                    cid for (cid,) in db.query(Contact.id).filter(
+                        Contact.tenant_id == channel.tenant_id,
+                        Contact.telegram_user_id == str(user_id),
+                        Contact.id != contact.id,
+                    ).all()
+                ]
+                if sibling_ids:
+                    sib_candidates = db.query(FlowExecution).filter(
+                        FlowExecution.contact_id.in_(sibling_ids),
+                        FlowExecution.status.in_(['waiting_response', 'waiting_input'])
+                    ).order_by(FlowExecution.updated_at.desc()).all()
+                    for ex in sib_candidates:
+                        ctx = {}
+                        try:
+                            ctx = json.loads(ex.context) if ex.context else {}
+                        except Exception:
+                            ctx = {}
+                        ctx_bot_token = ctx.get('bot_token')
+                        ctx_channel_id = ctx.get('channel_id')
+                        if ctx_bot_token and ctx_bot_token != bot_token:
+                            continue
+                        if ctx_channel_id and int(ctx_channel_id) != int(channel.id):
+                            continue
+                        active_execution = ex
+                        # Atualiza o contact da execução para o contato atual do bot
+                        logger.info(f"Fallback: execução {ex.id} encontrada em contato irmão {ex.contact_id}, continuando com contato {contact.id}")
+                        break
+            except Exception as fe:
+                logger.warning(f"Fallback sibling contact error: {fe}")
+
     _checkpoint("3-pre-trigger-map")
     # Pré-carregar trigger_map UMA VEZ (2 queries) — usado em todo o matching abaixo
     trigger_map = _load_trigger_map(db, channel.tenant_id, channel.id)
