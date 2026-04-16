@@ -437,6 +437,71 @@ def telegram_sync_webhook(
     return TelegramWebhookInfoOut(expected_url=expected_url, telegram=tg)
 
 
+@router.post("/telegram-sync-all-webhooks")
+def telegram_sync_all_webhooks(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    """Verifica e corrige webhooks de todos os bots Telegram do tenant."""
+    settings = get_settings()
+    channels = db.query(Channel).filter(
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+        Channel.is_active == True,  # noqa: E712
+    ).all()
+
+    results = []
+    for channel in channels:
+        try:
+            config = json.loads(channel.config) if channel.config else {}
+        except json.JSONDecodeError:
+            config = {}
+
+        bot_token = config.get("bot_token")
+        if not bot_token:
+            continue
+
+        webhook_secret = config.get("webhook_secret")
+        if not webhook_secret:
+            webhook_secret = str(uuid.uuid4())
+            config["webhook_secret"] = webhook_secret
+
+        expected_url = f"{settings.PUBLIC_BASE_URL}/api/v1/webhooks/telegram/{webhook_secret}"
+
+        # Verifica webhook atual no Telegram
+        try:
+            info_res = httpx.get(f"https://api.telegram.org/bot{bot_token}/getWebhookInfo", timeout=5.0)
+            current_url = info_res.json().get("result", {}).get("url", "")
+        except Exception:
+            current_url = ""
+
+        if current_url == expected_url:
+            results.append({"channel_id": channel.id, "status": "ok"})
+            continue
+
+        # Corrige webhook
+        try:
+            httpx.post(
+                f"https://api.telegram.org/bot{bot_token}/setWebhook",
+                json={"url": expected_url, "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"]},
+                timeout=8.0,
+            )
+            config["webhook_url"] = expected_url
+            channel.config = json.dumps(config)
+            logger.info("Webhook corrigido automaticamente: canal %d → %s", channel.id, expected_url)
+            results.append({"channel_id": channel.id, "status": "fixed"})
+        except Exception as exc:
+            logger.warning("Falha ao corrigir webhook canal %d: %s", channel.id, exc)
+            results.append({"channel_id": channel.id, "status": "error"})
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    return {"synced": len(results), "results": results}
+
+
 @router.delete("/{channel_id}")
 def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     """
