@@ -1578,7 +1578,19 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     except (json.JSONDecodeError, KeyError):
         logger.error("Config do canal inválido")
         raise HTTPException(status_code=500, detail="Configuração do canal inválida")
-    
+
+    # Forward do update para sistema externo (ex: TrackLeadPro) se configurado
+    _forward_url = channel_config.get("forward_webhook_url")
+    if _forward_url:
+        import threading as _fwd_t
+        import httpx as _fwd_httpx
+        def _do_forward(url, payload):
+            try:
+                _fwd_httpx.post(url, json=payload, timeout=5.0)
+            except Exception as _e:
+                logger.warning("Falha ao fazer forward do update para %s: %s", url, _e)
+        _fwd_t.Thread(target=_do_forward, args=(_forward_url, update), daemon=True).start()
+
     # 2. Extrair dados do update
     message = update.get("message")
 

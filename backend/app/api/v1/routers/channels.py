@@ -502,6 +502,83 @@ def telegram_sync_all_webhooks(
     return {"synced": len(results), "results": results}
 
 
+class RegisterForwardIn(BaseModel):
+    bot_token: str
+    forward_url: str | None = None  # None = remover forward
+
+
+def _handle_register_forward_with_auth(payload: RegisterForwardIn, auth_header: str | None, db: Session):
+    from app.db.models import Tenant
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autenticação ausente")
+
+    token = auth_header.removeprefix("Bearer ").strip()
+    tenant = db.query(Tenant).filter(Tenant.api_token == token).first()
+    if not tenant:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    # Buscar canal pelo bot_token dentro do tenant
+    channels = db.query(Channel).filter(
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).all()
+
+    target = None
+    for ch in channels:
+        try:
+            cfg = json.loads(ch.config) if ch.config else {}
+        except Exception:
+            cfg = {}
+        if cfg.get("bot_token") == payload.bot_token:
+            target = (ch, cfg)
+            break
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Bot não encontrado neste workspace")
+
+    ch, cfg = target
+    if payload.forward_url:
+        cfg["forward_webhook_url"] = payload.forward_url
+        logger.info("Forward registrado para canal %d → %s", ch.id, payload.forward_url)
+    else:
+        cfg.pop("forward_webhook_url", None)
+        logger.info("Forward removido para canal %d", ch.id)
+
+    ch.config = json.dumps(cfg)
+    db.commit()
+    return {"status": "ok"}
+
+
+from fastapi import Request as _Request
+
+
+@router.post("/register-forward")
+def register_forward(
+    payload: RegisterForwardIn,
+    request: _Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Chamado pelo TrackLeadPro para registrar/remover URL de forward de updates Telegram.
+    Autenticação via Bearer token (api_token do tenant).
+    """
+    auth_header = request.headers.get("Authorization")
+    return _handle_register_forward_with_auth(payload, auth_header, db)
+
+
+@router.delete("/register-forward")
+def remove_forward(
+    payload: RegisterForwardIn,
+    request: _Request,
+    db: Session = Depends(get_db),
+):
+    """Remove forward_webhook_url de um bot."""
+    payload.forward_url = None
+    auth_header = request.headers.get("Authorization")
+    return _handle_register_forward_with_auth(payload, auth_header, db)
+
+
 @router.delete("/{channel_id}")
 def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     """
