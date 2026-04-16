@@ -2618,6 +2618,10 @@ const selectTab = (label) => {
     } else {
       telegramStep.value = 'intro'
     }
+    // Silently fix any bots pointing to wrong webhook URLs
+    import('@/api/channels').then(({ syncTelegramWebhooks }) => {
+      syncTelegramWebhooks().catch(() => {})
+    })
   }
 
   // Recarregar workspaces ao abrir a aba

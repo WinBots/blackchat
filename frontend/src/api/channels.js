@@ -33,3 +33,8 @@ export async function deleteChannel(channelId) {
   return res.data
 }
 
+export async function syncTelegramWebhooks() {
+  const res = await api.post('/api/v1/channels/telegram-sync-all-webhooks')
+  return res.data
+}
+
