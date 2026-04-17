@@ -1584,12 +1584,16 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
     if _forward_url:
         import threading as _fwd_t
         import httpx as _fwd_httpx
+        logger.info("🔀 Forward configurado para %s — disparando thread", _forward_url)
         def _do_forward(url, payload):
             try:
-                _fwd_httpx.post(url, json=payload, timeout=5.0)
+                resp = _fwd_httpx.post(url, json=payload, timeout=5.0)
+                logger.info("🔀 Forward OK para %s — status %s", url, resp.status_code)
             except Exception as _e:
-                logger.warning("Falha ao fazer forward do update para %s: %s", url, _e)
+                logger.warning("🔀 Falha ao fazer forward para %s: %s", url, _e)
         _fwd_t.Thread(target=_do_forward, args=(_forward_url, update), daemon=True).start()
+    else:
+        logger.info("🔀 Sem forward_webhook_url configurado para canal %s", channel.id)
 
     # 2. Extrair dados do update
     message = update.get("message")
