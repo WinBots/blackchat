@@ -348,6 +348,68 @@ def _authenticate(authorization: Optional[str], db: Session) -> Tenant:
     return tenant
 
 
+import json as _json_fwd
+
+
+class RegisterForwardIn(BaseModel):
+    bot_token: str
+    forward_url: Optional[str] = None
+
+
+@router.post("/register-forward")
+def register_forward(
+    payload: RegisterForwardIn,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Registra URL de forward de updates Telegram para sistema externo (ex: TrackLeadPro).
+    O Blackchat repassará todos os updates recebidos pelo bot para essa URL.
+    """
+    tenant = _authenticate(authorization, db)
+
+    channels = db.query(Channel).filter(
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).all()
+
+    target = None
+    for ch in channels:
+        try:
+            cfg = _json_fwd.loads(ch.config) if ch.config else {}
+        except Exception:
+            cfg = {}
+        if cfg.get("bot_token") == payload.bot_token:
+            target = (ch, cfg)
+            break
+
+    if not target:
+        raise HTTPException(status_code=404, detail="Bot não encontrado neste workspace")
+
+    ch, cfg = target
+    if payload.forward_url:
+        cfg["forward_webhook_url"] = payload.forward_url
+        logger.info("Forward registrado para canal %d → %s", ch.id, payload.forward_url)
+    else:
+        cfg.pop("forward_webhook_url", None)
+        logger.info("Forward removido para canal %d", ch.id)
+
+    ch.config = _json_fwd.dumps(cfg)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/register-forward")
+def remove_forward(
+    payload: RegisterForwardIn,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Remove URL de forward de updates Telegram."""
+    payload.forward_url = None
+    return register_forward(payload, authorization, db)
+
+
 @router.post("/tracking", response_model=TrackingOut)
 def receive_tracking_event(
     payload: TrackingEvent,
