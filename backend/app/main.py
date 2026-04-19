@@ -117,6 +117,14 @@ def startup_event():
         import logging
         logging.getLogger(__name__).warning(f"Falha ao inicializar CORE client: {e}")
 
+    # Iniciar listeners CORE
+    try:
+        from app.workers.core_listener import start_core_listeners
+        start_core_listeners()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Falha ao iniciar CORE listeners: {e}")
+
     t = threading.Thread(target=_timeout_checker_loop, daemon=True, name="timeout-checker")
     t.start()
 

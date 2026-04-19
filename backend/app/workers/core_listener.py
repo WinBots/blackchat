@@ -6,27 +6,49 @@ import asyncio
 import json
 import logging
 import os
-from typing import Callable
+import threading
+from typing import Optional
 
 import redis
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger("core_listener")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# Store tasks para poder cancela-las no shutdown
+_listener_tasks: list[asyncio.Task] = []
+_listener_thread: Optional[threading.Thread] = None
 
-async def listen_bot_events(bot_id: str, handler: Callable) -> None:
+
+def _process_core_update(update: dict, webhook_secret: str, db: Session) -> None:
     """
-    Escuta eventos do CORE para um bot específico.
-    handler(update: dict) será chamado para cada update recebido.
+    Processa update recebido do CORE.
+    Chama o handler de Telegram normalmente.
     """
+    try:
+        from app.api.v1.routers.telegram import _handle_telegram_update
+
+        logger.info(f"[CORE] processando update_id={update.get('update_id')} webhook_secret={webhook_secret}")
+        _handle_telegram_update(update, webhook_secret, db)
+    except Exception as e:
+        logger.error(f"[CORE] erro ao processar update: {e}", exc_info=True)
+
+
+async def listen_bot_events(bot_id: str, webhook_secret: str) -> None:
+    """
+    Escuta eventos do CORE para um bot específico via Redis Pub/Sub.
+    Processa updates diretamente.
+    """
+    from app.db.session import SessionLocal
+
     try:
         r = redis.from_url(REDIS_URL, decode_responses=True)
         pubsub = r.pubsub()
         channel = f"events:{bot_id}"
         pubsub.subscribe(channel)
 
-        logger.info(f"[CORE] escutando canal: {channel}")
+        logger.info(f"[CORE] iniciando listener para {bot_id} no canal {channel}")
 
         for message in pubsub.listen():
             if message["type"] != "message":
@@ -37,43 +59,78 @@ async def listen_bot_events(bot_id: str, handler: Callable) -> None:
                 update = event.get("update", {})
                 request_id = event.get("request_id", "unknown")
 
-                logger.debug(f"[CORE] {bot_id} update_id={update.get('update_id')} request_id={request_id}")
+                logger.debug(
+                    f"[CORE] {bot_id} update_id={update.get('update_id')} "
+                    f"type={list(update.keys())[1] if len(update) > 1 else 'unknown'} "
+                    f"request_id={request_id}"
+                )
 
-                # Chamar handler assincronamente
-                if asyncio.iscoroutinefunction(handler):
-                    await handler(update)
-                else:
-                    # Se handler for síncrono, executar em thread
-                    await asyncio.to_thread(handler, update)
+                # Processar em thread separada para não bloquear listener
+                db = SessionLocal()
+                try:
+                    await asyncio.to_thread(_process_core_update, update, webhook_secret, db)
+                finally:
+                    db.close()
 
             except json.JSONDecodeError as e:
-                logger.warning(f"[CORE] erro ao decodificar JSON: {e}")
+                logger.warning(f"[CORE] erro ao decodificar JSON para {bot_id}: {e}")
             except Exception as e:
-                logger.error(f"[CORE] erro ao processar update: {e}", exc_info=True)
+                logger.error(f"[CORE] erro ao processar update para {bot_id}: {e}", exc_info=True)
 
     except Exception as e:
         logger.error(f"[CORE] erro ao conectar Redis para {bot_id}: {e}", exc_info=True)
 
 
-def get_core_listeners_tasks(bots: list[dict], handler: Callable) -> list:
+def start_core_listeners() -> None:
     """
-    Cria tasks para todos os bots.
-
-    Args:
-        bots: lista de {bot_id, core_bot_id}
-        handler: função que processa updates
-
-    Returns:
-        lista de asyncio.Task
+    Inicia listeners para todos os bots ativos no banco.
+    Deve ser chamado no startup da API.
     """
-    tasks = []
-    for bot_info in bots:
-        core_bot_id = bot_info.get("core_bot_id")
-        if not core_bot_id:
-            continue
+    global _listener_thread
 
-        task = asyncio.create_task(listen_bot_events(core_bot_id, handler))
-        tasks.append(task)
-        logger.info(f"[CORE] task criada para bot: {core_bot_id}")
+    def _run_listeners():
+        """Thread que gerencia o event loop dos listeners."""
+        try:
+            from app.db.session import SessionLocal
+            from app.db.models.channel import Channel
 
-    return tasks
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # Buscar todos os bots Telegram com core_bot_id
+            db = SessionLocal()
+            try:
+                channels = db.query(Channel).filter(
+                    Channel.type == "telegram",
+                    Channel.is_active == True,  # noqa: E712
+                    Channel.core_bot_id != None,  # noqa: E712
+                ).all()
+
+                logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
+
+                tasks = []
+                for ch in channels:
+                    webhook_secret = ch.webhook_secret
+                    core_bot_id = ch.core_bot_id
+
+                    if not webhook_secret or not core_bot_id:
+                        logger.warning(f"[CORE] canal {ch.id} sem webhook_secret ou core_bot_id")
+                        continue
+
+                    task = loop.create_task(listen_bot_events(core_bot_id, webhook_secret))
+                    tasks.append(task)
+                    logger.info(f"[CORE] listener criado: {core_bot_id}")
+
+                # Manter event loop rodando
+                loop.run_until_complete(asyncio.gather(*tasks))
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"[CORE] erro ao iniciar listeners: {e}", exc_info=True)
+
+    # Iniciar thread daemon que roda o event loop
+    _listener_thread = threading.Thread(target=_run_listeners, daemon=True, name="core-listeners")
+    _listener_thread.start()
+    logger.info("[CORE] thread de listeners iniciada")
