@@ -93,6 +93,10 @@ _COLUMNS = [
     ("channels", "webhook_secret",
         "webhook_secret NVARCHAR(255)"),
 
+    # ── channels — core_bot_id para integração com CORE ────────────────
+    ("channels", "core_bot_id",
+        "core_bot_id NVARCHAR(255)"),
+
     # ── tenants — api_token para integração externa ────────────────────
     ("tenants", "api_token",
         "api_token NVARCHAR(64)"),

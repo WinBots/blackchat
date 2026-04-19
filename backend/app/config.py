@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Redis (cache — opcional; se indisponível o sistema continua via banco)
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
+    # CORE (webhook aggregator para bots Telegram)
+    CORE_URL: str = "https://telegram-core.blackchatpro.com"
+
     # Email (SMTP) - ex: Titan/HostGator
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587

@@ -198,7 +198,10 @@ def update_telegram_config(
     except Exception as e:
         logger.warning("Erro ao registrar webhook no Telegram: %s", e)
         # Não falha a operação, apenas loga o erro
-    
+
+    # Registrar bot no CORE
+    _register_bot_in_core(channel, payload.bot_token, config, db)
+
     return channel
 
 
@@ -517,3 +520,37 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"status": "ok", "message": "Canal desconectado com sucesso"}
+
+
+def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Session) -> None:
+    """Registra bot no CORE e atualiza core_bot_id do canal."""
+    try:
+        from app.integrations.core_client import get_core_client
+
+        bot_username = config.get("bot_username", "bot")
+        core_bot_id = f"tg_{channel.tenant_id}_{bot_username}"
+
+        client = get_core_client()
+        if not client:
+            logger.warning("CORE client não inicializado, pulando registro de bot")
+            return
+
+        result = client.register_bot(
+            bot_id=core_bot_id,
+            bot_token=bot_token,
+            user_id=str(channel.tenant_id),
+            webhook_url=config.get("webhook_url", ""),
+            allowed_updates=["message", "callback_query", "chat_member", "chat_join_request"],
+        )
+
+        if result:
+            channel.core_bot_id = core_bot_id
+            db.commit()
+            logger.info("Bot registrado no CORE: %s", core_bot_id)
+        else:
+            logger.warning("Falha ao registrar bot no CORE: %s", core_bot_id)
+
+    except ImportError:
+        logger.debug("CORE client não disponível, pulando registro")
+    except Exception as e:
+        logger.warning("Erro ao registrar bot no CORE: %s", e)

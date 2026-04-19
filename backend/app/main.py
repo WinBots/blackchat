@@ -106,6 +106,17 @@ def _timeout_checker_loop():
 
 @app.on_event("startup")
 def startup_event():
+    # Inicializar CORE client
+    try:
+        from app.integrations.core_client import init_core_client
+        core_url = _settings.CORE_URL or "https://telegram-core.blackchatpro.com"
+        init_core_client(core_url)
+        import logging
+        logging.getLogger(__name__).info(f"CORE client inicializado: {core_url}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Falha ao inicializar CORE client: {e}")
+
     t = threading.Thread(target=_timeout_checker_loop, daemon=True, name="timeout-checker")
     t.start()
 
