@@ -14,7 +14,13 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger("core_listener")
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+def _get_redis_url() -> str:
+    try:
+        from app.config import get_settings
+        return get_settings().REDIS_URL
+    except Exception:
+        return os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Store tasks para poder cancela-las no shutdown
 _listener_tasks: list[asyncio.Task] = []
@@ -43,7 +49,7 @@ async def listen_bot_events(bot_id: str, webhook_secret: str) -> None:
     from app.db.session import SessionLocal
 
     try:
-        r = redis.from_url(REDIS_URL, decode_responses=True)
+        r = redis.from_url(_get_redis_url(), decode_responses=True)
         pubsub = r.pubsub()
         channel = f"events:{bot_id}"
         pubsub.subscribe(channel)
