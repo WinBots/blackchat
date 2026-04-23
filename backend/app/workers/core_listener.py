@@ -113,6 +113,7 @@ def start_core_listeners() -> None:
                 ).all()
 
                 logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
+                print(f"[CORE] encontrados {len(channels)} bots", flush=True)
 
                 coroutines = []
                 for ch in channels:
@@ -125,7 +126,10 @@ def start_core_listeners() -> None:
 
                     coroutines.append(listen_bot_events(core_bot_id, webhook_secret))
                     logger.info(f"[CORE] listener criado: {core_bot_id}")
+                    print(f"[CORE] listener criado: {core_bot_id}", flush=True)
 
+                print(f"[CORE] iniciando gather com {len(coroutines)} coroutines", flush=True)
+                logger.info(f"[CORE] iniciando gather com {len(coroutines)} coroutines")
                 # Rodar todas as coroutines no event loop
                 loop.run_until_complete(asyncio.gather(*coroutines))
 
@@ -134,6 +138,7 @@ def start_core_listeners() -> None:
 
         except Exception as e:
             logger.error(f"[CORE] erro ao iniciar listeners: {e}", exc_info=True)
+            print(f"[CORE] ERRO: {e}", flush=True)
 
     # Iniciar thread daemon que roda o event loop
     _listener_thread = threading.Thread(target=_run_listeners, daemon=True, name="core-listeners")
