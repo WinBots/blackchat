@@ -210,14 +210,12 @@ const defaultForm = () => ({
 })
 const form = ref(defaultForm())
 
-const token = () => localStorage.getItem('token') || ''
-
 onMounted(loadAffiliates)
 
 async function loadAffiliates() {
   loading.value = true
   try {
-    affiliates.value = await adminListAffiliates(token())
+    affiliates.value = await adminListAffiliates()
   } finally {
     loading.value = false
   }
@@ -257,9 +255,9 @@ async function saveAffiliate() {
     const payload = { ...form.value }
     if (editingId.value && !payload.password) delete payload.password
     if (editingId.value) {
-      await adminUpdateAffiliate(token(), editingId.value, payload)
+      await adminUpdateAffiliate(editingId.value, payload)
     } else {
-      await adminCreateAffiliate(token(), payload)
+      await adminCreateAffiliate(payload)
     }
     closeModal()
     await loadAffiliates()
@@ -272,12 +270,12 @@ async function saveAffiliate() {
 
 async function confirmDelete(aff) {
   if (!confirm(`Remover afiliado "${aff.name}"?`)) return
-  await adminDeleteAffiliate(token(), aff.id)
+  await adminDeleteAffiliate(aff.id)
   await loadAffiliates()
 }
 
 async function viewStats(aff) {
-  const data = await adminAffiliateStats(token(), aff.id)
+  const data = await adminAffiliateStats(aff.id)
   statsModal.value = data
 }
 
