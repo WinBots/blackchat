@@ -535,6 +535,14 @@ def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Se
             logger.warning("CORE client não inicializado, pulando registro de bot")
             return
 
+        # Verificar se o bot já está registrado no CORE por outro sistema (ex: TrackLeadPro)
+        existing_bot_id = client.get_bot_by_token(bot_token)
+        if existing_bot_id:
+            channel.core_bot_id = existing_bot_id
+            db.commit()
+            logger.info("Bot já registrado no CORE por outro sistema: %s", existing_bot_id)
+            return
+
         result = client.register_bot(
             bot_id=core_bot_id,
             bot_token=bot_token,
@@ -544,9 +552,10 @@ def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Se
         )
 
         if result:
-            channel.core_bot_id = core_bot_id
+            actual_bot_id = result.get("bot_id", core_bot_id)
+            channel.core_bot_id = actual_bot_id
             db.commit()
-            logger.info("Bot registrado no CORE: %s", core_bot_id)
+            logger.info("Bot registrado no CORE: %s", actual_bot_id)
         else:
             logger.warning("Falha ao registrar bot no CORE: %s", core_bot_id)
 

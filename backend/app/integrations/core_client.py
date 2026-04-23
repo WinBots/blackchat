@@ -133,6 +133,31 @@ class CoreClient:
             logger.error(f"[CORE] send_event erro inesperado: {bot_id} — {e}")
             return False
 
+    # ── Get Bot by Token ───────────────────────────────────────────────────
+    def get_bot_by_token(self, bot_token: str) -> Optional[str]:
+        """
+        Consulta se um bot_token já está registrado no CORE.
+
+        Returns:
+            bot_id existente ou None se não encontrado
+        """
+        try:
+            response = self.session.get(
+                f"{self.core_url}/core/bot-by-token",
+                params={"bot_token": bot_token},
+                timeout=self.timeout,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                bot_id = data.get("bot_id")
+                if bot_id:
+                    logger.info(f"[CORE] bot já registrado: {bot_id}")
+                return bot_id
+            return None
+        except Exception as e:
+            logger.warning(f"[CORE] get_bot_by_token erro: {e}")
+            return None
+
     # ── Health Check ───────────────────────────────────────────────────────
     def get_health(self) -> bool:
         """
