@@ -71,10 +71,10 @@ async def listen_bot_events(bot_id: str, webhook_secret: str) -> None:
                     f"request_id={request_id}"
                 )
 
-                # Processar em thread separada para não bloquear listener
+                # Processar diretamente
                 db = SessionLocal()
                 try:
-                    await asyncio.to_thread(_process_core_update, update, webhook_secret, db)
+                    _process_core_update(update, webhook_secret, db)
                 finally:
                     db.close()
 
@@ -87,60 +87,72 @@ async def listen_bot_events(bot_id: str, webhook_secret: str) -> None:
         logger.error(f"[CORE] erro ao conectar Redis para {bot_id}: {e}", exc_info=True)
 
 
-def start_core_listeners() -> None:
-    """
-    Inicia listeners para todos os bots ativos no banco.
-    Deve ser chamado no startup da API.
-    """
-    global _listener_thread
+def _listen_bot_sync(core_bot_id: str, webhook_secret: str) -> None:
+    """Listener síncrono para um bot — roda em thread dedicada."""
+    from app.db.session import SessionLocal
 
-    def _run_listeners():
-        """Thread que gerencia o event loop dos listeners."""
+    while True:
         try:
-            from app.db.session import SessionLocal
-            from app.db.models.channel import Channel
+            r = redis.from_url(_get_redis_url(), decode_responses=True)
+            pubsub = r.pubsub()
+            channel = f"events:{core_bot_id}"
+            pubsub.subscribe(channel)
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            logger.info(f"[CORE] escutando: {channel}")
 
-            # Buscar todos os bots Telegram com core_bot_id
-            db = SessionLocal()
-            try:
-                channels = db.query(Channel).filter(
-                    Channel.type == "telegram",
-                    Channel.is_active == True,  # noqa: E712
-                    Channel.core_bot_id != None,  # noqa: E712
-                ).all()
-
-                logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
-                print(f"[CORE] encontrados {len(channels)} bots", flush=True)
-
-                coroutines = []
-                for ch in channels:
-                    webhook_secret = ch.webhook_secret
-                    core_bot_id = ch.core_bot_id
-
-                    if not webhook_secret or not core_bot_id:
-                        logger.warning(f"[CORE] canal {ch.id} sem webhook_secret ou core_bot_id")
-                        continue
-
-                    coroutines.append(listen_bot_events(core_bot_id, webhook_secret))
-                    logger.info(f"[CORE] listener criado: {core_bot_id}")
-                    print(f"[CORE] listener criado: {core_bot_id}", flush=True)
-
-                print(f"[CORE] iniciando gather com {len(coroutines)} coroutines", flush=True)
-                logger.info(f"[CORE] iniciando gather com {len(coroutines)} coroutines")
-                # Rodar todas as coroutines no event loop
-                loop.run_until_complete(asyncio.gather(*coroutines))
-
-            finally:
-                db.close()
+            for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                try:
+                    event = json.loads(message["data"])
+                    update = event.get("update", {})
+                    db = SessionLocal()
+                    try:
+                        _process_core_update(update, webhook_secret, db)
+                    finally:
+                        db.close()
+                except Exception as e:
+                    logger.error(f"[CORE] erro ao processar update {core_bot_id}: {e}", exc_info=True)
 
         except Exception as e:
-            logger.error(f"[CORE] erro ao iniciar listeners: {e}", exc_info=True)
-            print(f"[CORE] ERRO: {e}", flush=True)
+            logger.error(f"[CORE] erro listener {core_bot_id}: {e} — reconectando em 5s")
+            import time
+            time.sleep(5)
 
-    # Iniciar thread daemon que roda o event loop
-    _listener_thread = threading.Thread(target=_run_listeners, daemon=True, name="core-listeners")
-    _listener_thread.start()
-    logger.info("[CORE] thread de listeners iniciada")
+
+def start_core_listeners() -> None:
+    """Inicia uma thread por bot para escutar eventos do CORE."""
+    from app.db.session import SessionLocal
+    from app.db.models.channel import Channel
+
+    db = SessionLocal()
+    try:
+        channels = db.query(Channel).filter(
+            Channel.type == "telegram",
+            Channel.is_active == True,  # noqa: E712
+            Channel.core_bot_id != None,  # noqa: E712
+        ).all()
+
+        logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
+        print(f"[CORE] encontrados {len(channels)} bots", flush=True)
+
+        for ch in channels:
+            webhook_secret = ch.webhook_secret
+            core_bot_id = ch.core_bot_id
+
+            if not webhook_secret or not core_bot_id:
+                logger.warning(f"[CORE] canal {ch.id} sem webhook_secret ou core_bot_id")
+                continue
+
+            t = threading.Thread(
+                target=_listen_bot_sync,
+                args=(core_bot_id, webhook_secret),
+                daemon=True,
+                name=f"core-{core_bot_id}",
+            )
+            t.start()
+            logger.info(f"[CORE] listener iniciado: {core_bot_id}")
+            print(f"[CORE] listener iniciado: {core_bot_id}", flush=True)
+
+    finally:
+        db.close()
