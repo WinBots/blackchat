@@ -1,144 +1,187 @@
 <template>
-  <div class="admin-affiliates">
-    <div class="page-header">
-      <h1>Afiliados</h1>
-      <button class="btn-primary" @click="openCreate">
-        <i class="fa-solid fa-plus"></i> Novo Afiliado
-      </button>
-    </div>
+  <AppLayout>
+    <div class="affiliates-page">
+      <div class="card affiliates-card">
 
-    <div class="card">
-      <div v-if="loading" class="loading">Carregando...</div>
-      <div v-else-if="affiliates.length === 0" class="empty">Nenhum afiliado cadastrado.</div>
-      <table v-else class="table">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>E-mail</th>
-            <th>Código</th>
-            <th>Comissão</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="aff in affiliates" :key="aff.id">
-            <td>{{ aff.name }}</td>
-            <td>{{ aff.email }}</td>
-            <td><code>{{ aff.code }}</code></td>
-            <td>{{ aff.commission_pct }}%</td>
-            <td>
-              <span :class="['badge', aff.is_active ? 'badge-active' : 'badge-inactive']">
-                {{ aff.is_active ? 'Ativo' : 'Inativo' }}
-              </span>
-            </td>
-            <td class="actions">
-              <button class="btn-icon" title="Ver stats" @click="viewStats(aff)">
-                <i class="fa-solid fa-chart-bar"></i>
-              </button>
-              <button class="btn-icon" title="Editar" @click="openEdit(aff)">
-                <i class="fa-solid fa-pen"></i>
-              </button>
-              <button class="btn-icon btn-danger" title="Remover" @click="confirmDelete(aff)">
-                <i class="fa-solid fa-trash"></i>
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <div class="page-header affiliates-header">
+          <div>
+            <h2 class="page-title">Afiliados</h2>
+            <p class="page-description">Gerencie afiliados e acompanhe comissões</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-ghost btn-sm" type="button" @click="loadAffiliates" :disabled="loading">
+              {{ loading ? 'Carregando…' : 'Atualizar' }}
+            </button>
+            <button class="btn btn-accent btn-sm" type="button" @click="openCreate">
+              <i class="fa-solid fa-plus"></i> Novo Afiliado
+            </button>
+          </div>
+        </div>
+
+        <div v-if="loading" class="affiliates-loading">
+          <div class="loading-spinner"></div>
+          <span>Carregando afiliados…</span>
+        </div>
+
+        <div v-else-if="affiliates.length === 0" class="affiliates-empty">
+          <i class="fa-solid fa-users-slash"></i>
+          <p>Nenhum afiliado cadastrado.</p>
+        </div>
+
+        <div v-else class="table-wrapper">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                <th>Código</th>
+                <th>Comissão</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="aff in affiliates" :key="aff.id">
+                <td>{{ aff.name }}</td>
+                <td class="text-muted">{{ aff.email }}</td>
+                <td><code class="code-tag">{{ aff.code }}</code></td>
+                <td>{{ aff.commission_pct }}%</td>
+                <td>
+                  <span :class="['status-badge', aff.is_active ? 'status-active' : 'status-inactive']">
+                    {{ aff.is_active ? 'Ativo' : 'Inativo' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn btn-ghost btn-xs" title="Ver stats" @click="viewStats(aff)">
+                      <i class="fa-solid fa-chart-bar"></i>
+                    </button>
+                    <button class="btn btn-ghost btn-xs" title="Editar" @click="openEdit(aff)">
+                      <i class="fa-solid fa-pen"></i>
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-danger" title="Remover" @click="confirmDelete(aff)">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
     </div>
 
     <!-- Modal criar/editar -->
-    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h2>{{ editingId ? 'Editar Afiliado' : 'Novo Afiliado' }}</h2>
-          <button class="btn-close" @click="closeModal"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <form @submit.prevent="saveAffiliate" class="modal-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Nome</label>
-              <input v-model="form.name" required placeholder="Nome completo" />
-            </div>
-            <div class="form-group">
-              <label>E-mail</label>
-              <input v-model="form.email" type="email" required placeholder="email@exemplo.com" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Senha {{ editingId ? '(deixe em branco para manter)' : '' }}</label>
-              <input v-model="form.password" type="password" :required="!editingId" placeholder="••••••••" />
-            </div>
-            <div class="form-group">
-              <label>Comissão (%)</label>
-              <input v-model.number="form.commission_pct" type="number" step="0.01" min="0" max="100" required />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Taxa Stripe (%)</label>
-              <input v-model.number="form.stripe_fee_pct" type="number" step="0.01" min="0" />
-            </div>
-            <div class="form-group">
-              <label>Taxa Saque (R$)</label>
-              <input v-model.number="form.withdraw_fee" type="number" step="0.01" min="0" />
-            </div>
-            <div class="form-group">
-              <label>Imposto (%)</label>
-              <input v-model.number="form.tax_pct" type="number" step="0.01" min="0" />
-            </div>
-          </div>
-          <div v-if="editingId" class="form-group">
-            <label>
-              <input type="checkbox" v-model="form.is_active" />
-              Ativo
-            </label>
-          </div>
-          <div v-if="formError" class="error-msg">{{ formError }}</div>
-          <div class="modal-footer">
-            <button type="button" class="btn-secondary" @click="closeModal">Cancelar</button>
-            <button type="submit" class="btn-primary" :disabled="saving">
-              {{ saving ? 'Salvando...' : 'Salvar' }}
+    <Teleport to="body">
+      <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+        <div class="modal-box">
+          <div class="modal-header">
+            <h3>{{ editingId ? 'Editar Afiliado' : 'Novo Afiliado' }}</h3>
+            <button class="btn btn-ghost btn-xs" @click="closeModal">
+              <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
-        </form>
+
+          <form @submit.prevent="saveAffiliate" class="modal-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="input-label">Nome</label>
+                <input class="input" v-model="form.name" required placeholder="Nome completo" />
+              </div>
+              <div class="form-group">
+                <label class="input-label">E-mail</label>
+                <input class="input" v-model="form.email" type="email" required placeholder="email@exemplo.com" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="input-label">
+                  Senha
+                  <span v-if="editingId" class="hint">(deixe em branco para manter)</span>
+                </label>
+                <input class="input" v-model="form.password" type="password" :required="!editingId" placeholder="••••••••" />
+              </div>
+              <div class="form-group">
+                <label class="input-label">Comissão (%)</label>
+                <input class="input" v-model.number="form.commission_pct" type="number" step="0.01" min="0" max="100" required />
+              </div>
+            </div>
+
+            <div class="form-row form-row-3">
+              <div class="form-group">
+                <label class="input-label">Taxa Stripe (%)</label>
+                <input class="input" v-model.number="form.stripe_fee_pct" type="number" step="0.01" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="input-label">Taxa Saque (R$)</label>
+                <input class="input" v-model.number="form.withdraw_fee" type="number" step="0.01" min="0" />
+              </div>
+              <div class="form-group">
+                <label class="input-label">Imposto (%)</label>
+                <input class="input" v-model.number="form.tax_pct" type="number" step="0.01" min="0" />
+              </div>
+            </div>
+
+            <div v-if="editingId" class="form-group">
+              <label class="toggle-label">
+                <input type="checkbox" v-model="form.is_active" />
+                <span>Afiliado ativo</span>
+              </label>
+            </div>
+
+            <div v-if="formError" class="form-error">{{ formError }}</div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-ghost" @click="closeModal">Cancelar</button>
+              <button type="submit" class="btn btn-accent" :disabled="saving">
+                {{ saving ? 'Salvando…' : 'Salvar' }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Modal stats -->
-    <div v-if="statsModal" class="modal-overlay" @click.self="statsModal = null">
-      <div class="modal">
-        <div class="modal-header">
-          <h2>Stats — {{ statsModal.affiliate?.name }}</h2>
-          <button class="btn-close" @click="statsModal = null"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-label">Indicações</div>
-            <div class="stat-value">{{ statsModal.referrals }}</div>
+    <Teleport to="body">
+      <div v-if="statsModal" class="modal-overlay" @click.self="statsModal = null">
+        <div class="modal-box modal-box-sm">
+          <div class="modal-header">
+            <h3>Stats — {{ statsModal.affiliate?.name }}</h3>
+            <button class="btn btn-ghost btn-xs" @click="statsModal = null">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
           </div>
-          <div class="stat-card">
-            <div class="stat-label">Vendas</div>
-            <div class="stat-value">{{ statsModal.sales_count }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Total Bruto</div>
-            <div class="stat-value">{{ formatCurrency(statsModal.total_gross) }}</div>
-          </div>
-          <div class="stat-card highlight">
-            <div class="stat-label">Comissão Final</div>
-            <div class="stat-value">{{ formatCurrency(statsModal.total_final) }}</div>
+          <div class="stats-grid modal-body">
+            <div class="stat-card">
+              <div class="stat-label">Indicações</div>
+              <div class="stat-value">{{ statsModal.referrals }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Vendas</div>
+              <div class="stat-value">{{ statsModal.sales_count }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Total Bruto</div>
+              <div class="stat-value">{{ formatCurrency(statsModal.total_gross) }}</div>
+            </div>
+            <div class="stat-card stat-card-highlight">
+              <div class="stat-label">Comissão Final</div>
+              <div class="stat-value">{{ formatCurrency(statsModal.total_final) }}</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </Teleport>
+
+  </AppLayout>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import AppLayout from '@/components/layout/AppLayout.vue'
 import {
   adminListAffiliates,
   adminCreateAffiliate,
@@ -244,37 +287,76 @@ function formatCurrency(val) {
 </script>
 
 <style scoped>
-.admin-affiliates {
-  padding: 32px;
+.affiliates-page {
+  padding: 24px;
   max-width: 1100px;
   margin: 0 auto;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-
-.page-header h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-primary, #f8fafc);
-  margin: 0;
-}
-
-.card {
-  background: var(--bg-secondary, #1e293b);
-  border: 1px solid var(--border, #334155);
-  border-radius: 12px;
+.affiliates-card {
   overflow: hidden;
 }
 
-.loading, .empty {
-  text-align: center;
-  padding: 48px;
-  color: var(--muted, #94a3b8);
+.affiliates-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Botão de destaque usando a cor do sistema */
+.btn-accent {
+  background: var(--accent, #00FF66);
+  color: #000;
+  border-color: transparent;
+  font-weight: 600;
+}
+.btn-accent:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+.btn-accent:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.affiliates-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+
+.affiliates-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 64px 24px;
+  color: var(--text-muted);
+}
+
+.affiliates-empty i {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+.affiliates-empty p {
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.table-wrapper {
+  overflow-x: auto;
 }
 
 .table {
@@ -286,36 +368,43 @@ function formatCurrency(val) {
   text-align: left;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--muted, #64748b);
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border, #334155);
-  background: rgba(0,0,0,0.15);
+  color: var(--text-muted);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .table td {
-  padding: 14px 16px;
+  padding: 13px 16px;
   font-size: 0.9375rem;
-  color: var(--text-primary, #cbd5e1);
-  border-bottom: 1px solid var(--border, #1e293b);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
 }
 
-.table tr:last-child td {
+.table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.table tr:hover td {
-  background: rgba(99, 102, 241, 0.04);
+.table tbody tr:hover td {
+  background: var(--bg-hover, rgba(255,255,255,0.02));
 }
 
-code {
-  background: rgba(99,102,241,0.12);
-  color: #818cf8;
-  border-radius: 4px;
-  padding: 2px 8px;
+.text-muted {
+  color: var(--text-muted) !important;
   font-size: 0.875rem;
 }
 
-.badge {
+.code-tag {
+  display: inline-block;
+  background: var(--accent-soft, rgba(0,255,102,0.08));
+  color: var(--accent, #00FF66);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.8125rem;
+  font-family: monospace;
+}
+
+.status-badge {
   display: inline-block;
   border-radius: 20px;
   padding: 3px 12px;
@@ -323,142 +412,98 @@ code {
   font-weight: 600;
 }
 
-.badge-active {
-  background: rgba(74, 222, 128, 0.12);
-  color: #4ade80;
+.status-active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
 }
 
-.badge-inactive {
-  background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
+.status-inactive {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-muted);
 }
 
-.actions {
+.row-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
-.btn-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid var(--border, #334155);
-  background: transparent;
-  color: var(--muted, #94a3b8);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+.btn-xs {
+  padding: 5px 8px;
+  font-size: 0.8125rem;
 }
 
-.btn-icon:hover {
-  color: #f8fafc;
-  border-color: #64748b;
+.btn-danger {
+  color: var(--danger, #f87171) !important;
 }
-
-.btn-icon.btn-danger:hover {
-  color: #f87171;
-  border-color: #f87171;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: #6366f1;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 10px 20px;
-  background: transparent;
-  color: var(--muted, #94a3b8);
-  border: 1px solid var(--border, #334155);
-  border-radius: 8px;
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  color: #f8fafc;
-  border-color: #64748b;
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.55);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
   padding: 16px;
 }
 
-.modal {
-  background: var(--bg-secondary, #1e293b);
-  border: 1px solid var(--border, #334155);
-  border-radius: 12px;
+.modal-box {
+  background: var(--bg-card, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
   width: 100%;
-  max-width: 600px;
+  max-width: 580px;
   max-height: 90vh;
   overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+}
+
+.modal-box-sm {
+  max-width: 460px;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border, #334155);
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
 }
 
-.modal-header h2 {
-  font-size: 1.125rem;
-  font-weight: 700;
-  margin: 0;
-  color: var(--text-primary, #f8fafc);
-}
-
-.btn-close {
-  background: transparent;
-  border: none;
-  color: var(--muted, #94a3b8);
-  cursor: pointer;
+.modal-header h3 {
   font-size: 1rem;
-  padding: 4px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
 }
 
-.modal-form {
+.modal-body {
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 8px;
+}
+
 .form-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.form-row-3 {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .form-group {
@@ -467,82 +512,77 @@ code {
   gap: 6px;
 }
 
-.form-group label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--muted, #cbd5e1);
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
-.form-group input[type="text"],
-.form-group input[type="email"],
-.form-group input[type="password"],
-.form-group input[type="number"] {
-  padding: 10px 12px;
-  background: var(--bg-primary, #0f172a);
-  border: 1px solid var(--border, #334155);
-  border-radius: 8px;
-  color: var(--text-primary, #f8fafc);
-  font-size: 0.9375rem;
-  outline: none;
-  transition: border-color 0.2s;
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
-.form-group input:focus {
-  border-color: #6366f1;
+.toggle-label input[type="checkbox"] {
+  accent-color: var(--accent, #00FF66);
+  width: 16px;
+  height: 16px;
 }
 
-.form-group input[type="checkbox"] {
-  margin-right: 8px;
-}
-
-.error-msg {
-  background: rgba(239,68,68,0.12);
+.form-error {
+  background: rgba(239, 68, 68, 0.1);
   color: #f87171;
-  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-sm, 8px);
   padding: 10px 14px;
   font-size: 0.875rem;
 }
 
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-/* Stats grid (modal stats) */
+/* Stats grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  padding: 24px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .stat-card {
-  background: var(--bg-primary, #0f172a);
-  border: 1px solid var(--border, #334155);
-  border-radius: 10px;
-  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 10px);
+  padding: 18px;
 }
 
-.stat-card.highlight {
-  border-color: rgba(99,102,241,0.4);
-  background: rgba(99,102,241,0.08);
+.stat-card-highlight {
+  border-color: var(--accent-soft, rgba(0,255,102,0.2));
+  background: var(--accent-soft, rgba(0,255,102,0.05));
 }
 
 .stat-label {
-  font-size: 0.8125rem;
-  color: var(--muted, #94a3b8);
-  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
-  color: var(--text-primary, #f8fafc);
+  color: var(--text-primary);
 }
 
-.stat-card.highlight .stat-value {
-  color: #818cf8;
+.stat-card-highlight .stat-value {
+  color: var(--accent, #00FF66);
+}
+
+@media (max-width: 600px) {
+  .form-row, .form-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
