@@ -114,7 +114,7 @@ def start_core_listeners() -> None:
 
                 logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
 
-                tasks = []
+                coroutines = []
                 for ch in channels:
                     webhook_secret = ch.webhook_secret
                     core_bot_id = ch.core_bot_id
@@ -123,12 +123,11 @@ def start_core_listeners() -> None:
                         logger.warning(f"[CORE] canal {ch.id} sem webhook_secret ou core_bot_id")
                         continue
 
-                    task = loop.create_task(listen_bot_events(core_bot_id, webhook_secret))
-                    tasks.append(task)
+                    coroutines.append(listen_bot_events(core_bot_id, webhook_secret))
                     logger.info(f"[CORE] listener criado: {core_bot_id}")
 
-                # Manter event loop rodando
-                loop.run_until_complete(asyncio.gather(*tasks))
+                # Rodar todas as coroutines no event loop
+                loop.run_until_complete(asyncio.gather(*coroutines))
 
             finally:
                 db.close()
