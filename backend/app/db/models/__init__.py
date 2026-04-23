@@ -19,6 +19,7 @@ from app.db.models.subscription_history import SubscriptionHistory
 from app.db.models.limit_event import LimitEvent
 from app.db.models.password_reset_token import PasswordResetToken
 from app.db.models.tenant_credits import TenantCredits, CreditTransaction
+from app.db.models.affiliate import Affiliate, AffiliateReferral, AffiliateSale
 
 __all__ = [
     'Tenant',
@@ -45,4 +46,7 @@ __all__ = [
     'PasswordResetToken',
     'TenantCredits',
     'CreditTransaction',
+    'Affiliate',
+    'AffiliateReferral',
+    'AffiliateSale',
 ]

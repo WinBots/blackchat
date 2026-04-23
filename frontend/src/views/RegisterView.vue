@@ -173,12 +173,14 @@
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import api from '@/api/http.js'
 import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuth()
+const affiliateRef = route.query.ref || null
 
 const form = ref({
   full_name: '',
@@ -208,12 +210,14 @@ const handleRegister = async () => {
 
   loading.value = true
   try {
-    const response = await api.post('/api/v1/auth/register', {
+    const payload = {
       email: form.value.email,
       password: form.value.password,
       full_name: form.value.full_name,
-      company_name: form.value.company_name
-    })
+      company_name: form.value.company_name,
+    }
+    if (affiliateRef) payload.ref = affiliateRef
+    const response = await api.post('/api/v1/auth/register', payload)
 
     auth.login(response.data.user, response.data.tenant, response.data.access_token, response.data.workspaces || [])
     router.push('/dashboard')

@@ -11,6 +11,7 @@ from app.api.v1.routers import (
     telegram, instagram, instagram_connect, media, admin, public, debug, dev_tools, dashboard,
     plans, subscription, billing, workspaces, integrations, credits
 )
+from app.api.v1.routers.affiliate import router as affiliate_router
 from app.api.v1.routers.stripe_config import router as stripe_config_router
 from app.core.auth import require_permission
 from app.db.session import Base, engine
@@ -76,6 +77,7 @@ app.include_router(debug.router, prefix="/api/v1/debug", tags=["debug"])
 app.include_router(dev_tools.router, prefix="/api/v1", tags=["dev-tools"])
 app.include_router(integrations.router, prefix="/api/v1/integrations", tags=["integrations"])
 app.include_router(credits.router, prefix="/api/v1/credits", tags=["credits"])
+app.include_router(affiliate_router, prefix="/api/affiliate", tags=["affiliate"])
 
 
 @app.on_event("startup")

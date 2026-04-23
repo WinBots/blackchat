@@ -12,6 +12,9 @@ import SuperAdminView from '@/views/SuperAdminView.vue'
 import ForgotPasswordView from '@/views/ForgotPasswordView.vue'
 import ResetPasswordView from '@/views/ResetPasswordView.vue'
 import ThankYouView from '@/views/ThankYouView.vue'
+import AffiliatLoginView from '@/views/AffiliatLoginView.vue'
+import AffiliateDashboardView from '@/views/AffiliateDashboardView.vue'
+import AdminAffiliatesView from '@/views/AdminAffiliatesView.vue'
 
 const routes = [
   { path: '/', name: 'home', component: LandingPage },
@@ -25,6 +28,9 @@ const routes = [
   { path: '/broadcasts', name: 'broadcasts', component: BroadcastsView, meta: { permission: 'broadcasts' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { permission: 'settings' } },
   { path: '/admin', name: 'super-admin', component: SuperAdminView },
+  { path: '/admin/affiliates', name: 'admin-affiliates', component: AdminAffiliatesView },
+  { path: '/affiliate/login', name: 'affiliate-login', component: AffiliatLoginView },
+  { path: '/affiliate/dashboard', name: 'affiliate-dashboard', component: AffiliateDashboardView },
   { path: '/forgot-password', name: 'forgot-password', component: ForgotPasswordView },
   { path: '/reset-password', name: 'reset-password', component: ResetPasswordView },
 ]
@@ -44,7 +50,7 @@ router.beforeEach((to, from, next) => {
   } catch {
     currentUser = null
   }
-  const publicPages = ['/', '/login', '/register', '/landing', '/forgot-password', '/reset-password', '/thank-you']
+  const publicPages = ['/', '/login', '/register', '/landing', '/forgot-password', '/reset-password', '/thank-you', '/affiliate/login', '/affiliate/dashboard']
   const authRequired = !publicPages.includes(to.path)
 
   // Se a rota requer autenticação e não há token
@@ -58,7 +64,7 @@ router.beforeEach((to, from, next) => {
   }
 
   // Protege área de super admin
-  if (to.path === '/admin') {
+  if (to.path === '/admin' || to.path === '/admin/affiliates') {
     if (!token) return next('/login')
     if (!currentUser?.is_super_admin) return next('/dashboard')
   }

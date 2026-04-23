@@ -783,6 +783,13 @@ def _process_event(event_type: str, data_object: dict, db: Session, bg: Backgrou
                 if sub and sub.status in (SubscriptionStatus.PAST_DUE, SubscriptionStatus.UNPAID):
                     sub.status = SubscriptionStatus.ACTIVE
                     invalidate_subscription(tenant.id)
+                # Registrar comissão de afiliado se houver
+                try:
+                    from app.api.v1.routers.affiliate import register_affiliate_sale
+                    amount_paid = data_object.get("amount_paid", 0)
+                    register_affiliate_sale(tenant.id, stripe_event_id, amount_paid, db)
+                except Exception as _aff_exc:
+                    logger.warning("[affiliate] erro ao registrar venda: %s", _aff_exc)
 
     # ── invoice.payment_failed ────────────────────────────────────────────────
     elif event_type == "invoice.payment_failed":

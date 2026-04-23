@@ -38,6 +38,7 @@ class RegisterRequest(BaseModel):
     password: str
     full_name: str
     company_name: str
+    ref: str | None = None  # código de afiliado
 
 
 class LoginRequest(BaseModel):
@@ -147,6 +148,19 @@ async def register(
     db.commit()
     db.refresh(user)
     db.refresh(tenant)
+
+    # Vincular afiliado se veio com ref code
+    if data.ref:
+        try:
+            from app.db.models.affiliate import Affiliate, AffiliateReferral
+            aff = db.query(Affiliate).filter(Affiliate.code == data.ref, Affiliate.is_active == True).first()  # noqa: E712
+            if aff:
+                referral = AffiliateReferral(affiliate_id=aff.id, user_id=user.id)
+                db.add(referral)
+                db.commit()
+                logger.info("Afiliado %s vinculado ao usuário %d", aff.code, user.id)
+        except Exception as e:
+            logger.warning("Falha ao vincular afiliado ref=%s user=%d: %s", data.ref, user.id, e)
 
     # Alocar créditos do plano inicial (free)
     try:

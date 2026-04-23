@@ -197,6 +197,48 @@ _ENSURE_TABLES_SQL = {
             CONSTRAINT uq_tracking_automation UNIQUE (tenant_id, channel_id, event)
         );
     """,
+    "affiliates": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'affiliates')
+        CREATE TABLE affiliates (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            name NVARCHAR(255) NOT NULL,
+            email NVARCHAR(255) NOT NULL UNIQUE,
+            password_hash NVARCHAR(255) NOT NULL,
+            code NVARCHAR(100) NOT NULL UNIQUE,
+            commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+            stripe_fee_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+            withdraw_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+            tax_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+            is_active BIT NOT NULL DEFAULT 1,
+            created_at DATETIME2 DEFAULT GETUTCDATE()
+        );
+    """,
+    "affiliate_referrals": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'affiliate_referrals')
+        CREATE TABLE affiliate_referrals (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            affiliate_id INT NOT NULL REFERENCES affiliates(id),
+            user_id INT NOT NULL UNIQUE,
+            registered_at DATETIME2 DEFAULT GETUTCDATE()
+        );
+    """,
+    "affiliate_sales": """
+        IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'affiliate_sales')
+        CREATE TABLE affiliate_sales (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            affiliate_id INT NOT NULL REFERENCES affiliates(id),
+            user_id INT NULL,
+            stripe_event_id NVARCHAR(255) NOT NULL UNIQUE,
+            gross_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+            stripe_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+            net_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+            commission NUMERIC(10,2) NOT NULL DEFAULT 0,
+            tax_deduction NUMERIC(10,2) NOT NULL DEFAULT 0,
+            withdraw_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+            final_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+            created_at DATETIME2 DEFAULT GETUTCDATE()
+        );
+    """,
     "subscription_history": """
         IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'subscription_history')
         CREATE TABLE subscription_history (
