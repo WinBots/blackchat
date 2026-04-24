@@ -67,6 +67,12 @@ class BatchTrackingOut(BaseModel):
     results: list[TrackingOut]
 
 
+class RegisterBotIn(BaseModel):
+    bot_token: str
+    bot_username: str
+    bot_name: Optional[str] = ""
+
+
 class AutomationIn(BaseModel):
     channel_id: int
     flow_id_entrou: Optional[int] = None   # None = desativado
@@ -239,23 +245,22 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
         contact.custom_fields = custom
         db.add(contact)
 
-        # Tenta vincular ao canal cadastrado
-        if not contact.default_channel_id:
-            channels = db.query(Channel).filter(
-                Channel.tenant_id == tenant.id,
-                Channel.type == "telegram",
-                Channel.is_active == True  # noqa: E712
-            ).all()
-            for ch in channels:
-                try:
-                    cfg = _json.loads(ch.config or "{}")
-                    ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
-                    if ch_bot and ch_bot == bot_username:
-                        contact.default_channel_id = ch.id
-                        db.add(contact)
-                        break
-                except Exception:
-                    continue
+        # Sempre atualiza o canal quando bot_username vier no evento
+        channels = db.query(Channel).filter(
+            Channel.tenant_id == tenant.id,
+            Channel.type == "telegram",
+            Channel.is_active == True  # noqa: E712
+        ).all()
+        for ch in channels:
+            try:
+                cfg = _json.loads(ch.config or "{}")
+                ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
+                if ch_bot and ch_bot == bot_username:
+                    contact.default_channel_id = ch.id
+                    db.add(contact)
+                    break
+            except Exception:
+                continue
 
     # ── Remover tag oposta ──────────────────────────────────────────────
     db.query(ContactTag).filter(
@@ -422,6 +427,130 @@ def receive_tracking_batch(
     logger.info("Batch processado: %d eventos (tenant %d)", len(results), tenant.id)
 
     return BatchTrackingOut(ok=True, processed=len(results), results=results)
+
+
+# ─── Auto-registro de bot via TrackLeadPro ────────────────────────────────────
+
+@router.post("/register-bot")
+def register_bot_from_external(
+    body: RegisterBotIn,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Registra automaticamente um bot Telegram no Blackchat.
+    Chamado pelo TrackLeadPro quando o usuário conecta a integração.
+
+    Se o canal já existir (mesmo bot_username) apenas garante que está ativo.
+    Se não existir, cria o canal e registra no CORE.
+
+    Header: Authorization: Bearer bc_live_xxxx
+    Body: { "bot_token": "...", "bot_username": "...", "bot_name": "..." }
+    """
+    import json as _j
+    import secrets as _s
+    from app.config import get_settings
+
+    tenant = _authenticate(authorization, db)
+
+    bot_username = body.bot_username.strip().lstrip("@").lower()
+    bot_name = body.bot_name.strip() if body.bot_name else bot_username
+    bot_token = body.bot_token.strip()
+
+    if not bot_username or not bot_token:
+        raise HTTPException(status_code=422, detail="bot_token e bot_username são obrigatórios")
+
+    # Verificar se canal com esse bot já existe
+    channels = db.query(Channel).filter(
+        Channel.tenant_id == tenant.id,
+        Channel.type == "telegram",
+    ).all()
+
+    existing_channel = None
+    for ch in channels:
+        try:
+            cfg = _j.loads(ch.config or "{}")
+            ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
+            if ch_bot == bot_username:
+                existing_channel = ch
+                break
+        except Exception:
+            continue
+
+    settings = get_settings()
+    base_url = getattr(settings, "PUBLIC_BASE_URL", None) or "https://app.blackchatpro.com"
+    webhook_secret = _s.token_hex(16)
+    webhook_url = f"{base_url}/api/v1/webhooks/telegram/{webhook_secret}"
+
+    config = {
+        "bot_token": bot_token,
+        "bot_username": bot_username,
+        "webhook_url": webhook_url,
+        "webhook_secret": webhook_secret,
+    }
+
+    if existing_channel:
+        # Canal já existe — atualiza token/config e reativa se necessário
+        try:
+            old_cfg = _j.loads(existing_channel.config or "{}")
+            old_cfg["bot_token"] = bot_token
+            old_cfg["bot_username"] = bot_username
+            existing_channel.config = _j.dumps(old_cfg)
+        except Exception:
+            existing_channel.config = _j.dumps(config)
+        existing_channel.is_active = True
+        existing_channel.webhook_secret = existing_channel.webhook_secret or webhook_secret
+        db.commit()
+        logger.info("[register-bot] Canal existente atualizado: %s (tenant %d)", bot_username, tenant.id)
+        channel = existing_channel
+    else:
+        # Criar novo canal
+        channel = Channel(
+            tenant_id=tenant.id,
+            type="telegram",
+            name=bot_name or bot_username,
+            config=_j.dumps(config),
+            webhook_secret=webhook_secret,
+            is_active=True,
+        )
+        db.add(channel)
+        db.flush()
+        logger.info("[register-bot] Novo canal criado: %s (tenant %d)", bot_username, tenant.id)
+
+    # Registrar webhook no Telegram
+    try:
+        import requests as _req
+        resp = _req.post(
+            f"https://api.telegram.org/bot{bot_token}/setWebhook",
+            json={
+                "url": webhook_url,
+                "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"],
+            },
+            timeout=10,
+        )
+        result = resp.json()
+        if result.get("ok"):
+            logger.info("[register-bot] Webhook Telegram registrado: %s", webhook_url)
+        else:
+            logger.warning("[register-bot] Webhook Telegram falhou: %s", result)
+    except Exception as e:
+        logger.warning("[register-bot] Erro ao registrar webhook Telegram: %s", e)
+
+    # Registrar no CORE
+    try:
+        from app.api.v1.routers.channels import _register_bot_in_core
+        _register_bot_in_core(channel, bot_token, config, db)
+    except Exception as e:
+        logger.warning("[register-bot] Erro ao registrar no CORE: %s", e)
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "channel_id": channel.id,
+        "bot_username": bot_username,
+        "action": "updated" if existing_channel else "created",
+    }
 
 
 # ─── Automações de Tracking (por bot/canal) ────────────────────────────────────
