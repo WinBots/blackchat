@@ -502,16 +502,16 @@ def register_bot_from_external(
 
     # Criar novo canal
     channel = Channel(
-            tenant_id=tenant.id,
-            type="telegram",
-            name=bot_name or bot_username,
-            config=_j.dumps(config),
-            webhook_secret=webhook_secret,
-            is_active=True,
-        )
-        db.add(channel)
-        db.flush()
-        logger.info("[register-bot] Novo canal criado: %s (tenant %d)", bot_username, tenant.id)
+        tenant_id=tenant.id,
+        type="telegram",
+        name=bot_name or bot_username,
+        config=_j.dumps(config),
+        webhook_secret=webhook_secret,
+        is_active=True,
+    )
+    db.add(channel)
+    db.flush()
+    logger.info("[register-bot] Novo canal criado: %s (tenant %d)", bot_username, tenant.id)
 
     # Registrar webhook no Telegram
     try:
