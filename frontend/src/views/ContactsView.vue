@@ -140,7 +140,7 @@
                 :class="{ active: selectedTags.includes(tag.name) }"
                 @click="toggleTag(tag.name)"
               >
-                <span class="ct-fi-name"><i class="fa-solid fa-hashtag" style="font-size:10px;opacity:0.5;"></i> {{ tag.name }}</span>
+                <span class="ct-fi-name"><i class="fa-solid fa-hashtag" style="font-size:10px;opacity:0.5;"></i> {{ tagLabel(tag.name) }}</span>
                 <span class="ct-fi-count">{{ tag.count }}</span>
               </button>
             </div>
@@ -441,7 +441,7 @@
                   <td>
                     <span v-if="(c.tags || []).length === 0" class="ct-muted">—</span>
                     <span v-else>
-                      <span v-for="t in c.tags.slice(0, 3)" :key="t" class="ct-tag-pill">{{ t }}</span>
+                      <span v-for="t in c.tags.slice(0, 3)" :key="t" class="ct-tag-pill">{{ tagLabel(t) }}</span>
                       <span v-if="c.tags.length > 3" class="ct-muted" style="font-size:0.75rem;"> +{{ c.tags.length - 3 }}</span>
                     </span>
                   </td>
@@ -586,7 +586,7 @@
           <div v-if="activeTab === 'tags'" class="ct-detail-content">
             <div class="ct-tags-list">
               <span v-for="tag in selectedContact.tags" :key="tag" class="ct-tag-badge">
-                {{ tag }}
+                {{ tagLabel(tag) }}
                 <button type="button" @click="removeTagFromContact(selectedContact.id, tag)">
                   <i class="fa-solid fa-xmark"></i>
                 </button>
@@ -1100,6 +1100,7 @@ import { useToast } from '@/composables/useToast'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { listContacts, getContact, getContactMessages, getContactsStats, getContactFieldKeys, addContactTag, removeContactTag, mergeTelegramContactDuplicates, deleteContact as deleteContactAPI, sendMessageToContact, sendMediaToContact } from '@/api/contacts'
 import { listChannels } from '@/api/channels'
+import { tagLabel } from '@/utils/tagLabels'
 
 const searchQuery = ref('')
 const toast = useToast()

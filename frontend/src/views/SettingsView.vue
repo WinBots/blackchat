@@ -1339,11 +1339,11 @@
 
                 <div class="integration-tags-info">
                   <div class="integration-tag-item">
-                    <span class="tag-badge tag-entrou">entrou-grupo</span>
+                    <span class="tag-badge tag-entrou">Interagiu com Boas Vindas</span>
                     <span>Aplicada quando <code>event: "entrou"</code></span>
                   </div>
                   <div class="integration-tag-item">
-                    <span class="tag-badge tag-saiu">saiu-grupo</span>
+                    <span class="tag-badge tag-saiu">Saiu do Grupo</span>
                     <span>Aplicada quando <code>event: "saiu"</code></span>
                   </div>
                 </div>

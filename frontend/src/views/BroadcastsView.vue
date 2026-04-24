@@ -144,7 +144,7 @@
                       <button v-for="tag in tags" :key="tag.name" type="button" class="chip"
                         :class="{ active: rule.values.includes(tag.name) }"
                         @click="toggleInRuleArray(rule, 'values', tag.name)">
-                        {{ tag.name }}<span class="chip-count">{{ tag.count }}</span>
+                        {{ tagLabel(tag.name) }}<span class="chip-count">{{ tag.count }}</span>
                       </button>
                     </div>
                     <p class="rule-hint">Tags para incluir/excluir do público.</p>
@@ -559,6 +559,7 @@ import { getContactsStats, previewBulkMessage, sendBulkMessage } from '@/api/con
 import { listFlows } from '@/api/flows'
 import { useToast } from '@/composables/useToast'
 import { useBroadcastProgress } from '@/composables/useBroadcastProgress'
+import { tagLabel } from '@/utils/tagLabels'
 
 const toast = useToast()
 const broadcastProgress = useBroadcastProgress()
