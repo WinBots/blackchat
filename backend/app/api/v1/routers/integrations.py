@@ -460,7 +460,7 @@ def register_bot_from_external(
     if not bot_username or not bot_token:
         raise HTTPException(status_code=422, detail="bot_token e bot_username são obrigatórios")
 
-    # Verificar se canal com esse bot já existe
+    # Verificar se canal com esse bot já existe (por username ou token)
     channels = db.query(Channel).filter(
         Channel.tenant_id == tenant.id,
         Channel.type == "telegram",
@@ -471,11 +471,22 @@ def register_bot_from_external(
         try:
             cfg = _j.loads(ch.config or "{}")
             ch_bot = (cfg.get("bot_username") or cfg.get("username") or "").strip().lstrip("@").lower()
-            if ch_bot == bot_username:
+            ch_token = (cfg.get("bot_token") or "").strip()
+            if ch_bot == bot_username or ch_token == bot_token:
                 existing_channel = ch
                 break
         except Exception:
             continue
+
+    # Se já existe, retorna imediatamente sem criar duplicata
+    if existing_channel:
+        logger.info("[register-bot] Canal já existe: %s (tenant %d)", bot_username, tenant.id)
+        return {
+            "ok": True,
+            "channel_id": existing_channel.id,
+            "bot_username": bot_username,
+            "action": "already_exists",
+        }
 
     settings = get_settings()
     base_url = getattr(settings, "PUBLIC_BASE_URL", None) or "https://app.blackchatpro.com"
@@ -489,23 +500,8 @@ def register_bot_from_external(
         "webhook_secret": webhook_secret,
     }
 
-    if existing_channel:
-        # Canal já existe — atualiza token/config e reativa se necessário
-        try:
-            old_cfg = _j.loads(existing_channel.config or "{}")
-            old_cfg["bot_token"] = bot_token
-            old_cfg["bot_username"] = bot_username
-            existing_channel.config = _j.dumps(old_cfg)
-        except Exception:
-            existing_channel.config = _j.dumps(config)
-        existing_channel.is_active = True
-        existing_channel.webhook_secret = existing_channel.webhook_secret or webhook_secret
-        db.commit()
-        logger.info("[register-bot] Canal existente atualizado: %s (tenant %d)", bot_username, tenant.id)
-        channel = existing_channel
-    else:
-        # Criar novo canal
-        channel = Channel(
+    # Criar novo canal
+    channel = Channel(
             tenant_id=tenant.id,
             type="telegram",
             name=bot_name or bot_username,
@@ -549,7 +545,7 @@ def register_bot_from_external(
         "ok": True,
         "channel_id": channel.id,
         "bot_username": bot_username,
-        "action": "updated" if existing_channel else "created",
+        "action": "created",
     }
 
 
