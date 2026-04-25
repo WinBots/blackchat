@@ -557,6 +557,25 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     return {"status": "ok", "message": "Canal desconectado com sucesso"}
 
 
+def _get_core_bot_id_from_webhook(bot_token: str) -> str | None:
+    """Consulta getWebhookInfo do Telegram e extrai o core_bot_id da URL do webhook."""
+    try:
+        resp = httpx.get(
+            f"https://api.telegram.org/bot{bot_token}/getWebhookInfo",
+            timeout=8.0,
+        )
+        data = resp.json()
+        url = data.get("result", {}).get("url", "")
+        # URL formato: https://telegram-core.blackchatpro.com/core/webhook/{bot_id}
+        if "/core/webhook/" in url:
+            bot_id = url.split("/core/webhook/")[-1].strip("/")
+            if bot_id:
+                return bot_id
+    except Exception as e:
+        logger.warning("Falha ao obter webhook info do Telegram: %s", e)
+    return None
+
+
 def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Session) -> None:
     """Registra bot no CORE e atualiza core_bot_id do canal."""
     try:
@@ -570,14 +589,6 @@ def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Se
             logger.warning("CORE client não inicializado, pulando registro de bot")
             return
 
-        # Verificar se o bot já está registrado no CORE por outro sistema (ex: TrackLeadPro)
-        existing_bot_id = client.get_bot_by_token(bot_token)
-        if existing_bot_id:
-            channel.core_bot_id = existing_bot_id
-            db.commit()
-            logger.info("Bot já registrado no CORE por outro sistema: %s", existing_bot_id)
-            return
-
         result = client.register_bot(
             bot_id=core_bot_id,
             bot_token=bot_token,
@@ -588,11 +599,19 @@ def _register_bot_in_core(channel: Channel, bot_token: str, config: dict, db: Se
 
         if result:
             actual_bot_id = result.get("bot_id", core_bot_id)
-            channel.core_bot_id = actual_bot_id
-            db.commit()
-            logger.info("Bot registrado no CORE: %s", actual_bot_id)
         else:
-            logger.warning("Falha ao registrar bot no CORE: %s", core_bot_id)
+            actual_bot_id = core_bot_id
+
+        # Confirmar o bot_id real pelo webhook do Telegram (detecta bots já registrados via TrackLeadPro)
+        webhook_bot_id = _get_core_bot_id_from_webhook(bot_token)
+        if webhook_bot_id:
+            if webhook_bot_id != actual_bot_id:
+                logger.info("core_bot_id corrigido via webhook: %s → %s", actual_bot_id, webhook_bot_id)
+            actual_bot_id = webhook_bot_id
+
+        channel.core_bot_id = actual_bot_id
+        db.commit()
+        logger.info("Bot registrado no CORE: %s", actual_bot_id)
 
     except ImportError:
         logger.debug("CORE client não disponível, pulando registro")
