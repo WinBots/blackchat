@@ -106,12 +106,16 @@ def _listen_bot_sync(core_bot_id: str, webhook_secret: str) -> None:
                 try:
                     event = json.loads(message["data"])
                     update = event.get("update", {})
+                    update_id = update.get("update_id", "?")
+                    print(f"[CORE] {core_bot_id} recebeu update_id={update_id}", flush=True)
                     db = SessionLocal()
                     try:
                         _process_core_update(update, webhook_secret, db)
                     finally:
                         db.close()
+                    print(f"[CORE] {core_bot_id} update_id={update_id} processado", flush=True)
                 except Exception as e:
+                    print(f"[CORE] {core_bot_id} ERRO: {e}", flush=True)
                     logger.error(f"[CORE] erro ao processar update {core_bot_id}: {e}", exc_info=True)
 
         except Exception as e:
