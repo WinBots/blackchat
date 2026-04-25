@@ -308,7 +308,7 @@ def _process_single_event(payload: TrackingEvent, tenant: Tenant, db: Session) -
                     existing_exec = db.query(FlowExecution).filter(
                         FlowExecution.contact_id == contact.id,
                         FlowExecution.flow_id == flow.id,
-                        FlowExecution.status == "active",
+                        FlowExecution.status.in_(["active", "waiting_response"]),
                     ).first()
                     if not existing_exec:
                         cfg = _j.loads(ch_obj.config or "{}")

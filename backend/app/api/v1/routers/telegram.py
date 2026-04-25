@@ -2282,6 +2282,14 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
 
                 if has_connections:
                     next_step = find_next_step_by_output(flow_config, current_step.id, "default", steps)
+                    # Fallback: qualquer conexão saindo deste step
+                    if not next_step:
+                        for conn in flow_config.get("connections", []) or []:
+                            if conn.get("from") == current_step.id and conn.get("to") is not None:
+                                next_step = next((s for s in steps if s.id == conn.get("to")), None)
+                                if next_step:
+                                    logger.info(f"   Continuação: fallback connection encontrada para step {current_step.id} → {next_step.id}")
+                                    break
                 else:
                     next_step = steps[current_step_index + 1] if (current_step_index + 1 < len(steps)) else None
 
@@ -2289,7 +2297,7 @@ def _handle_telegram_update(update: dict, webhook_secret: str, db: Session) -> d
                     active_execution.status = 'completed'
                     active_execution.completed_at = datetime.now()
                     db.commit()
-                    print(f"   ✓ Fluxo concluído (sem próximo step)")
+                    logger.info(f"   Fluxo concluído após resposta do usuário (sem próximo step a partir de step {current_step.id})")
                     return {"status": "ok", "message": "Flow completed"}
                 
                 # Se o step atual for de ação, executar ações que não dependem da resposta
