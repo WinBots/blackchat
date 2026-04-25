@@ -505,6 +505,41 @@ def telegram_sync_all_webhooks(
     return {"synced": len(results), "results": results}
 
 
+@router.post("/sync-core-ids")
+def sync_core_ids(db: Session = Depends(get_db)):
+    """Consulta o CORE pelo token de cada canal e corrige core_bot_id se estiver divergente."""
+    from app.integrations.core_client import get_core_client
+
+    client = get_core_client()
+    channels = db.query(Channel).filter(Channel.type == "telegram", Channel.is_active == True).all()  # noqa: E712
+
+    results = []
+    for ch in channels:
+        try:
+            config = json.loads(ch.config or "{}")
+            bot_token = config.get("bot_token")
+            if not bot_token:
+                results.append({"channel_id": ch.id, "status": "no_token"})
+                continue
+
+            real_bot_id = client.get_bot_by_token(bot_token)
+            if not real_bot_id:
+                results.append({"channel_id": ch.id, "status": "not_in_core", "current": ch.core_bot_id})
+                continue
+
+            if ch.core_bot_id == real_bot_id:
+                results.append({"channel_id": ch.id, "status": "ok", "core_bot_id": real_bot_id})
+            else:
+                old = ch.core_bot_id
+                ch.core_bot_id = real_bot_id
+                results.append({"channel_id": ch.id, "status": "fixed", "old": old, "new": real_bot_id})
+        except Exception as e:
+            results.append({"channel_id": ch.id, "status": "error", "detail": str(e)})
+
+    db.commit()
+    return {"results": results}
+
+
 @router.delete("/{channel_id}")
 def delete_channel(channel_id: int, db: Session = Depends(get_db)):
     """
