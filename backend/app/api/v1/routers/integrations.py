@@ -449,7 +449,6 @@ def register_bot_from_external(
     """
     import json as _j
     import secrets as _s
-    from app.config import get_settings
 
     tenant = _authenticate(authorization, db)
 
@@ -488,15 +487,11 @@ def register_bot_from_external(
             "action": "already_exists",
         }
 
-    settings = get_settings()
-    base_url = getattr(settings, "PUBLIC_BASE_URL", None) or "https://app.blackchatpro.com"
     webhook_secret = _s.token_hex(16)
-    webhook_url = f"{base_url}/api/v1/webhooks/telegram/{webhook_secret}"
 
     config = {
         "bot_token": bot_token,
         "bot_username": bot_username,
-        "webhook_url": webhook_url,
         "webhook_secret": webhook_secret,
     }
 
@@ -513,24 +508,8 @@ def register_bot_from_external(
     db.flush()
     logger.info("[register-bot] Novo canal criado: %s (tenant %d)", bot_username, tenant.id)
 
-    # Registrar webhook no Telegram
-    try:
-        import requests as _req
-        resp = _req.post(
-            f"https://api.telegram.org/bot{bot_token}/setWebhook",
-            json={
-                "url": webhook_url,
-                "allowed_updates": ["message", "callback_query", "chat_member", "chat_join_request"],
-            },
-            timeout=10,
-        )
-        result = resp.json()
-        if result.get("ok"):
-            logger.info("[register-bot] Webhook Telegram registrado: %s", webhook_url)
-        else:
-            logger.warning("[register-bot] Webhook Telegram falhou: %s", result)
-    except Exception as e:
-        logger.warning("[register-bot] Erro ao registrar webhook Telegram: %s", e)
+    # NÃO registrar webhook no Telegram diretamente — o CORE já é o webhook.
+    # O Blackchat recebe os updates via Redis Pub/Sub publicado pelo CORE.
 
     # Registrar no CORE
     try:
