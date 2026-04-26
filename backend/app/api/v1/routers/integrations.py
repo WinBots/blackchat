@@ -477,9 +477,44 @@ def register_bot_from_external(
         except Exception:
             continue
 
-    # Se já existe, retorna imediatamente sem criar duplicata
+    # Se já existe, sincronizar core_bot_id em background e retornar
     if existing_channel:
         logger.info("[register-bot] Canal já existe: %s (tenant %d)", bot_username, tenant.id)
+        import threading
+
+        def _sync_existing(channel_id: int, token: str, secret: str) -> None:
+            import time, httpx as _hx
+            time.sleep(10)
+            try:
+                from app.db.session import SessionLocal
+                from app.db.models.channel import Channel as _Channel
+                from app.workers.core_listener import _listen_bot_sync
+                _db = SessionLocal()
+                try:
+                    ch = _db.query(_Channel).filter(_Channel.id == channel_id).first()
+                    if not ch:
+                        return
+                    resp = _hx.get(f"https://api.telegram.org/bot{token}/getWebhookInfo", timeout=8)
+                    url = resp.json().get("result", {}).get("url", "")
+                    if "/core/webhook/" in url:
+                        real_id = url.split("/core/webhook/")[-1].strip("/")
+                        if real_id and real_id != ch.core_bot_id:
+                            print(f"[CORE] canal {channel_id}: core_bot_id corrigido {ch.core_bot_id} → {real_id}", flush=True)
+                            ch.core_bot_id = real_id
+                            _db.commit()
+                    core_bot_id = ch.core_bot_id
+                finally:
+                    _db.close()
+                # Iniciar listener se ainda não existe
+                existing = [t for t in threading.enumerate() if t.name == f"core-{core_bot_id}"]
+                if not existing and core_bot_id and secret:
+                    t = threading.Thread(target=_listen_bot_sync, args=(core_bot_id, secret), daemon=True, name=f"core-{core_bot_id}")
+                    t.start()
+                    print(f"[CORE] listener iniciado (sync): {core_bot_id}", flush=True)
+            except Exception as e:
+                print(f"[CORE] erro sync canal {channel_id}: {e}", flush=True)
+
+        threading.Thread(target=_sync_existing, args=(existing_channel.id, bot_token, existing_channel.webhook_secret), daemon=True).start()
         return {
             "ok": True,
             "channel_id": existing_channel.id,
@@ -511,30 +546,56 @@ def register_bot_from_external(
     # NÃO registrar webhook no Telegram diretamente — o CORE já é o webhook.
     # O Blackchat recebe os updates via Redis Pub/Sub publicado pelo CORE.
 
-    # Registrar no CORE e obter core_bot_id real via getWebhookInfo
-    try:
-        from app.api.v1.routers.channels import _register_bot_in_core
-        _register_bot_in_core(channel, bot_token, config, db)
-    except Exception as e:
-        logger.warning("[register-bot] Erro ao registrar no CORE: %s", e)
-
     db.commit()
 
-    # Iniciar listener Redis para o novo canal sem precisar reiniciar o backend
-    try:
-        from app.workers.core_listener import _listen_bot_sync
-        import threading
-        if channel.core_bot_id and channel.webhook_secret:
-            t = threading.Thread(
-                target=_listen_bot_sync,
-                args=(channel.core_bot_id, channel.webhook_secret),
-                daemon=True,
-                name=f"core-{channel.core_bot_id}",
-            )
-            t.start()
-            logger.info("[register-bot] Listener CORE iniciado: %s", channel.core_bot_id)
-    except Exception as e:
-        logger.warning("[register-bot] Erro ao iniciar listener CORE: %s", e)
+    # Aguardar CORE atualizar o webhook e iniciar listener em background
+    import threading
+
+    def _delayed_sync_and_listen(channel_id: int, token: str, secret: str) -> None:
+        import time, json as _j, httpx as _hx
+        time.sleep(10)  # aguarda TrackLeadPro terminar de registrar no CORE
+        try:
+            from app.db.session import SessionLocal
+            from app.db.models.channel import Channel as _Channel
+            from app.workers.core_listener import _listen_bot_sync
+
+            _db = SessionLocal()
+            try:
+                ch = _db.query(_Channel).filter(_Channel.id == channel_id).first()
+                if not ch:
+                    return
+
+                # Sincronizar core_bot_id via getWebhookInfo
+                resp = _hx.get(f"https://api.telegram.org/bot{token}/getWebhookInfo", timeout=8)
+                url = resp.json().get("result", {}).get("url", "")
+                if "/core/webhook/" in url:
+                    real_id = url.split("/core/webhook/")[-1].strip("/")
+                    if real_id and real_id != ch.core_bot_id:
+                        print(f"[CORE] canal {channel_id}: core_bot_id corrigido {ch.core_bot_id} → {real_id}", flush=True)
+                        ch.core_bot_id = real_id
+                        _db.commit()
+
+                core_bot_id = ch.core_bot_id
+            finally:
+                _db.close()
+
+            if core_bot_id and secret:
+                t = threading.Thread(
+                    target=_listen_bot_sync,
+                    args=(core_bot_id, secret),
+                    daemon=True,
+                    name=f"core-{core_bot_id}",
+                )
+                t.start()
+                print(f"[CORE] listener iniciado (delayed): {core_bot_id}", flush=True)
+        except Exception as e:
+            print(f"[CORE] erro no delayed sync canal {channel_id}: {e}", flush=True)
+
+    threading.Thread(
+        target=_delayed_sync_and_listen,
+        args=(channel.id, bot_token, webhook_secret),
+        daemon=True,
+    ).start()
 
     return {
         "ok": True,
