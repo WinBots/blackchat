@@ -124,6 +124,37 @@ def _listen_bot_sync(core_bot_id: str, webhook_secret: str) -> None:
             time.sleep(5)
 
 
+def _sync_core_bot_ids(channels: list, db) -> None:
+    """Sincroniza core_bot_id de todos os canais via getWebhookInfo do Telegram."""
+    import json
+    try:
+        import httpx
+    except ImportError:
+        import requests as httpx  # type: ignore
+
+    changed = 0
+    for ch in channels:
+        try:
+            config = json.loads(ch.config or "{}")
+            token = config.get("bot_token")
+            if not token:
+                continue
+            resp = httpx.get(f"https://api.telegram.org/bot{token}/getWebhookInfo", timeout=8)
+            url = resp.json().get("result", {}).get("url", "")
+            if "/core/webhook/" in url:
+                real_id = url.split("/core/webhook/")[-1].strip("/")
+                if real_id and real_id != ch.core_bot_id:
+                    print(f"[CORE] canal {ch.id}: core_bot_id corrigido {ch.core_bot_id} → {real_id}", flush=True)
+                    ch.core_bot_id = real_id
+                    changed += 1
+        except Exception as e:
+            print(f"[CORE] canal {ch.id}: erro ao sincronizar core_bot_id — {e}", flush=True)
+
+    if changed:
+        db.commit()
+        print(f"[CORE] {changed} canal(is) com core_bot_id corrigido(s)", flush=True)
+
+
 def start_core_listeners() -> None:
     """Inicia uma thread por bot para escutar eventos do CORE."""
     from app.db.session import SessionLocal
@@ -134,8 +165,13 @@ def start_core_listeners() -> None:
         channels = db.query(Channel).filter(
             Channel.type == "telegram",
             Channel.is_active == True,  # noqa: E712
-            Channel.core_bot_id != None,  # noqa: E712
         ).all()
+
+        # Sincronizar core_bot_id via getWebhookInfo antes de iniciar listeners
+        _sync_core_bot_ids(channels, db)
+
+        # Filtrar apenas canais com core_bot_id válido
+        channels = [ch for ch in channels if ch.core_bot_id]
 
         logger.info(f"[CORE] encontrados {len(channels)} bots para listeners")
         print(f"[CORE] encontrados {len(channels)} bots", flush=True)
