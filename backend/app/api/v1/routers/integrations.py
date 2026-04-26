@@ -511,7 +511,7 @@ def register_bot_from_external(
     # NÃO registrar webhook no Telegram diretamente — o CORE já é o webhook.
     # O Blackchat recebe os updates via Redis Pub/Sub publicado pelo CORE.
 
-    # Registrar no CORE
+    # Registrar no CORE e obter core_bot_id real via getWebhookInfo
     try:
         from app.api.v1.routers.channels import _register_bot_in_core
         _register_bot_in_core(channel, bot_token, config, db)
@@ -519,6 +519,22 @@ def register_bot_from_external(
         logger.warning("[register-bot] Erro ao registrar no CORE: %s", e)
 
     db.commit()
+
+    # Iniciar listener Redis para o novo canal sem precisar reiniciar o backend
+    try:
+        from app.workers.core_listener import _listen_bot_sync
+        import threading
+        if channel.core_bot_id and channel.webhook_secret:
+            t = threading.Thread(
+                target=_listen_bot_sync,
+                args=(channel.core_bot_id, channel.webhook_secret),
+                daemon=True,
+                name=f"core-{channel.core_bot_id}",
+            )
+            t.start()
+            logger.info("[register-bot] Listener CORE iniciado: %s", channel.core_bot_id)
+    except Exception as e:
+        logger.warning("[register-bot] Erro ao iniciar listener CORE: %s", e)
 
     return {
         "ok": True,
